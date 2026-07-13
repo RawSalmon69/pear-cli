@@ -33,14 +33,37 @@ final class AppEnvironment: ObservableObject {
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
 
+        if let observableStats = stats as? PearStatsService {
+            observableStats.objectWillChange
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] in self?.objectWillChange.send() }
+                .store(in: &cancellables)
+        }
+
         NotificationCenter.default
             .addObserver(forName: .pearRemoteNotification, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in await self?.messaging.refresh() }
             }
     }
 
+    // Panel conveniences derived from the concrete services.
+
+    var diskUsedFraction: Double? {
+        (stats as? PearStatsService)?.diskUsedFraction
+    }
+
+    var statsCLIMissing: Bool {
+        (stats as? PearStatsService)?.cliMissing ?? false
+    }
+
+    var hasUnseenIncoming: Bool {
+        messaging.messages.contains {
+            $0.senderDevice != CoupleKey.deviceRole && $0.seenAt == nil
+        }
+    }
+
     static func live() -> AppEnvironment {
-        let stats = MockStatsService()
+        let stats = PearStatsService()
         if let key = CoupleKey.load() {
             let service = CloudKitMessagingService(key: key, deviceRole: CoupleKey.deviceRole)
             return AppEnvironment(messaging: service, stats: stats, updater: nil)

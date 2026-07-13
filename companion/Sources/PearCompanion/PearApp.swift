@@ -12,8 +12,7 @@ struct PearApp: App {
             PanelView()
                 .environmentObject(environment)
         } label: {
-            // Placeholder glyph; the real pear template icon lands in the design pass.
-            Image(systemName: "leaf.fill")
+            Image(nsImage: MenuBarIcon.image(unread: environment.hasUnseenIncoming))
         }
         .menuBarExtraStyle(.window)
     }

@@ -42,6 +42,11 @@ enum CoupleKey {
         load() != nil
     }
 
+    @discardableResult
+    static func store(role: String) -> Bool {
+        write(account: roleAccount, value: role)
+    }
+
     /// This Mac's role ("raws" / "pear"), falling back to the hostname so
     /// sender attribution still works before setup sets a role.
     static var deviceRole: String {
