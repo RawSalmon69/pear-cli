@@ -28,6 +28,17 @@ fi
 
 sed "s/<string>0\.1\.0<\/string>/<string>${VERSION}<\/string>/" Resources/Info.plist > "$APP/Contents/Info.plist"
 
+# Embed the Developer ID provisioning profile that authorizes the CloudKit and
+# push entitlements. Without it a hardened, entitled build will not launch.
+PROFILE="${PROVISION_PROFILE:-Resources/PearCompanion.provisionprofile}"
+if [[ -f "$PROFILE" ]]; then
+    cp "$PROFILE" "$APP/Contents/embedded.provisionprofile"
+    echo "Embedded provisioning profile: $PROFILE"
+elif [[ -n "${IDENTITY:-}" ]]; then
+    echo "WARNING: no provisioning profile found ($PROFILE); a signed build with"
+    echo "         CloudKit/push entitlements will fail to launch without it."
+fi
+
 if [[ -n "${IDENTITY:-}" ]]; then
     echo "Codesigning with: $IDENTITY"
     if [[ -d "$APP/Contents/Frameworks/Sparkle.framework" ]]; then
