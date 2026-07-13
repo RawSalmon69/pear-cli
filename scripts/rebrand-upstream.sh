@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2016  # transform anchors are literal strings full of `backticks`
 # rebrand-upstream.sh - deterministically transform a pristine tw93/Mole tree
 # into the Pear tree (github.com/RawSalmon69/pear-cli).
 #
