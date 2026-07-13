@@ -1,0 +1,171 @@
+import Foundation
+import AppKit
+import Carbon.HIToolbox
+import os
+
+/// Pure filename/folder policy for screenshots, factored out of the service
+/// so it's unit-testable without touching the real disk or defaults.
+enum ScreenshotNaming {
+    static let folderDefaultsKey = "screenshotFolder"
+
+    /// "Pear 2026-07-13 at 14.03.59.png"
+    static func filename(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        return "Pear \(formatter.string(from: date)).png"
+    }
+
+    /// The configured screenshot folder, defaulting to
+    /// `<home>/Pictures/Pear Screenshots`. Tilde in the stored path expands.
+    static func folder(defaults: UserDefaults, home: URL) -> URL {
+        if let path = defaults.string(forKey: folderDefaultsKey), !path.isEmpty {
+            return URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true)
+        }
+        return home
+            .appendingPathComponent("Pictures", isDirectory: true)
+            .appendingPathComponent("Pear Screenshots", isDirectory: true)
+    }
+}
+
+/// Region screenshot → clipboard + saved PNG + floating preview. The preview
+/// offers re-copy, reveal-in-Finder, and the encrypted send to the other Mac.
+/// Triggered by the global hotkey (⌃⇧P) or the panel's Screenshot button.
+/// A user-cancelled capture (no file written) is a no-op.
+@MainActor
+final class ScreenshotService {
+    private let messaging: MessagingService
+    private let logger = Logger(subsystem: CoupleKey.service, category: "screenshot")
+    private let preview = ScreenshotPreviewController()
+
+    private var hotKeyRef: EventHotKeyRef?
+    private var eventHandler: EventHandlerRef?
+
+    init(messaging: MessagingService) {
+        self.messaging = messaging
+    }
+
+    deinit {
+        if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
+        if let eventHandler { RemoveEventHandler(eventHandler) }
+    }
+
+    func capture() async {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pear-shot-\(UUID().uuidString).png")
+        guard await runCapture(to: tempURL) else { return } // cancelled or failed
+
+        guard let data = try? Data(contentsOf: tempURL) else { return }
+
+        copyToPasteboard(data)
+
+        // Save into the screenshot folder; if that fails we still have the
+        // temp file, so the preview (and send) keep working.
+        var savedURL = tempURL
+        do {
+            savedURL = try persist(data)
+        } catch {
+            logger.error("screenshot save failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        let messaging = self.messaging
+        let log = logger
+        let fileURL = savedURL
+        preview.show(
+            imageData: data,
+            onCopy: { [weak self] in self?.copyToPasteboard(data) },
+            onReveal: { NSWorkspace.shared.activateFileViewerSelecting([fileURL]) },
+            onSend: {
+                Task { @MainActor in
+                    do {
+                        try await messaging.send(fileAt: fileURL, kind: .image)
+                    } catch {
+                        log.error("screenshot send failed: \(error.localizedDescription, privacy: .public)")
+                    }
+                }
+            }
+        )
+    }
+
+    private func copyToPasteboard(_ pngData: Data) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setData(pngData, forType: .png)
+    }
+
+    private func persist(_ data: Data) throws -> URL {
+        let folder = ScreenshotNaming.folder(
+            defaults: .standard,
+            home: FileManager.default.homeDirectoryForCurrentUser
+        )
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent(ScreenshotNaming.filename(for: Date()))
+        try data.write(to: url)
+        return url
+    }
+
+    /// Runs the (blocking, interactive) capture off the main thread. Returns
+    /// true only if a file was written — `screencapture -i` writes nothing when
+    /// the user hits Escape.
+    private func runCapture(to url: URL) async -> Bool {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                process.arguments = ["-i", "-x", url.path]
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                } catch {
+                    NSLog("Pear: screencapture failed: \(error.localizedDescription)")
+                }
+                continuation.resume(returning: FileManager.default.fileExists(atPath: url.path))
+            }
+        }
+    }
+
+    // MARK: - Global hotkey (⌃⇧P)
+
+    func registerHotKey() {
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: OSType(kEventHotKeyPressed)
+        )
+        InstallEventHandler(
+            GetApplicationEventTarget(),
+            pearHotKeyHandler,
+            1,
+            &eventType,
+            Unmanaged.passUnretained(self).toOpaque(),
+            &eventHandler
+        )
+
+        let hotKeyID = EventHotKeyID(signature: pearHotKeySignature, id: 1)
+        RegisterEventHotKey(
+            UInt32(kVK_ANSI_P),
+            UInt32(controlKey | shiftKey),
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+    }
+}
+
+/// Four-char-code identifying our hotkey ('PEAR').
+private let pearHotKeySignature: OSType = {
+    var code: OSType = 0
+    for byte in "PEAR".utf8.prefix(4) {
+        code = (code << 8) + OSType(byte)
+    }
+    return code
+}()
+
+/// C callback for the Carbon hotkey; it can't capture context, so `self` is
+/// recovered from the userData pointer passed to InstallEventHandler.
+private let pearHotKeyHandler: EventHandlerUPP = { _, _, userData in
+    guard let userData else { return noErr }
+    let service = Unmanaged<ScreenshotService>.fromOpaque(userData).takeUnretainedValue()
+    Task { @MainActor in await service.capture() }
+    return noErr
+}
