@@ -15,6 +15,8 @@ final class AppEnvironment: ObservableObject {
     let stats: StatsService
     let updater: UpdaterService?
     let screenshot: ScreenshotService
+    let ocr: OCRService
+    let clipboard: ClipboardHistoryService
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -23,7 +25,17 @@ final class AppEnvironment: ObservableObject {
         self.stats = stats
         self.updater = updater
         self.screenshot = ScreenshotService(messaging: messaging)
+        self.ocr = OCRService()
+        self.clipboard = ClipboardHistoryService()
         self.screenshot.registerHotKey()
+        self.ocr.registerHotKey()
+        self.clipboard.start()
+        // screenshot.onMarkupRequest is wired to MarkupWindow at integration.
+
+        clipboard.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
 
         // Re-publish the messaging service's changes so views observing the
         // environment update. The main-queue hop lets the service's own value
@@ -55,6 +67,10 @@ final class AppEnvironment: ObservableObject {
     var statsCLIMissing: Bool {
         (stats as? PearStatsService)?.cliMissing ?? false
     }
+
+    var uptime: String? { (stats as? PearStatsService)?.uptime }
+    var healthScore: Int? { (stats as? PearStatsService)?.healthScore }
+    var healthMessage: String? { (stats as? PearStatsService)?.healthMessage }
 
     var hasUnseenIncoming: Bool {
         messaging.messages.contains {

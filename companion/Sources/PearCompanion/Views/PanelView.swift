@@ -8,16 +8,19 @@ struct PanelView: View {
     @EnvironmentObject private var env: AppEnvironment
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.sectionGap) {
-            HeaderSection()
-            ConnectionBanner()
-            NotesSection()
-            ShelfSection()
-            StatsSection()
-            BottomBar()
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.sectionGap) {
+                HeaderSection()
+                ConnectionBanner()
+                NotesSection()
+                ToolsSection()
+                StatsSection()
+                BottomBar()
+            }
+            .padding(16)
         }
-        .padding(16)
         .frame(width: 360)
+        .frame(maxHeight: 640)
         .task {
             await env.messaging.refresh()
             await env.stats.refresh()
@@ -49,10 +52,16 @@ struct HeaderSection: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             MascotView(mood: mood)
+                .frame(width: 54, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
                 Text(greeting(role: CoupleKey.deviceRole))
                     .font(Theme.title)
-                if mood == .worried {
+                if let health = env.healthMessage {
+                    Text(health)
+                        .font(Theme.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else if mood == .worried {
                     Text("Your disk is getting full — a clean would help")
                         .font(Theme.caption)
                         .foregroundStyle(Theme.warn)
@@ -107,7 +116,6 @@ struct NotesSection: View {
         Array(env.messaging.messages.filter { $0.kind != .file }.prefix(8))
     }
 
-    /// The dominant element: newest note from the other side.
     private var hero: Message? {
         thread.first { $0.senderDevice != CoupleKey.deviceRole }
     }
@@ -146,16 +154,29 @@ struct NotesSection: View {
     }
 }
 
-/// Her latest note, big and warm.
+/// Her latest note, big and warm, with a one-tap copy for text.
 struct HeroNoteCard: View {
     let message: Message
+    @State private var copied = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             MessageBody(message: message, font: Theme.emphasis, imageHeight: 140)
-            HStack(spacing: 4) {
+            HStack(spacing: 8) {
                 Text(message.sentAt, style: .time)
                 if message.seenAt != nil { Text("· seen 🍐") }
+                Spacer()
+                if message.kind == .text, let text = message.text {
+                    Button {
+                        copyText(text)
+                    } label: {
+                        Label(copied ? "Copied" : "Copy",
+                              systemImage: copied ? "checkmark" : "doc.on.doc")
+                            .font(Theme.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(copied ? Theme.accent : .secondary)
+                }
             }
             .font(Theme.caption)
             .foregroundStyle(.tertiary)
@@ -164,16 +185,20 @@ struct HeroNoteCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard(cornerRadius: 16)
         .overlay(alignment: .topTrailing) {
-            Text("🍐")
-                .font(.system(size: 12))
-                .padding(8)
-                .opacity(0.6)
+            Text("🍐").font(.system(size: 12)).padding(8).opacity(0.6)
         }
+    }
+
+    private func copyText(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        withAnimation { copied = true }
     }
 }
 
 struct CompactNoteRow: View {
     let message: Message
+    @State private var hovering = false
 
     private var mine: Bool { message.senderDevice == CoupleKey.deviceRole }
 
@@ -186,10 +211,22 @@ struct CompactNoteRow: View {
             MessageBody(message: message, font: Theme.body, imageHeight: 60)
                 .foregroundStyle(mine ? .secondary : .primary)
             Spacer(minLength: 0)
-            Text(message.sentAt, style: .time)
-                .font(Theme.caption)
-                .foregroundStyle(.quaternary)
+            if hovering, message.kind == .text, let text = message.text {
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                } label: {
+                    Image(systemName: "doc.on.doc").font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            } else {
+                Text(message.sentAt, style: .time)
+                    .font(Theme.caption)
+                    .foregroundStyle(.quaternary)
+            }
         }
+        .onHover { hovering = $0 }
     }
 }
 
@@ -202,7 +239,7 @@ struct MessageBody: View {
     var body: some View {
         switch message.kind {
         case .text:
-            Text(message.text ?? "").font(font)
+            Text(message.text ?? "").font(font).textSelection(.enabled)
         case .poke:
             Text("poke 🍐").font(font)
         case .image:
@@ -237,18 +274,12 @@ struct Composer: View {
                 .onSubmit(send)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
-                .background(
-                    Capsule().fill(.quaternary.opacity(0.5))
-                )
-            GlyphButton(symbol: "paperplane.fill", help: "Send", tint: empty ? .secondary : Theme.accent) {
-                send()
-            }
-            .disabled(empty)
+                .background(Capsule().fill(.quaternary.opacity(0.5)))
+            GlyphButton(symbol: "paperplane.fill", help: "Send",
+                        tint: empty ? .secondary : Theme.accent) { send() }
+                .disabled(empty)
             GlyphButton(symbol: "hand.point.right.fill", help: "Poke 🍐") {
                 Task { try? await env.messaging.sendPoke() }
-            }
-            GlyphButton(symbol: "camera.viewfinder", help: "Screenshot — copies, saves, and can send (⌃⇧P)") {
-                Task { await env.screenshot.capture() }
             }
         }
     }
@@ -261,84 +292,68 @@ struct Composer: View {
     }
 }
 
-// MARK: - Shelf
+// MARK: - Tools (screenshot, OCR, clipboard, disk)
 
-struct ShelfSection: View {
+struct ToolsSection: View {
     @EnvironmentObject private var env: AppEnvironment
-    @State private var isTargeted = false
-
-    private var shelfItems: [Message] {
-        Array(env.messaging.messages.filter { $0.kind == .file }.prefix(20))
-    }
+    @State private var showClipboard = false
+    @State private var showDisk = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
-            SectionLabel(text: "Shelf")
-
-            Group {
-                if shelfItems.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "tray.and.arrow.down")
-                            .foregroundStyle(.tertiary)
-                        Text("Drop a file here — it lands on both your shelves")
-                            .font(Theme.body)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                } else {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(shelfItems) { ShelfRow(item: $0) }
-                    }
+            SectionLabel(text: "Tools")
+            HStack(spacing: Theme.itemGap) {
+                ToolTile(symbol: "camera.viewfinder", label: "Screenshot", hint: "⌃⇧P") {
+                    Task { await env.screenshot.capture() }
+                }
+                ToolTile(symbol: "text.viewfinder", label: "Grab Text", hint: "⌃⇧O") {
+                    Task { await env.ocr.grab() }
+                }
+                ToolTile(symbol: "doc.on.clipboard", label: "Clipboard", hint: nil) {
+                    showClipboard = true
+                }
+                .popover(isPresented: $showClipboard, arrowEdge: .bottom) {
+                    ClipboardHistoryView()
+                }
+                ToolTile(symbol: "chart.pie", label: "Disk", hint: nil) {
+                    showDisk = true
+                }
+                .popover(isPresented: $showDisk, arrowEdge: .bottom) {
+                    DiskAnalyzeView()
                 }
             }
-            .padding(Theme.cardPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .glassCard()
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(
-                        isTargeted ? Theme.accent : .clear,
-                        style: StrokeStyle(lineWidth: 2, dash: [6, 4])
-                    )
-            )
-            .animation(.easeOut(duration: 0.15), value: isTargeted)
-            .dropDestination(for: URL.self) { urls, _ in
-                let files = urls.filter { $0.isFileURL }
-                guard !files.isEmpty else { return false }
-                Task {
-                    for url in files {
-                        try? await env.messaging.send(fileAt: url, kind: .file)
-                    }
-                }
-                return true
-            } isTargeted: { isTargeted = $0 }
         }
     }
 }
 
-struct ShelfRow: View {
-    let item: Message
+struct ToolTile: View {
+    let symbol: String
+    let label: String
+    let hint: String?
+    let action: () -> Void
+    @State private var hovering = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "doc.fill")
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.accent)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(item.text ?? "file")
-                    .font(Theme.body)
-                    .lineLimit(1)
-                Text(item.sentAt, style: .relative)
-                    .font(Theme.caption)
-                    .foregroundStyle(.quaternary)
-            }
-            Spacer()
-            if let url = item.assetURL {
-                GlyphButton(symbol: "magnifyingglass", help: "Reveal in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([url])
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: symbol).font(.system(size: 16, weight: .medium))
+                Text(label).font(.system(size: 10, weight: .medium, design: .rounded))
+                if let hint {
+                    Text(hint).font(.system(size: 8, design: .rounded)).foregroundStyle(.quaternary)
                 }
             }
+            .foregroundStyle(hovering ? Theme.accent : .primary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .glassCard(cornerRadius: 12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(hovering ? Theme.accent.opacity(0.5) : .clear, lineWidth: 1)
+            )
         }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
     }
 }
 
@@ -346,18 +361,24 @@ struct ShelfRow: View {
 
 struct StatsSection: View {
     @EnvironmentObject private var env: AppEnvironment
-
     private let refreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
-            SectionLabel(text: "Mac")
+            HStack {
+                SectionLabel(text: "Mac")
+                Spacer()
+                if let uptime = env.uptime {
+                    Text("up \(uptime)")
+                        .font(Theme.caption)
+                        .foregroundStyle(.quaternary)
+                }
+            }
 
             if env.statsCLIMissing {
                 HStack(spacing: 6) {
-                    Image(systemName: "terminal")
-                        .foregroundStyle(.tertiary)
-                    Text("Install the pear CLI to see disk, memory, and battery here")
+                    Image(systemName: "terminal").foregroundStyle(.tertiary)
+                    Text("Install the pear CLI to see disk, memory, CPU, and battery")
                         .font(Theme.body)
                         .foregroundStyle(.secondary)
                 }
@@ -365,8 +386,10 @@ struct StatsSection: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .glassCard()
             } else {
-                HStack(spacing: Theme.itemGap) {
-                    ForEach(env.stats.current(), id: \.label) { StatTile(stat: $0) }
+                let tiles = env.stats.current()
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.itemGap), count: 4),
+                          spacing: Theme.itemGap) {
+                    ForEach(tiles, id: \.label) { StatTile(stat: $0) }
                 }
             }
         }
@@ -381,7 +404,6 @@ struct StatTile: View {
 
     private var ringColor: Color {
         guard let fraction = stat.fraction else { return Theme.accent }
-        // Battery rings drain; disk/memory rings fill. High fill = warning.
         if stat.label.hasPrefix("Batt") || stat.label == "Charging" {
             return fraction < 0.2 ? Theme.warn : Theme.accent
         }
@@ -391,8 +413,7 @@ struct StatTile: View {
     var body: some View {
         VStack(spacing: 4) {
             ZStack {
-                Circle()
-                    .stroke(.quaternary.opacity(0.6), lineWidth: 3)
+                Circle().stroke(.quaternary.opacity(0.6), lineWidth: 3)
                 if let fraction = stat.fraction {
                     Circle()
                         .trim(from: 0, to: fraction)
@@ -401,19 +422,23 @@ struct StatTile: View {
                         .animation(.easeOut(duration: 0.6), value: fraction)
                 }
                 Image(systemName: stat.symbol)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
             }
-            .frame(width: 34, height: 34)
+            .frame(width: 30, height: 30)
             Text(stat.value)
-                .font(Theme.rounded(13, .semibold))
+                .font(Theme.rounded(12, .semibold))
                 .contentTransition(.numericText())
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
             Text(stat.label)
-                .font(Theme.caption)
+                .font(.system(size: 9, design: .rounded))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
+        .padding(.horizontal, 4)
         .glassCard(cornerRadius: 12)
     }
 }
@@ -426,17 +451,11 @@ struct BottomBar: View {
 
     var body: some View {
         HStack(spacing: Theme.itemGap) {
-            Button {
-                TerminalRunner.run("clean")
-            } label: {
-                Label("Clean", systemImage: "sparkles")
-                    .font(Theme.body)
+            Button { TerminalRunner.run("clean") } label: {
+                Label("Clean", systemImage: "sparkles").font(Theme.body)
             }
-            Button {
-                TerminalRunner.run("optimize")
-            } label: {
-                Label("Optimize", systemImage: "wind")
-                    .font(Theme.body)
+            Button { TerminalRunner.run("optimize") } label: {
+                Label("Optimize", systemImage: "wind").font(Theme.body)
             }
             Spacer()
             Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev")")
@@ -450,6 +469,5 @@ struct BottomBar: View {
         .buttonStyle(.bordered)
         .controlSize(.small)
         .tint(Theme.accent)
-        .disabled(false)
     }
 }

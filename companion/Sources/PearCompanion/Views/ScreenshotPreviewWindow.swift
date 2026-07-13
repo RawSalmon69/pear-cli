@@ -9,14 +9,16 @@ final class ScreenshotPreviewController {
     private var panel: NSPanel?
     private var dismissTimer: Timer?
 
-    private static let panelSize = NSSize(width: 264, height: 210)
+    private static let panelSize = NSSize(width: 280, height: 236)
     private static let dismissDelay: TimeInterval = 6
     private static let margin: CGFloat = 20
 
     func show(
         imageData: Data,
+        canMarkup: Bool,
         onCopy: @escaping () -> Void,
         onReveal: @escaping () -> Void,
+        onMarkup: @escaping () -> Void,
         onSend: @escaping () -> Void
     ) {
         dismiss() // one preview at a time
@@ -25,12 +27,18 @@ final class ScreenshotPreviewController {
 
         let content = ScreenshotPreviewView(
             image: image,
+            canMarkup: canMarkup,
             onCopy: onCopy,
             onReveal: onReveal,
+            onMarkup: { [weak self] in
+                onMarkup()
+                self?.dismiss()
+            },
             onSend: { [weak self] in
                 onSend()
                 self?.dismiss()
             },
+            onDismiss: { [weak self] in self?.dismiss() },
             onHoverChange: { [weak self] hovering in
                 if hovering {
                     self?.dismissTimer?.invalidate()
@@ -93,28 +101,106 @@ private final class NonActivatingPanel: NSPanel {
 
 private struct ScreenshotPreviewView: View {
     let image: NSImage
+    let canMarkup: Bool
     let onCopy: () -> Void
     let onReveal: () -> Void
+    let onMarkup: () -> Void
     let onSend: () -> Void
+    let onDismiss: () -> Void
     let onHoverChange: (Bool) -> Void
 
+    @State private var appeared = false
+    @State private var drag: CGSize = .zero
+    @State private var copied = false
+
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
-                .frame(maxWidth: 240, maxHeight: 140)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-            HStack(spacing: 8) {
-                Button("Copy", action: onCopy)
-                Button("Folder", action: onReveal)
-                Button("Send 🍐", action: onSend)
+                .frame(maxWidth: 252, maxHeight: 150)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
+
+            HStack(spacing: 6) {
+                PreviewAction(symbol: copied ? "checkmark" : "doc.on.doc",
+                              label: copied ? "Copied" : "Copy") {
+                    onCopy()
+                    withAnimation { copied = true }
+                }
+                PreviewAction(symbol: "folder", label: "Reveal", action: onReveal)
+                if canMarkup {
+                    PreviewAction(symbol: "pencil.tip.crop.circle", label: "Markup", action: onMarkup)
+                }
+                PreviewAction(symbol: "paperplane.fill", label: "Send",
+                              tint: Theme.accent, action: onSend)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
         }
         .padding(12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .glassCard(cornerRadius: 16)
+        .overlay(alignment: .topTrailing) {
+            Button(action: onDismiss) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+                    .padding(6)
+            }
+            .buttonStyle(.plain)
+            .opacity(0.7)
+        }
+        // Swipe/drag down or right to flick it away.
+        .offset(x: drag.width, y: drag.height)
+        .opacity(appeared ? 1 : 0)
+        .scaleEffect(appeared ? 1 : 0.92)
+        .gesture(
+            DragGesture()
+                .onChanged { drag = $0.translation }
+                .onEnded { value in
+                    if abs(value.translation.width) > 90 || value.translation.height > 90 {
+                        onDismiss()
+                    } else {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { drag = .zero }
+                    }
+                }
+        )
         .onHover(perform: onHoverChange)
+        .onAppear {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) { appeared = true }
+        }
+    }
+}
+
+/// Compact labeled icon button used in the preview action row.
+private struct PreviewAction: View {
+    let symbol: String
+    let label: String
+    var tint: Color = .primary
+    let action: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: symbol)
+                    .font(.system(size: 14, weight: .medium))
+                Text(label)
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+            }
+            .foregroundStyle(hovering ? Theme.accent : tint)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(hovering ? Theme.accentSoft : .clear)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
     }
 }

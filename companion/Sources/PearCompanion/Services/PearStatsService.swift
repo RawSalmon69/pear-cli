@@ -8,6 +8,10 @@ final class PearStatsService: StatsService, ObservableObject {
     @Published private(set) var cliMissing = false
     /// Root-disk used fraction; drives the mascot's worried mood.
     @Published private(set) var diskUsedFraction: Double?
+    /// Secondary glanceable line: uptime + overall health.
+    @Published private(set) var uptime: String?
+    @Published private(set) var healthScore: Int?
+    @Published private(set) var healthMessage: String?
 
     private nonisolated static let candidates = [
         "/usr/local/bin/pear",
@@ -76,6 +80,16 @@ final class PearStatsService: StatsService, ObservableObject {
                 )
             )
         }
+        if let cpu = s.cpu {
+            next.append(
+                StatItem(
+                    label: "CPU",
+                    value: "\(Int(cpu.usage.rounded()))%",
+                    symbol: "cpu",
+                    fraction: min(max(cpu.usage / 100, 0), 1)
+                )
+            )
+        }
         if let battery = s.batteries?.first {
             next.append(
                 StatItem(
@@ -87,6 +101,9 @@ final class PearStatsService: StatsService, ObservableObject {
             )
         }
         items = next
+        uptime = s.uptime
+        healthScore = s.healthScore
+        healthMessage = s.healthScoreMsg
     }
 
     static func gigabytes(_ bytes: Int64) -> String {
@@ -131,7 +148,21 @@ struct StatusSnapshot: Decodable {
         let status: String
     }
 
+    struct CPU: Decodable {
+        let usage: Double
+    }
+
     let disks: [Disk]?
     let memory: Memory?
     let batteries: [Battery]?
+    let cpu: CPU?
+    let uptime: String?
+    let healthScore: Int?
+    let healthScoreMsg: String?
+
+    enum CodingKeys: String, CodingKey {
+        case disks, memory, batteries, cpu, uptime
+        case healthScore = "health_score"
+        case healthScoreMsg = "health_score_msg"
+    }
 }

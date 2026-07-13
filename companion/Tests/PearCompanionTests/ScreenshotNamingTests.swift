@@ -23,7 +23,7 @@ final class ScreenshotNamingTests: XCTestCase {
         let home = URL(fileURLWithPath: "/Users/someone", isDirectory: true)
 
         let folder = ScreenshotNaming.folder(defaults: defaults, home: home)
-        XCTAssertEqual(folder.path, "/Users/someone/Pictures/Pear Screenshots")
+        XCTAssertEqual(folder.path, "/Users/someone/Documents/PearScreenshots")
     }
 
     func testConfiguredFolderWins() throws {

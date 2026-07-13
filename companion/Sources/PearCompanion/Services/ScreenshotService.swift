@@ -17,14 +17,14 @@ enum ScreenshotNaming {
     }
 
     /// The configured screenshot folder, defaulting to
-    /// `<home>/Pictures/Pear Screenshots`. Tilde in the stored path expands.
+    /// `<home>/Documents/PearScreenshots`. Tilde in the stored path expands.
     static func folder(defaults: UserDefaults, home: URL) -> URL {
         if let path = defaults.string(forKey: folderDefaultsKey), !path.isEmpty {
             return URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true)
         }
         return home
-            .appendingPathComponent("Pictures", isDirectory: true)
-            .appendingPathComponent("Pear Screenshots", isDirectory: true)
+            .appendingPathComponent("Documents", isDirectory: true)
+            .appendingPathComponent("PearScreenshots", isDirectory: true)
     }
 }
 
@@ -38,16 +38,12 @@ final class ScreenshotService {
     private let logger = Logger(subsystem: CoupleKey.service, category: "screenshot")
     private let preview = ScreenshotPreviewController()
 
-    private var hotKeyRef: EventHotKeyRef?
-    private var eventHandler: EventHandlerRef?
+    /// Set by AppEnvironment to the markup editor. When nil, the preview hides
+    /// its Markup button, so ScreenshotService never hard-depends on the editor.
+    var onMarkupRequest: ((NSImage, @escaping (NSImage?) -> Void) -> Void)?
 
     init(messaging: MessagingService) {
         self.messaging = messaging
-    }
-
-    deinit {
-        if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
-        if let eventHandler { RemoveEventHandler(eventHandler) }
     }
 
     func capture() async {
@@ -68,13 +64,20 @@ final class ScreenshotService {
             logger.error("screenshot save failed: \(error.localizedDescription, privacy: .public)")
         }
 
+        present(data: data, at: savedURL)
+    }
+
+    /// Shows the floating preview for `data` saved at `fileURL`, wiring copy,
+    /// reveal, markup, and send. Markup re-runs the flow with the edited image.
+    private func present(data: Data, at fileURL: URL) {
         let messaging = self.messaging
         let log = logger
-        let fileURL = savedURL
         preview.show(
             imageData: data,
+            canMarkup: onMarkupRequest != nil,
             onCopy: { [weak self] in self?.copyToPasteboard(data) },
             onReveal: { NSWorkspace.shared.activateFileViewerSelecting([fileURL]) },
+            onMarkup: { [weak self] in self?.markup(data: data, at: fileURL) },
             onSend: {
                 Task { @MainActor in
                     do {
@@ -85,6 +88,19 @@ final class ScreenshotService {
                 }
             }
         )
+    }
+
+    /// Opens the markup editor; on completion, overwrites the saved PNG and
+    /// clipboard with the edited image and re-shows the preview.
+    private func markup(data: Data, at fileURL: URL) {
+        guard let onMarkupRequest, let image = NSImage(data: data) else { return }
+        preview.dismiss()
+        onMarkupRequest(image) { [weak self] edited in
+            guard let self, let edited, let png = edited.pngData() else { return }
+            self.copyToPasteboard(png)
+            try? png.write(to: fileURL)
+            self.present(data: png, at: fileURL)
+        }
     }
 
     private func copyToPasteboard(_ pngData: Data) {
@@ -127,45 +143,9 @@ final class ScreenshotService {
     // MARK: - Global hotkey (⌃⇧P)
 
     func registerHotKey() {
-        var eventType = EventTypeSpec(
-            eventClass: OSType(kEventClassKeyboard),
-            eventKind: OSType(kEventHotKeyPressed)
-        )
-        InstallEventHandler(
-            GetApplicationEventTarget(),
-            pearHotKeyHandler,
-            1,
-            &eventType,
-            Unmanaged.passUnretained(self).toOpaque(),
-            &eventHandler
-        )
-
-        let hotKeyID = EventHotKeyID(signature: pearHotKeySignature, id: 1)
-        RegisterEventHotKey(
-            UInt32(kVK_ANSI_P),
-            UInt32(controlKey | shiftKey),
-            hotKeyID,
-            GetApplicationEventTarget(),
-            0,
-            &hotKeyRef
-        )
+        HotKeyManager.shared.register(keyCode: kVK_ANSI_P, modifiers: controlKey | shiftKey) {
+            [weak self] in
+            Task { @MainActor in await self?.capture() }
+        }
     }
-}
-
-/// Four-char-code identifying our hotkey ('PEAR').
-private let pearHotKeySignature: OSType = {
-    var code: OSType = 0
-    for byte in "PEAR".utf8.prefix(4) {
-        code = (code << 8) + OSType(byte)
-    }
-    return code
-}()
-
-/// C callback for the Carbon hotkey; it can't capture context, so `self` is
-/// recovered from the userData pointer passed to InstallEventHandler.
-private let pearHotKeyHandler: EventHandlerUPP = { _, _, userData in
-    guard let userData else { return noErr }
-    let service = Unmanaged<ScreenshotService>.fromOpaque(userData).takeUnretainedValue()
-    Task { @MainActor in await service.capture() }
-    return noErr
 }
