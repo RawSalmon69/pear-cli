@@ -41,10 +41,24 @@ fi
 
 if [[ -n "${IDENTITY:-}" ]]; then
     echo "Codesigning with: $IDENTITY"
-    if [[ -d "$APP/Contents/Frameworks/Sparkle.framework" ]]; then
-        codesign --force --options runtime --sign "$IDENTITY" "$APP/Contents/Frameworks/Sparkle.framework"
+    sign() { codesign --force --options runtime --timestamp --sign "$IDENTITY" "$@"; }
+
+    # Sparkle ships nested code (XPC services, Autoupdate, Updater.app) that
+    # notarization checks individually. Sign inside-out, each with a secure
+    # timestamp and the hardened runtime, before the framework and app.
+    FW="$APP/Contents/Frameworks/Sparkle.framework"
+    if [[ -d "$FW" ]]; then
+        while IFS= read -r xpc; do
+            sign --preserve-metadata=entitlements "$xpc"
+        done < <(find "$FW" -name "*.xpc" -type d)
+        while IFS= read -r nested; do
+            sign "$nested"
+        done < <(find "$FW" -name "Autoupdate" -type f; find "$FW" -name "Updater.app" -type d)
+        sign "$FW"
     fi
-    codesign --force --options runtime \
+
+    # Main app last, over the already-signed nested code.
+    codesign --force --options runtime --timestamp \
         --entitlements Resources/PearCompanion.entitlements \
         --sign "$IDENTITY" "$APP"
     codesign --verify --deep --strict "$APP"
