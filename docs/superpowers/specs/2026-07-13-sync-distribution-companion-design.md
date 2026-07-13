@@ -9,7 +9,7 @@ pear-cli is a full rebrand of tw93/Mole (GPL-3.0). Owner: RawSalmon69. Three goa
 
 1. Stay current with upstream Mole without merge hell.
 2. Let anyone install with one command.
-3. A beautiful macOS menu-bar companion app as a gift for Pear (owner's girlfriend) — non-technical user, Liquid Glass design, autoupdating, with a remote "cute feed" the owner can push to.
+3. A beautiful macOS menu-bar companion app as a gift for Pear (owner's girlfriend) — non-technical user, Liquid Glass design, autoupdating, with private two-way love-note messaging between the couple's Macs (CloudKit + client-side encryption).
 
 Owner has an Apple Developer account. Owner's Mac: macOS 26.2. Her Mac: macOS 13+.
 
@@ -40,33 +40,47 @@ Owner has an Apple Developer account. Owner's Mac: macOS 26.2. Her Mac: macOS 13
 
 ## C. Companion app ("Pear" in the menu bar)
 
-`companion/` in the same repo. Swift Package Manager executable target + `companion/build.sh` assembling a `.app` bundle (Info.plist, icon, codesign). No Xcode project files.
+**Product**: a private two-person companion installed on BOTH Macs (owner's and Pear's). Three pillars: love-note messaging (the heart), the animated pet (the charm), Mac care (the utility). Not a chat-app clone; never multi-user; never telemetry.
+
+`companion/` in the same repo. Swift Package Manager executable target + `companion/build.sh` assembling a `.app` bundle (Info.plist, icon, entitlements, codesign). No Xcode project files. Only OS frameworks (SwiftUI, CloudKit, CryptoKit, UserNotifications) plus one third-party dependency: Sparkle 2.
+
+### Messaging (CloudKit, end-to-end encrypted)
+
+- **Transport**: CloudKit public database in the owner's container, record type `Message`. No CKShare invite flow.
+- **Privacy model**: payloads (text and images) encrypted client-side with a shared symmetric key (CryptoKit, ChaChaPoly or AES-GCM) stored in each Mac's Keychain. Owner sets the key on both Macs once during setup. Apple stores ciphertext only; container ID is unpublished. Authenticity: AEAD — records that fail to decrypt/authenticate are ignored.
+- **Message fields**: `id`, `senderDevice`, `sentAt`, `kind` (text | image | poke), `ciphertext` (CKAsset for images — image bytes encrypted before upload), `seenAt?` (updated by recipient → powers "seen 🍐").
+- **Delivery**: `CKQuerySubscription` on Message → APNs push → local notification even when the panel is closed. App is a login item, so effectively always running.
+- **Features in v1**: text + emoji, photos/images (paste, drag-drop, file picker; encrypted CKAsset; thumbnail in panel), one-tap 🍐 poke, recent history in panel, subtle "seen 🍐" state. Retention: recent N in panel; records persist in CloudKit.
+- **Not in v1**: typing indicators, threads, infinite scroll, reactions, message deletion sync.
 
 ### UX / design
 
 - **Liquid Glass**: on macOS 26+, native APIs (`GlassEffectContainer`, `.glassEffect(...)`, glass button styles). On macOS 13–15, availability-gated fallback to `.ultraThinMaterial` + vibrancy. One design, two material backends.
 - `MenuBarExtra` with `.menuBarExtraStyle(.window)` → custom glass panel (~360 pt):
-  1. Header: animated pear mascot (idle blink), greeting that varies by time of day.
-  2. Cute-feed card: latest message from owner (emoji, text, optional ASCII art), glass card, spring-in animation.
+  1. Header: animated pear/cat mascot — idle blink, excited on new message, worried when disk nearly full — greeting varies by time of day.
+  2. Messages: recent notes as glass cards (text/images), composer with emoji + image attach, poke button, "seen 🍐" indicator, spring-in animations.
   3. Stats row: three glass tiles — disk free, memory, battery — SF Symbols, ring gauges, `contentTransition(.numericText)`.
-  4. Actions: "Clean Now", "Analyze Disk" buttons.
+  4. Actions: "Clean Now", "Optimize" buttons.
   5. Footer: version, update state.
-- Type: SF Rounded. Accent: pear green. Menu-bar icon: pear glyph template image; app icon: glossy pear.
-- Quality bar: gift-grade. No default-looking controls; every state (loading, empty feed, missing CLI) designed.
+- Type: SF Rounded. Accent: pear green. Menu-bar icon: pear glyph template image (badge on unread); app icon: glossy pear.
+- Quality bar: gift-grade. No default-looking controls; every state (loading, no messages yet, missing CLI, offline) designed.
 
-### Behavior
+### Mac care behavior
 
-- **Feed**: polls `https://raw.githubusercontent.com/RawSalmon69/pear-cli/main/feed/feed.json` every 15 min (+ on wake/open). Schema: `[{id, date, emoji, title?, message, art?}]`. New item → macOS notification (UserNotifications) + card update. Feed cached locally for offline.
-- **Stats**: runs `/usr/local/bin/pear status --json` every 60 s while panel open (on open otherwise). If CLI missing → designed setup card with install instructions.
-- **Clean Now (v1)**: opens Terminal running `pear clean` via AppleScript — preserves the CLI's own confirmations and safety UX. Headless native clean is v2.
-- **Autoupdate**: Sparkle 2 (SPM dependency). `SUFeedURL` → `appcast.xml` in the repo (raw URL on main). CI on tag: build app → Developer ID sign → notarize (`notarytool`) → staple → zip → attach to GitHub release → regenerate appcast entry (EdDSA-signed) → commit appcast. Owner pushes tag → her app self-updates. Signing keys/Apple credentials live as GitHub Actions secrets (owner adds; documented in companion/README).
+- **Stats**: runs `/usr/local/bin/pear status --json` every 60 s while panel open (on open otherwise). If CLI missing → designed setup card with install instructions. Gentle nudge notification when disk nearly full.
+- **Clean Now / Optimize (v1)**: opens Terminal running `pear clean` / `pear optimize` via AppleScript — preserves the CLI's own confirmations and safety UX. Headless native versions are v2.
+
+### Updates & install
+
+- **Autoupdate**: Sparkle 2 (SPM dependency). `SUFeedURL` → `appcast.xml` in the repo (raw URL on main). CI on tag: build app → Developer ID sign → notarize (`notarytool`) → staple → zip → attach to GitHub release → regenerate appcast entry (EdDSA-signed) → commit appcast. Owner pushes tag → both Macs self-update. Signing keys/Apple credentials live as GitHub Actions secrets (owner adds; documented in companion/README).
+- **Owner one-time setup (manual, documented)**: create CloudKit container + enable push in the Apple Developer portal; add signing/notarization secrets to GitHub; install app + shared key on both Macs.
 - First install on her Mac: owner installs the notarized app himself (drag to /Applications) — Gatekeeper-clean thanks to notarization.
 
 ### Testing
 
 - `swift build` in CI (macOS runner) on every PR.
-- Unit tests: feed JSON decoding (incl. malformed feed → keeps cached), status JSON parsing, appcast generation script.
-- Manual: visual pass on macOS 26 (glass) and 13-15 fallback; end-to-end Sparkle update on owner's Mac before her rollout.
+- Unit tests: encryption round-trip (text + image bytes, tampered ciphertext rejected), Message record encode/decode, status JSON parsing, appcast generation script.
+- Manual: visual pass on macOS 26 (glass) and 13-15 fallback; two-device message exchange (both directions, images, poke, seen) before her rollout; end-to-end Sparkle update on owner's Mac.
 
 ## Order of work
 
@@ -78,8 +92,8 @@ Owner has an Apple Developer account. Owner's Mac: macOS 26.2. Her Mac: macOS 13
 
 - Sync: weekly PR appears when upstream moves; rebrand script reproduces current tree from upstream snapshot.
 - Distribution: fresh Mac one-liner installs a working `pear`.
-- Companion: feed commit visible on her Mac ≤ 15 min with notification; tag push → app self-updates; panel is Liquid Glass on macOS 26 and still beautiful on 13-15.
+- Companion: message sent from one Mac appears as a notification on the other within seconds (both directions, text + image + poke, seen-state); tag push → app self-updates; panel is Liquid Glass on macOS 26 and still beautiful on 13-15; ciphertext-only in CloudKit (verified by inspecting records).
 
 ## Out of scope (v1)
 
-- Headless native clean, Homebrew tap/core, iOS/widget versions, multi-user feed, analytics of any kind (it's a gift, not a product).
+- Headless native clean/optimize, scheduled cleaning, Homebrew tap/core, iOS/widget versions, typing indicators/threads/infinite scroll, anything multi-user, analytics of any kind (it's a gift, not a product).

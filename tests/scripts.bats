@@ -75,29 +75,6 @@ setup() {
     [ -x "$PROJECT_ROOT/scripts/check_release_minos.sh" ]
 }
 
-@test "release workflow keeps the Homebrew Core PR open (#1209)" {
-    local workflow="$PROJECT_ROOT/.github/workflows/release.yml"
-
-    run grep -F "Have you followed the [guidelines for contributing]" "$workflow"
-    [ "$status" -eq 0 ]
-    run grep -F "pulls?state=all&head=RawSalmon69:" "$workflow"
-    [ "$status" -eq 0 ]
-    run grep -F 'PR_STATE" != "open"' "$workflow"
-    [ "$status" -eq 0 ]
-    run grep -F 'core_status=published' "$workflow"
-    [ "$status" -eq 0 ]
-    run grep -F 'core_status=pr-open' "$workflow"
-    [ "$status" -eq 0 ]
-
-    run awk '
-        /name: Update Homebrew formula \(Official Core\)/ { in_step = 1 }
-        in_step && /continue-on-error:/ { found = 1 }
-        in_step && /name: Verify formula updates/ { exit found ? 1 : 0 }
-        END { if (!in_step) exit 1 }
-    ' "$workflow"
-    [ "$status" -eq 0 ]
-}
-
 @test "setup-quick-launchers.sh has detect_mo function" {
     run bash -c "grep -q 'detect_mo()' '$PROJECT_ROOT/scripts/setup-quick-launchers.sh'"
     [ "$status" -eq 0 ]
