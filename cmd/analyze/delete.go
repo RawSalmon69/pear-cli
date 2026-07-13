@@ -1,0 +1,257 @@
+//go:build darwin
+
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"sort"
+	"strings"
+	"sync/atomic"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+const trashTimeout = 30 * time.Second
+
+func deletePathCmd(path string, counter *int64) tea.Cmd {
+	return func() tea.Msg {
+		count, err := trashPathWithProgress(path, counter)
+		return deleteProgressMsg{
+			done:  true,
+			err:   err,
+			count: count,
+			path:  path,
+		}
+	}
+}
+
+// deleteMultiplePathsCmd moves paths to Trash and aggregates results.
+func deleteMultiplePathsCmd(paths []string, counter *int64) tea.Cmd {
+	return func() tea.Msg {
+		var totalCount int64
+		var errors []string
+
+		// Process deeper paths first to avoid parent/child conflicts.
+		pathsToDelete := append([]string(nil), paths...)
+		sort.Slice(pathsToDelete, func(i, j int) bool {
+			return strings.Count(pathsToDelete[i], string(filepath.Separator)) > strings.Count(pathsToDelete[j], string(filepath.Separator))
+		})
+
+		for _, path := range pathsToDelete {
+			count, err := trashPathWithProgress(path, counter)
+			totalCount += count
+			if err != nil {
+				if os.IsNotExist(err) {
+					continue
+				}
+				errors = append(errors, err.Error())
+			}
+		}
+
+		var resultErr error
+		if len(errors) > 0 {
+			resultErr = &multiDeleteError{errors: errors}
+		}
+
+		return deleteProgressMsg{
+			done:  true,
+			err:   resultErr,
+			count: totalCount,
+			path:  "",
+		}
+	}
+}
+
+// multiDeleteError holds multiple deletion errors.
+type multiDeleteError struct {
+	errors []string
+}
+
+func (e *multiDeleteError) Error() string {
+	if len(e.errors) == 1 {
+		return e.errors[0]
+	}
+	return strings.Join(e.errors[:min(3, len(e.errors))], "; ")
+}
+
+// trashPathWithProgress moves a path to Trash using Finder.
+// This allows users to recover accidentally deleted files.
+func trashPathWithProgress(root string, counter *int64) (int64, error) {
+	// Verify path exists (use Lstat to handle broken symlinks).
+	info, err := os.Lstat(root)
+	if err != nil {
+		return 0, err
+	}
+
+	// Count items for progress reporting.
+	var count int64
+	if info.IsDir() {
+		_ = filepath.WalkDir(root, func(_ string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if !d.IsDir() {
+				count++
+				if counter != nil {
+					atomic.StoreInt64(counter, count)
+				}
+			}
+			return nil
+		})
+	} else {
+		count = 1
+		if counter != nil {
+			atomic.StoreInt64(counter, 1)
+		}
+	}
+
+	// Move to Trash using Finder AppleScript.
+	if err := moveToTrash(root); err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+// moveToTrash uses macOS Finder to move a file/directory to Trash.
+// This is the safest method as it uses the system's native trash mechanism.
+func moveToTrash(path string) error {
+	// Validate raw input before Abs resolves ".." components away.
+	if err := validateTrashTarget(path); err != nil {
+		return err
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("failed to resolve path: %w", err)
+	}
+
+	// Validate resolved path as well (defense-in-depth).
+	if err := validateTrashTarget(absPath); err != nil {
+		return err
+	}
+
+	// Escape path for AppleScript (handle quotes and backslashes).
+	escapedPath := strings.ReplaceAll(absPath, "\\", "\\\\")
+	escapedPath = strings.ReplaceAll(escapedPath, "\"", "\\\"")
+
+	script := fmt.Sprintf(`tell application "Finder" to delete POSIX file "%s"`, escapedPath)
+
+	ctx, cancel := context.WithTimeout(context.Background(), trashTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "osascript", "-e", script)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("timeout moving to Trash")
+		}
+		return fmt.Errorf("failed to move to Trash: %s", strings.TrimSpace(string(output)))
+	}
+
+	return nil
+}
+
+func validateTrashTarget(path string) error {
+	if err := validatePath(path); err != nil {
+		return err
+	}
+	if isProtectedAnalyzeDeletePath(path) {
+		return fmt.Errorf("protected path cannot be deleted: %s", path)
+	}
+	return nil
+}
+
+func isProtectedAnalyzeDeletePath(path string) bool {
+	if path == "" {
+		return false
+	}
+
+	cleanPath := filepath.Clean(path)
+
+	// EDR / Darwin-cache protection is based on the absolute path and does not
+	// depend on HOME, so check it first: an unset HOME must not let a Falcon
+	// cache slip through (e.g. `env -u HOME mo analyze`).
+	if isEndpointSecurityCachePath(cleanPath) {
+		return true
+	}
+
+	home := os.Getenv("HOME")
+	if home == "" {
+		return false
+	}
+
+	orbstackState := filepath.Join(home, ".orbstack")
+	if cleanPath == orbstackState || strings.HasPrefix(cleanPath, orbstackState+string(filepath.Separator)) {
+		return true
+	}
+
+	groupContainers := filepath.Join(home, "Library", "Group Containers")
+	rel, err := filepath.Rel(groupContainers, cleanPath)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+
+	containerName := rel
+	if idx := strings.Index(containerName, string(filepath.Separator)); idx >= 0 {
+		containerName = containerName[:idx]
+	}
+	return strings.HasSuffix(containerName, "dev.orbstack")
+}
+
+// endpointSecurityBundlePrefixes mirrors ENDPOINT_SECURITY_BUNDLE_PREFIXES in
+// lib/core/app_protection_data.sh. Deleting anything inside one of these EDR/MDM
+// agents' per-user Darwin caches trips sensor tamper detection (e.g. CrowdStrike
+// MacFalconSensorTamper, MITRE T1562.001), so analyze must never Trash them.
+var endpointSecurityBundlePrefixes = []string{
+	"com.crowdstrike.",
+	"com.sentinelone.",
+	"com.sentinel-labs.",
+	"com.eset.",
+	"com.jamf.",
+	"com.jamfsoftware.",
+	"com.paloaltonetworks.",
+	"com.cisco.anyconnect",
+	"com.cisco.secureclient",
+}
+
+// isEndpointSecurityCachePath reports whether path is an endpoint-security / EDR
+// agent file under the per-user Darwin folder (/private/var/folders or its
+// /var/folders symlink form). Mirror of is_endpoint_security_cache_path() in
+// lib/core/app_protection.sh.
+func isEndpointSecurityCachePath(path string) bool {
+	if !strings.HasPrefix(path, "/private/var/folders/") && !strings.HasPrefix(path, "/var/folders/") {
+		return false
+	}
+	for _, prefix := range endpointSecurityBundlePrefixes {
+		if strings.Contains(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// validatePath checks path safety for external commands.
+// Returns error if path is empty, relative, contains null bytes, or has traversal.
+func validatePath(path string) error {
+	if path == "" {
+		return fmt.Errorf("path is empty")
+	}
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("path must be absolute: %s", path)
+	}
+	if strings.Contains(path, "\x00") {
+		return fmt.Errorf("path contains null bytes")
+	}
+	// Check for path traversal attempts (.. components).
+	if slices.Contains(strings.Split(path, string(filepath.Separator)), "..") {
+		return fmt.Errorf("path contains traversal components: %s", path)
+	}
+	return nil
+}

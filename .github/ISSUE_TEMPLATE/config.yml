@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private Security Report
+    url: mailto:worached.ink@dappmaker.co.th?subject=Pear%20security%20report
+    about: Report a suspected vulnerability privately instead of opening a public issue
+  - name: GitHub Discussions
+    url: https://github.com/RawSalmon69/pear-cli/discussions
+    about: Ask questions and share ideas with the community
