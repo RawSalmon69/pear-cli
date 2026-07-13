@@ -36,6 +36,8 @@ struct MascotView: View {
             .font(.system(size: 9, weight: .semibold, design: .monospaced))
             .foregroundStyle(Theme.accent)
             .lineSpacing(1)
+            .fixedSize()
+            .multilineTextAlignment(.leading)
             .offset(y: bounce ? -3 : 0)
             .onReceive(blinkTimer) { _ in
                 guard mood != .worried else { return }
