@@ -458,9 +458,17 @@ struct BottomBar: View {
                 Label("Optimize", systemImage: "wind").font(Theme.body)
             }
             Spacer()
-            Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev")")
-                .font(Theme.caption)
-                .foregroundStyle(.quaternary)
+            if let updater = env.updater {
+                Button("v\(updater.versionString)") { updater.checkForUpdates() }
+                    .buttonStyle(.plain)
+                    .font(Theme.caption)
+                    .foregroundStyle(.secondary)
+                    .help("Check for updates")
+            } else {
+                Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev")")
+                    .font(Theme.caption)
+                    .foregroundStyle(.quaternary)
+            }
             GlyphButton(symbol: "gearshape.fill", help: "Settings", tint: .secondary) {
                 showSettings = true
             }

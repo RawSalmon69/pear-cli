@@ -82,12 +82,15 @@ final class AppEnvironment: ObservableObject {
 
     static func live() -> AppEnvironment {
         let stats = PearStatsService()
+        // Sparkle only works from a bundled .app (not `swift run`); guard so
+        // dev runs don't crash trying to start it.
+        let updater = Bundle.main.bundleIdentifier != nil ? UpdaterService() : nil
         if let key = CoupleKey.load() {
             let service = CloudKitMessagingService(key: key, deviceRole: CoupleKey.deviceRole)
-            return AppEnvironment(messaging: service, stats: stats, updater: nil)
+            return AppEnvironment(messaging: service, stats: stats, updater: updater)
         }
         // No key yet: mock backend, setup card in the panel.
         let mock = MockMessagingService(connectionState: .needsSetup)
-        return AppEnvironment(messaging: mock, stats: stats, updater: nil)
+        return AppEnvironment(messaging: mock, stats: stats, updater: updater)
     }
 }
