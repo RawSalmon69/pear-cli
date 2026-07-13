@@ -1,0 +1,31 @@
+name: Companion
+
+on:
+  push:
+    branches: [main]
+    paths: ["companion/**"]
+  pull_request:
+    paths: ["companion/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Build
+        working-directory: companion
+        run: swift build
+
+      - name: Test
+        working-directory: companion
+        run: swift test
+
+      - name: Assemble app bundle
+        working-directory: companion
+        run: ./build.sh
