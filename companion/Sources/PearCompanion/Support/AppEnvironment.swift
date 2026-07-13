@@ -30,7 +30,9 @@ final class AppEnvironment: ObservableObject {
         self.screenshot.registerHotKey()
         self.ocr.registerHotKey()
         self.clipboard.start()
-        // screenshot.onMarkupRequest is wired to MarkupWindow at integration.
+        self.screenshot.onMarkupRequest = { image, done in
+            MarkupWindow.present(image: image, onComplete: done)
+        }
 
         clipboard.objectWillChange
             .receive(on: DispatchQueue.main)
