@@ -26,5 +26,7 @@
 	<string>https://raw.githubusercontent.com/RawSalmon69/pear-cli/main/companion/appcast.xml</string>
 	<key>SUEnableInstallerLauncherService</key>
 	<true/>
+	<key>SUPublicEDKey</key>
+	<string>REPLACE_ME</string>
 </dict>
 </plist>

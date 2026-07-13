@@ -14,4 +14,5 @@ open build/PearCompanion.app
 
 Signed build: `IDENTITY="Developer ID Application: ..." ./build.sh 1.0.0`
 
-Full setup guide (CloudKit container, push, shared key, her Mac) coming with v1.
+Full setup guide (CloudKit container, push, signing secrets, install, daily
+use, troubleshooting) is in [SETUP.md](SETUP.md).

@@ -1,0 +1,192 @@
+name: Companion Release
+
+# Tag push (companion-v*, e.g. companion-v1.0.0) builds, signs, and notarizes
+# the Pear Companion menu-bar app, attaches it to a GitHub release, and
+# updates the Sparkle appcast so both Macs self-update.
+#
+# Secrets used (Settings > Secrets and variables > Actions on the repo).
+# See companion/SETUP.md for exactly how to obtain/generate each one.
+#   MACOS_CERT_P12          base64-encoded Developer ID Application .p12
+#   MACOS_CERT_PASSWORD     password protecting the .p12 above
+#   MACOS_SIGN_IDENTITY     codesigning identity string, e.g.
+#                           "Developer ID Application: Some Name (TEAMID)"
+#   APPLE_ID                Apple ID email used for notarization
+#   APPLE_TEAM_ID           Apple Developer Team ID
+#   APPLE_APP_PASSWORD      app-specific password for notarytool (not the Apple ID password)
+#   SPARKLE_ED_PRIVATE_KEY  Sparkle EdDSA private key (from `generate_keys -x`),
+#                           used to sign the update zip for the appcast
+
+on:
+  push:
+    tags:
+      - "companion-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, sign, notarize, release
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Derive version from tag
+        id: version
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#companion-v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing companion v$VERSION"
+
+      - name: Import Developer ID certificate
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/companion-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+
+          echo "$MACOS_CERT_P12" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$MACOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          EXISTING_KEYCHAINS="$(security list-keychains -d user | sed 's/"//g')"
+          # Intentional word-splitting: each line is a keychain path to pass
+          # as its own argument, appending ours to the existing search list.
+          # shellcheck disable=SC2086
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $EXISTING_KEYCHAINS
+
+          rm -f "$CERT_PATH"
+
+      - name: Build and sign companion app
+        env:
+          IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          cd companion
+          ./build.sh "${{ steps.version.outputs.version }}"
+
+      - name: Notarize and staple
+        id: notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          APP="companion/build/PearCompanion.app"
+          ASSET_NAME="PearCompanion-${VERSION}.zip"
+          SUBMIT_ZIP="$RUNNER_TEMP/PearCompanion-submit.zip"
+          FINAL_ZIP="$RUNNER_TEMP/${ASSET_NAME}"
+
+          ditto -c -k --keepParent "$APP" "$SUBMIT_ZIP"
+
+          xcrun notarytool submit "$SUBMIT_ZIP" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait
+
+          xcrun stapler staple "$APP"
+
+          # Re-zip the now-stapled app; this is the exact asset that ships.
+          ditto -c -k --keepParent "$APP" "$FINAL_ZIP"
+
+          echo "zip_path=$FINAL_ZIP" >> "$GITHUB_OUTPUT"
+          echo "asset_name=$ASSET_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Sign update for Sparkle
+        id: sparkle
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          ZIP="${{ steps.notarize.outputs.zip_path }}"
+
+          # Sparkle's CLI tools (sign_update, generate_keys, ...) aren't an SPM
+          # product we can `swift build`, and building the whole Sparkle repo
+          # from source just for one binary is slow and brittle. Instead fetch
+          # the prebuilt `sign_update` from the Sparkle GitHub release whose
+          # tag matches the version pinned in companion/Package.resolved --
+          # it's the exact binary that version of Sparkle ships.
+          SPARKLE_VERSION="$(python3 -c "import json; print(json.load(open('companion/Package.resolved'))['pins'][0]['state']['version'])")"
+          curl -fsSL -o "$RUNNER_TEMP/sparkle.tar.xz" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          mkdir -p "$RUNNER_TEMP/sparkle-tools"
+          # Extract only bin/ -- the full archive includes a Symbols/ dSYM
+          # tree that has tripped up BSD tar's xz decoder in testing.
+          tar -xJf "$RUNNER_TEMP/sparkle.tar.xz" -C "$RUNNER_TEMP/sparkle-tools" bin
+          chmod +x "$RUNNER_TEMP/sparkle-tools/bin/sign_update"
+
+          SIGNATURE="$(echo "$SPARKLE_ED_PRIVATE_KEY" | "$RUNNER_TEMP/sparkle-tools/bin/sign_update" --ed-key-file - -p "$ZIP")"
+          LENGTH="$(stat -f%z "$ZIP")"
+
+          echo "signature=$SIGNATURE" >> "$GITHUB_OUTPUT"
+          echo "length=$LENGTH" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        with:
+          name: companion-v${{ steps.version.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          files: ${{ steps.notarize.outputs.zip_path }}
+          generate_release_notes: false
+          draft: false
+          prerelease: false
+
+      - name: Update appcast.xml on main
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ASSET_NAME: ${{ steps.notarize.outputs.asset_name }}
+          SIGNATURE: ${{ steps.sparkle.outputs.signature }}
+          LENGTH: ${{ steps.sparkle.outputs.length }}
+        run: |
+          set -euo pipefail
+          URL="${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ASSET_NAME}"
+          PUBDATE="$(date -u '+%a, %d %b %Y %H:%M:%S +0000')"
+
+          ITEM=$(cat <<EOF
+            <item>
+              <title>Version ${VERSION}</title>
+              <pubDate>${PUBDATE}</pubDate>
+              <sparkle:version>${VERSION}</sparkle:version>
+              <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+              <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+              <enclosure url="${URL}" length="${LENGTH}" type="application/octet-stream" sparkle:edSignature="${SIGNATURE}" />
+            </item>
+          EOF
+          )
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin main
+          git checkout -B main origin/main
+
+          python3 -c "import pathlib,sys; p=pathlib.Path('companion/appcast.xml'); t=p.read_text(); m='</channel>'; assert m in t, 'marker missing'; p.write_text(t.replace(m, sys.argv[1] + '\n' + m, 1))" "$ITEM"
+
+          git add companion/appcast.xml
+          git commit -m "Companion appcast: v${VERSION}"
+
+          for attempt in 1 2 3 4 5; do
+            if git push origin main; then
+              echo "Pushed appcast update."
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "Failed to push appcast.xml after 5 attempts" >&2
+              exit 1
+            fi
+            echo "Push rejected (race on main); rebasing and retrying..."
+            git pull --rebase origin main
+          done
