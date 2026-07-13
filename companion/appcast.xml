@@ -5,5 +5,13 @@
     <link>https://raw.githubusercontent.com/RawSalmon69/pear-cli/main/companion/appcast.xml</link>
     <description>Updates for the Pear companion app.</description>
     <language>en</language>
-  </channel>
+    <item>
+    <title>Version 1.0.0</title>
+    <pubDate>Mon, 13 Jul 2026 16:32:48 +0000</pubDate>
+    <sparkle:version>1.0.0</sparkle:version>
+    <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+    <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+    <enclosure url="https://github.com/RawSalmon69/pear-cli/releases/download/companion-v1.0.0/PearCompanion-1.0.0.zip" length="1356392" type="application/octet-stream" sparkle:edSignature="jfgFY7qvKwgMxNAM59SgPHGCnHd5oKLkBjtpIK470R0oG/Etos0NyMAjEmzUsnLO25VTr9nTIYmKZsgHgFkpDQ==" />
+  </item>
+</channel>
 </rss>
