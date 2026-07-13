@@ -209,9 +209,11 @@ EOF
     [[ "$output" != *"Codex"* ]]
 }
 
-@test "clean_ai_apps targets LM Studio ~/.cache leftover but never the models dir (#1179)" {
-    mkdir -p "$HOME/.cache/lm-studio/downloads"
-    echo "blob" > "$HOME/.cache/lm-studio/downloads/model.part"
+@test "clean_ai_apps targets app cache but never the legacy LM Studio home" {
+    mkdir -p "$HOME/Library/Caches/com.lmstudio.lmstudio"
+    echo "cache" > "$HOME/Library/Caches/com.lmstudio.lmstudio/cache.bin"
+    mkdir -p "$HOME/.cache/lm-studio/models"
+    echo "model" > "$HOME/.cache/lm-studio/models/keep.gguf"
     mkdir -p "$HOME/.lmstudio/models"
     echo "model" > "$HOME/.lmstudio/models/keep.gguf"
 
@@ -225,7 +227,8 @@ clean_ai_apps
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"CLEAN:$HOME/.cache/lm-studio/downloads"* ]] || return 1
+    [[ "$output" == *"CLEAN:$HOME/Library/Caches/com.lmstudio.lmstudio/cache.bin"* ]] || return 1
+    [[ "$output" != *"$HOME/.cache/lm-studio"* ]] || return 1
     [[ "$output" != *"$HOME/.lmstudio"* ]] || return 1
 }
 

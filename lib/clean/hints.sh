@@ -519,6 +519,9 @@ show_system_data_hint_notice() {
         break
     done
 
+    # Several du probes with 0.8s budgets each still add up to seconds.
+    start_section_spinner "Checking System Data..."
+
     local i
     for i in "${!paths[@]}"; do
         local path="${paths[$i]}"
@@ -537,6 +540,8 @@ show_system_data_hint_notice() {
         fi
     done
 
+    stop_section_spinner
+
     if [[ ${#clue_labels[@]} -eq 0 ]]; then
         # Stay silent so an idle System Data clues section collapses.
         debug_log "No common System Data clues detected"
@@ -548,10 +553,8 @@ show_system_data_hint_notice() {
     for i in "${!clue_labels[@]}"; do
         local human_size
         human_size=$(bytes_to_human "$((clue_sizes[i] * 1024))")
-        echo -e "  ${GREEN}${ICON_LIST}${NC} ${clue_labels[$i]} · ${human_size}"
-        echo -e "  ${GRAY}${ICON_SUBLIST}${NC} ${GRAY}$(format_path_link "${clue_paths[$i]}")${NC}"
+        echo -e "  ${YELLOW}${ICON_WARNING}${NC} ${clue_labels[$i]} · ${GREEN}${human_size}${NC} · ${GRAY}$(format_path_link "${clue_paths[$i]}")${NC}"
     done
-    echo -e "  ${GRAY}${ICON_REVIEW}${NC} Review: pe analyze, Device backups, docker system df"
 }
 
 # shellcheck disable=SC2329
@@ -561,8 +564,7 @@ show_project_artifact_hint_notice() {
     if [[ "$PROJECT_ARTIFACT_HINT_DETECTED" != "true" ]]; then
         if [[ "${PROJECT_ARTIFACT_HINT_SCAN_SKIPPED:-false}" == "true" ]]; then
             note_activity
-            echo -e "  ${YELLOW}${ICON_WARNING}${NC} Skipped slow project artifact scan"
-            echo -e "  ${GRAY}${ICON_REVIEW}${NC} Review: pe purge"
+            echo -e "  ${YELLOW}${ICON_WARNING}${NC} Build artifacts · scan skipped · ${GRAY}pe purge${NC}"
         fi
         return 0
     fi
@@ -572,14 +574,13 @@ show_project_artifact_hint_notice() {
     local hint_count_label="$PROJECT_ARTIFACT_HINT_COUNT"
     [[ "$PROJECT_ARTIFACT_HINT_TRUNCATED" == "true" ]] && hint_count_label="${hint_count_label}+"
 
-    local example_text=""
-    if [[ ${#PROJECT_ARTIFACT_HINT_EXAMPLES[@]} -gt 0 ]]; then
-        example_text="${PROJECT_ARTIFACT_HINT_EXAMPLES[0]}"
-        if [[ ${#PROJECT_ARTIFACT_HINT_EXAMPLES[@]} -gt 1 ]]; then
-            example_text+=", ${PROJECT_ARTIFACT_HINT_EXAMPLES[1]}"
-        fi
+    local review_command="pe purge"
+    if [[ $PROJECT_ARTIFACT_HINT_ESTIMATE_SAMPLES -gt 0 && $PROJECT_ARTIFACT_HINT_ESTIMATED_KB -eq 0 ]]; then
+        review_command="pe purge --include-empty"
     fi
 
+    # One compact row: "Build artifacts · 15+ dirs, 985.6MB+ · pe purge".
+    local detail="${hint_count_label} dirs"
     if [[ $PROJECT_ARTIFACT_HINT_ESTIMATE_SAMPLES -gt 0 ]]; then
         local estimate_human
         estimate_human=$(bytes_to_human "$((PROJECT_ARTIFACT_HINT_ESTIMATED_KB * 1024))")
@@ -590,25 +591,18 @@ show_project_artifact_hint_notice() {
         fi
 
         if [[ "$estimate_is_partial" == "true" ]]; then
-            echo -e "  ${GREEN}${ICON_LIST}${NC} ${GREEN}${hint_count_label}${NC} candidates, at least ${estimate_human} sampled from ${PROJECT_ARTIFACT_HINT_ESTIMATE_SAMPLES} items"
+            detail+=", ${estimate_human}+"
         else
-            echo -e "  ${GREEN}${ICON_LIST}${NC} ${GREEN}${hint_count_label}${NC} candidates, sampled ${estimate_human}"
+            detail+=", ${estimate_human}"
         fi
-    else
-        echo -e "  ${GREEN}${ICON_LIST}${NC} ${GREEN}${hint_count_label}${NC} candidates"
     fi
 
-    if [[ -n "$example_text" ]]; then
-        echo -e "  ${GRAY}${ICON_SUBLIST}${NC} Examples: ${GRAY}${example_text}${NC}"
-    fi
+    local partial_note=""
     if [[ "${PROJECT_ARTIFACT_HINT_SCAN_SKIPPED:-false}" == "true" ]]; then
-        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Some slow locations were skipped"
+        partial_note=" ${GRAY}(partial scan)${NC}"
     fi
-    local review_command="pe purge"
-    if [[ $PROJECT_ARTIFACT_HINT_ESTIMATE_SAMPLES -gt 0 && $PROJECT_ARTIFACT_HINT_ESTIMATED_KB -eq 0 ]]; then
-        review_command="pe purge --include-empty"
-    fi
-    echo -e "  ${GRAY}${ICON_REVIEW}${NC} Review: ${review_command}"
+
+    echo -e "  ${YELLOW}${ICON_WARNING}${NC} Build artifacts · ${GREEN}${detail}${NC} · ${GRAY}${review_command}${NC}${partial_note}"
 }
 
 # shellcheck disable=SC2329
@@ -621,6 +615,9 @@ show_user_launch_agent_hint_notice() {
     local -a reasons=()
     local -a targets=()
     local plist
+
+    # Per-plist target probes add up; keep loading feedback on screen.
+    start_section_spinner "Checking login items..."
 
     while IFS= read -r -d '' plist; do
         local filename
@@ -660,16 +657,15 @@ show_user_launch_agent_hint_notice() {
         fi
     done < <(find "$launch_agents_dir" -maxdepth 1 -name "*.plist" -print0 2> /dev/null)
 
+    stop_section_spinner
     [[ ${#labels[@]} -eq 0 ]] && return 0
 
     note_activity
 
     local i
     for i in "${!labels[@]}"; do
-        echo -e "  ${GREEN}${ICON_LIST}${NC} Potential stale login item: ${labels[$i]}"
-        echo -e "  ${GRAY}${ICON_SUBLIST}${NC} ${reasons[$i]}: ${GRAY}${targets[$i]}${NC}"
+        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Stale login item · ${labels[$i]} · ${GRAY}${reasons[$i]}: ${targets[$i]}${NC}"
     done
-    echo -e "  ${GRAY}${ICON_REVIEW}${NC} Review: open ~/Library/LaunchAgents and remove only items you recognize"
 }
 
 readonly ORPHAN_DOTDIR_KNOWN_SAFE=(
@@ -846,6 +842,10 @@ show_orphan_dotdir_hint_notice() {
     local claude_plugin_tokens=""
     local claude_plugin_tokens_loaded=false
 
+    # Per-dotdir du probes take seconds in total; without a spinner the
+    # section looks hung.
+    start_section_spinner "Checking orphan dotfiles..."
+
     while IFS= read -r dotdir; do
         [[ -d "$dotdir" ]] || continue
         local basename
@@ -927,28 +927,26 @@ show_orphan_dotdir_hint_notice() {
             if [[ "$size_kb" -eq 0 ]]; then
                 continue
             fi
-            size_note="$(bytes_to_human $((size_kb * 1024))), "
+            size_note=" $(bytes_to_human $((size_kb * 1024)))"
         fi
 
         # shellcheck disable=SC2088
-        labels+=("~/${basename} (${size_note}${age_d}d)")
+        labels+=("~/${basename}${size_note}")
 
         if [[ ${#labels[@]} -ge $max_hits ]]; then
             break
         fi
     done < <(run_with_timeout "$PEAR_TIMEOUT_SHORT_QUERY_SEC" find "$HOME" -maxdepth 1 -mindepth 1 -type d -name '.*' 2> /dev/null | LC_ALL=C sort)
 
+    stop_section_spinner
     [[ ${#labels[@]} -eq 0 ]] && return 0
 
     note_activity
 
-    # One summary row plus a compact list beats one row-pair per dotfile:
-    # the reason and age are near-identical across entries.
+    # One compact row for the whole finding: label first, entries as detail.
     local joined="" entry
     for entry in "${labels[@]}"; do
-        joined+="${joined:+  }${entry}"
+        joined+="${joined:+ · }${entry}"
     done
-    echo -e "  ${GREEN}${ICON_LIST}${NC} Potential orphan dotfiles · ${#labels[@]} found ${GRAY}(no matching binary in PATH)${NC}"
-    echo -e "  ${GRAY}${ICON_SUBLIST}${NC} ${GRAY}${joined}${NC}"
-    echo -e "  ${GRAY}${ICON_REVIEW}${NC} Review manually before removing any ~/.<dir> directory"
+    echo -e "  ${YELLOW}${ICON_WARNING}${NC} Orphan dotfiles · ${GRAY}${joined}${NC}"
 }

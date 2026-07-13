@@ -3,12 +3,12 @@
 package main
 
 import (
+	"context"
 	"encoding/gob"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -465,6 +465,81 @@ func TestOverviewViewOmitsFreeSpaceLabelWhenUnknown(t *testing.T) {
 	}
 }
 
+func TestOverviewViewUsesTextOnlyLabels(t *testing.T) {
+	m := model{
+		path:       "/",
+		isOverview: true,
+		entries: []dirEntry{
+			{Name: "Home", Path: "/tmp/home", Size: 80, IsDir: true},
+			{Name: "iOS Backups", Path: "/tmp/backups", Size: 20, IsDir: true},
+		},
+		totalSize: 100,
+	}
+
+	view := m.View()
+	for _, label := range []string{"Home", "iOS Backups"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("expected overview label %q, got:\n%s", label, view)
+		}
+	}
+	for _, icon := range []string{"📁", "👀"} {
+		if strings.Contains(view, icon) {
+			t.Fatalf("overview should not render emoji icon %q, got:\n%s", icon, view)
+		}
+	}
+}
+
+func TestDirectoryViewKeepsLowPercentRowsAligned(t *testing.T) {
+	m := model{
+		path:      "/tmp/project",
+		width:     120,
+		height:    20,
+		selected:  -1,
+		totalSize: 100_000,
+		entries: []dirEntry{
+			{Name: "large", Path: "/tmp/project/large", Size: 47_000, IsDir: true},
+			{Name: "tiny", Path: "/tmp/project/tiny", Size: 46, IsDir: true},
+		},
+	}
+
+	stripColors := strings.NewReplacer(
+		colorPurple, "",
+		colorPurpleBold, "",
+		colorGray, "",
+		colorRed, "",
+		colorYellow, "",
+		colorGreen, "",
+		colorBlue, "",
+		colorCyan, "",
+		colorReset, "",
+		colorBold, "",
+	)
+	largeRow := stripColors.Replace(rowContaining(m.View(), "large"))
+	tinyRow := stripColors.Replace(rowContaining(m.View(), "tiny"))
+	if !strings.Contains(tinyRow, "< 0.1%") {
+		t.Fatalf("expected tiny row to show < 0.1%%, got:\n%s", tinyRow)
+	}
+	if strings.Contains(m.View(), "░") {
+		t.Fatalf("directory view should not render gray progress tracks:\n%s", m.View())
+	}
+
+	largePrefix, _, largeHasDivider := strings.Cut(largeRow, "  |  ")
+	tinyPrefix, _, tinyHasDivider := strings.Cut(tinyRow, "  |  ")
+	if !largeHasDivider || !tinyHasDivider {
+		t.Fatalf("missing percent divider\nlarge: %q\ntiny:  %q", largeRow, tinyRow)
+	}
+	largeDividerColumn := displayWidth(largePrefix)
+	tinyDividerColumn := displayWidth(tinyPrefix)
+	if largeDividerColumn != tinyDividerColumn {
+		t.Fatalf("percent divider columns differ: large=%d tiny=%d\nlarge: %q\ntiny:  %q",
+			largeDividerColumn, tinyDividerColumn, largeRow, tinyRow)
+	}
+	if largeWidth, tinyWidth := displayWidth(largeRow), displayWidth(tinyRow); largeWidth != tinyWidth {
+		t.Fatalf("row widths differ: large=%d tiny=%d\nlarge: %q\ntiny:  %q",
+			largeWidth, tinyWidth, largeRow, tinyRow)
+	}
+}
+
 func TestCacheSaveLoadRoundTrip(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -714,17 +789,15 @@ func TestScanPathConcurrentWarmsChildCachesWithoutRecursiveSpotlight(t *testing.
 		}
 	}
 
-	logPath := filepath.Join(home, "mdfind.log")
-	stubDir := filepath.Join(home, "bin")
-	if err := os.MkdirAll(stubDir, 0o755); err != nil {
-		t.Fatalf("create stub dir: %v", err)
+	originalRunner := spotlightQueryRunner
+	spotlightRoots := []string{}
+	spotlightQueryRunner = func(_ context.Context, queryRoot, _ string) ([]byte, error) {
+		spotlightRoots = append(spotlightRoots, queryRoot)
+		return nil, nil
 	}
-	stubPath := filepath.Join(stubDir, "mdfind")
-	stubScript := fmt.Sprintf("#!/bin/sh\necho \"$*\" >> %s\nexit 0\n", strconv.Quote(logPath))
-	if err := os.WriteFile(stubPath, []byte(stubScript), 0o755); err != nil {
-		t.Fatalf("write mdfind stub: %v", err)
-	}
-	t.Setenv("PATH", stubDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Cleanup(func() {
+		spotlightQueryRunner = originalRunner
+	})
 
 	var filesScanned, dirsScanned, bytesScanned int64
 	current := &atomic.Value{}
@@ -734,13 +807,8 @@ func TestScanPathConcurrentWarmsChildCachesWithoutRecursiveSpotlight(t *testing.
 		t.Fatalf("scanPathConcurrent(root): %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatalf("read mdfind log: %v", err)
-	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	if len(lines) != 1 {
-		t.Fatalf("expected only root spotlight invocation, got %d lines: %q", len(lines), string(data))
+	if len(spotlightRoots) != 1 || spotlightRoots[0] != root {
+		t.Fatalf("expected only root spotlight invocation, got %q", spotlightRoots)
 	}
 }
 
@@ -778,12 +846,23 @@ func TestScanCmdTreatsWarmedCacheAsStale(t *testing.T) {
 }
 
 func TestLiveScanSortConfigFromEnv(t *testing.T) {
-	t.Setenv(liveSortModeEnv, "freeze-on-move")
+	t.Run("defaults to freeze on move", func(t *testing.T) {
+		t.Setenv(liveSortModeEnv, "")
 
-	m := newModel(t.TempDir(), false)
-	if m.liveSortMode != liveSortFreezeOnMove {
-		t.Fatalf("expected freeze-on-move sort mode, got %v", m.liveSortMode)
-	}
+		m := newModel(t.TempDir(), false)
+		if m.liveSortMode != liveSortFreezeOnMove {
+			t.Fatalf("expected freeze-on-move sort mode, got %v", m.liveSortMode)
+		}
+	})
+
+	t.Run("continuous remains available", func(t *testing.T) {
+		t.Setenv(liveSortModeEnv, "continuous")
+
+		m := newModel(t.TempDir(), false)
+		if m.liveSortMode != liveSortContinuous {
+			t.Fatalf("expected continuous sort mode, got %v", m.liveSortMode)
+		}
+	})
 }
 
 func TestLiveScanInitialListingShowsImmediateChildren(t *testing.T) {
@@ -1029,7 +1108,7 @@ func TestLiveScanIgnoresStaleEventsAfterNavigation(t *testing.T) {
 	}
 }
 
-func TestLiveScanDefaultCursorByPathKeepsSelectedPathAcrossReorder(t *testing.T) {
+func TestLiveScanDefaultCursorStaysOnFirstRowAcrossReorder(t *testing.T) {
 	root := t.TempDir()
 	a := filepath.Join(root, "a")
 	b := filepath.Join(root, "b")
@@ -1039,7 +1118,6 @@ func TestLiveScanDefaultCursorByPathKeepsSelectedPathAcrossReorder(t *testing.T)
 	m.liveScanEvents = make(chan liveScanEventMsg)
 	m.scanning = true
 	m.autoSortLiveEntries = true
-	m.liveSortMode = liveSortContinuous
 	m.liveScanningPaths = map[string]bool{a: true, b: true}
 	m.entries = []dirEntry{
 		{Name: "a", Path: a, Size: -1, IsDir: true},
@@ -1058,14 +1136,14 @@ func TestLiveScanDefaultCursorByPathKeepsSelectedPathAcrossReorder(t *testing.T)
 	if got := []string{m.entries[0].Path, m.entries[1].Path}; !slices.Equal(got, []string{b, a}) {
 		t.Fatalf("expected live sort to reorder by size, got %v", got)
 	}
-	if m.entries[m.selected].Path != a {
-		t.Fatalf("expected default cursor to stay on %s, selected=%d entries=%+v", a, m.selected, m.entries)
+	if m.selected != 0 || m.entries[m.selected].Path != b {
+		t.Fatalf("expected default cursor to stay on the first row, selected=%d entries=%+v", m.selected, m.entries)
 	}
 
 	updated, _ = m.enterSelectedDir()
 	got := updated.(model)
-	if got.path != a {
-		t.Fatalf("expected Enter to drill into selected path %s, got %s", a, got.path)
+	if got.path != b {
+		t.Fatalf("expected Enter to drill into first-row path %s, got %s", b, got.path)
 	}
 }
 
@@ -1215,6 +1293,30 @@ func TestLiveScanSortCanFreezeAfterNavigationKey(t *testing.T) {
 	after := []string{m.entries[0].Path, m.entries[1].Path}
 	if !slices.Equal(before, after) {
 		t.Fatalf("expected freeze-on-move to keep row order %v, got %v", before, after)
+	}
+}
+
+func TestLiveScanSortDoesNotFreezeWhenCursorCannotMove(t *testing.T) {
+	root := t.TempDir()
+
+	m := newModel(root, false)
+	m.scanning = true
+	m.autoSortLiveEntries = true
+	m.liveSortMode = liveSortFreezeOnMove
+	m.entries = []dirEntry{
+		{Name: "only", Path: filepath.Join(root, "only"), Size: 10, IsDir: true},
+	}
+
+	updated, _ := m.updateKey(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(model)
+	if !m.autoSortLiveEntries {
+		t.Fatal("an up key at the first row must not freeze live sorting")
+	}
+
+	updated, _ = m.updateKey(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(model)
+	if !m.autoSortLiveEntries {
+		t.Fatal("a down key with no next row must not freeze live sorting")
 	}
 }
 

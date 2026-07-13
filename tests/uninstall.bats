@@ -735,6 +735,13 @@ STUB
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
 
+# This unit test covers force_kill_app's ladder, not the timeout backend.
+# Keep the PATH osascript stub deterministic under the parallel full suite.
+run_with_timeout() {
+	shift
+	"$@"
+}
+
 # Bundle with a known id so the Quit step uses the precise `id "..."` form
 # rather than the by-name fallback.
 app_path="$HOME/Applications/TestApp.app"

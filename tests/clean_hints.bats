@@ -78,10 +78,9 @@ show_project_artifact_hint_notice
 EOT2
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"5+"* ]]
-    [[ "$output" == *"at least 2.00MB sampled from 2 items"* ]]
-    [[ "$output" == *"Examples:"* ]]
-    [[ "$output" == *"Review: pe purge"* ]]
+    [[ "$output" == *"Build artifacts"* ]] || return 1
+    [[ "$output" == *"5+ dirs, 2.00MB+"* ]] || return 1
+    [[ "$output" == *"pe purge"* ]] || return 1
 }
 
 @test "show_project_artifact_hint_notice points zero-size samples to include-empty (#869)" {
@@ -104,8 +103,8 @@ show_project_artifact_hint_notice
 EOT2B
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"sampled 0B"* ]]
-    [[ "$output" == *"Review: pe purge --include-empty"* ]]
+    [[ "$output" == *", 0B"* ]] || return 1
+    [[ "$output" == *"pe purge --include-empty"* ]] || return 1
 }
 
 @test "show_project_artifact_hint_notice reports skipped slow project artifact scans (#1053)" {
@@ -126,8 +125,8 @@ show_project_artifact_hint_notice
 EOT2C
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Skipped slow project artifact scan"* ]]
-    [[ "$output" == *"Review: pe purge"* ]]
+    [[ "$output" == *"Build artifacts · scan skipped"* ]] || return 1
+    [[ "$output" == *"pe purge"* ]] || return 1
 }
 
 @test "probe_project_artifact_hints stops at the wall-clock budget (#1053)" {
@@ -220,9 +219,9 @@ show_system_data_hint_notice
 EOT3
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Xcode DerivedData: 3.00GB"* ]]
-    [[ "$output" == *"~/Library/Developer/Xcode/DerivedData"* ]]
-    [[ "$output" == *"Review: pe analyze, Device backups, docker system df"* ]]
+    [[ "$output" == *"Xcode DerivedData"* ]] || return 1
+    [[ "$output" == *"3.00GB"* ]] || return 1
+    [[ "$output" == *"~/Library/Developer/Xcode/DerivedData"* ]] || return 1
 }
 
 @test "show_user_launch_agent_hint_notice reports missing app-backed target" {
@@ -251,9 +250,8 @@ show_user_launch_agent_hint_notice
 EOT4
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Potential stale login item: com.example.stale.plist"* ]]
-    [[ "$output" == *"Missing app/helper target"* ]]
-    [[ "$output" == *"Review: open ~/Library/LaunchAgents"* ]]
+    [[ "$output" == *"Stale login item · com.example.stale.plist"* ]] || return 1
+    [[ "$output" == *"Missing app/helper target"* ]] || return 1
 }
 
 @test "show_user_launch_agent_hint_notice skips custom shell wrappers" {
@@ -285,8 +283,7 @@ show_user_launch_agent_hint_notice
 EOT5
 
     [ "$status" -eq 0 ]
-    [[ "$output" != *"Potential stale login item:"* ]]
-    [[ "$output" != *"Review: open ~/Library/LaunchAgents"* ]]
+    [[ "$output" != *"Stale login item"* ]] || return 1
 }
 
 @test "show_user_launch_agent_hint_notice skips MachServices-only plists" {
@@ -316,8 +313,8 @@ show_user_launch_agent_hint_notice
 EOT6
 
     [ "$status" -eq 0 ]
-    [[ "$output" != *"Potential stale login item:"* ]]
-    [[ "$output" != *"Associated app not found"* ]]
+    [[ "$output" != *"Stale login item"* ]] || return 1
+    [[ "$output" != *"Associated app not found"* ]] || return 1
 }
 
 # ---- Orphan dotfile hint tests ----
@@ -337,7 +334,7 @@ show_orphan_dotdir_hint_notice
 EOTD
 
     [ "$status" -eq 0 ]
-    [[ "$output" != *"Potential orphan dotfile"* ]]
+    [[ "$output" != *"Orphan dotfiles"* ]] || return 1
 }
 
 @test "show_orphan_dotdir_hint_notice skips whitelisted directories" {
@@ -357,7 +354,7 @@ EOTD
 
     [ "$status" -eq 0 ]
     [[ "$output" != *".custom-orphan-keep"* ]]
-    [[ "$output" != *"Potential orphan dotfile"* ]]
+    [[ "$output" != *"Orphan dotfiles"* ]] || return 1
 }
 
 @test "show_orphan_dotdir_hint_notice reports dir with no matching binary" {
@@ -375,9 +372,8 @@ show_orphan_dotdir_hint_notice
 EOTD
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Potential orphan dotfile"* ]]
-    [[ "$output" == *".fakecli-test-orphan"* ]]
-    [[ "$output" == *"no matching binary in PATH"* ]]
+    [[ "$output" == *"Orphan dotfiles"* ]] || return 1
+    [[ "$output" == *".fakecli-test-orphan"* ]] || return 1
 }
 
 @test "show_orphan_dotdir_hint_notice skips empty dotdirs (nothing to reclaim)" {
@@ -395,7 +391,7 @@ show_orphan_dotdir_hint_notice
 EOTD
 
     [ "$status" -eq 0 ]
-    [[ "$output" != *"Potential orphan dotfile"* ]] || return 1
+    [[ "$output" != *"Orphan dotfiles"* ]] || return 1
     [[ "$output" != *".fakecli-empty-orphan"* ]] || return 1
 }
 
@@ -579,7 +575,7 @@ EOTD
 
     [ "$status" -eq 0 ]
     [[ "$output" != *".bridge"* ]]
-    [[ "$output" != *"Potential orphan dotfile"* ]]
+    [[ "$output" != *"Orphan dotfiles"* ]] || return 1
 }
 
 @test "show_orphan_dotdir_hint_notice skips dotdir whose name matches a brew cask token (#872)" {
@@ -611,7 +607,7 @@ EOTD
 
     [ "$status" -eq 0 ]
     [[ "$output" != *".bridge"* ]]
-    [[ "$output" != *"Potential orphan dotfile"* ]]
+    [[ "$output" != *"Orphan dotfiles"* ]] || return 1
 }
 
 @test "show_orphan_dotdir_hint_notice still flags dotdir whose name has no matching app or cask (#872)" {
@@ -642,7 +638,7 @@ show_orphan_dotdir_hint_notice
 EOTD
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Potential orphan dotfile"* ]]
+    [[ "$output" == *"Orphan dotfiles"* ]] || return 1
     [[ "$output" == *".fakeorphan42xyz"* ]]
 }
 
@@ -669,7 +665,7 @@ show_orphan_dotdir_hint_notice
 EOTD
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Potential orphan dotfile"* ]]
+    [[ "$output" == *"Orphan dotfiles"* ]] || return 1
     [[ "$output" == *".ai-old"* ]]
 }
 
@@ -691,6 +687,6 @@ EOTD
 
     [ "$status" -eq 0 ]
     local count
-    count=$(echo "$output" | grep -c "Potential orphan dotfile" || true)
+    count=$(echo "$output" | grep -o "orphantest" | wc -l | tr -d ' ')
     [ "$count" -le 5 ]
 }

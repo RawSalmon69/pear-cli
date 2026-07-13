@@ -143,10 +143,10 @@ setup() {
 @test "completion fish includes both pear and pe commands" {
 	output="$("$PROJECT_ROOT/bin/completion.sh" fish)"
 	pear_count=$(echo "$output" | grep -c "complete -f -c pear")
-	mo_count=$(echo "$output" | grep -c "complete -f -c pe")
+	pe_count=$(echo "$output" | grep -c "complete -f -c pe")
 
 	[ "$pear_count" -gt 0 ]
-	[ "$mo_count" -gt 0 ]
+	[ "$pe_count" -gt 0 ]
 }
 
 @test "completion fish includes current clean, analyze, history, and purge options only" {

@@ -642,12 +642,32 @@ prune_stale_pear_temp_files() {
     [[ "$max_age_minutes" =~ ^[0-9]+$ ]] || max_age_minutes=1440
     [[ -n "$root" && -d "$root" && ! -L "$root" ]] || return 0
 
-    invoking_home=$(get_invoking_home)
-    [[ -n "$invoking_home" ]] || return 0
-    [[ "$root" == "${invoking_home%/}/.cache/pear/tmp" ]] || return 0
+    if is_root_user; then
+        [[ "$root" == "/private/var/root/.cache/pear/tmp" ]] || return 0
+    else
+        invoking_home=$(get_invoking_home)
+        [[ -n "$invoking_home" ]] || return 0
+        [[ "$root" == "${invoking_home%/}/.cache/pear/tmp" ]] || return 0
+    fi
 
     find "$root" -mindepth 1 -maxdepth 1 \( -type f -o -type l \) \
         -mmin "+$max_age_minutes" -exec rm -f -- {} + 2> /dev/null || true # SAFE: dedicated Pear temp root only
+
+    # Spinner control directories contain only flat control files. Remove
+    # their contents without recursive deletion, then rmdir the now-empty
+    # directory. Unexpected nested content makes rmdir fail closed.
+    local stale_dir
+    while IFS= read -r -d '' stale_dir; do
+        case "$stale_dir" in
+            "$root"/.pear-spinner.*) ;;
+            *) continue ;;
+        esac
+        [[ -d "$stale_dir" && ! -L "$stale_dir" && -O "$stale_dir" ]] || continue
+        find "$stale_dir" -mindepth 1 -maxdepth 1 \( -type f -o -type l \) \
+            -exec rm -f -- {} + 2> /dev/null || true # SAFE: validated spinner control dir only
+        rmdir "$stale_dir" 2> /dev/null || true
+    done < <(find "$root" -mindepth 1 -maxdepth 1 -type d -name '.pear-spinner.*' \
+        -mmin "+$max_age_minutes" -print0 2> /dev/null)
 }
 
 initialize_pear_temp_registry_path() {
@@ -676,6 +696,32 @@ ensure_pear_temp_registry_file() {
 }
 
 ensure_pear_temp_root() {
+    if is_root_user; then
+        # Whole-command sudo must not reuse TMPDIR or the invoking user's cache
+        # for root-written registries and command output. Keep all root temp
+        # state below root's private home so a lower-trust user cannot rename a
+        # checked file between validation and append/read operations.
+        local root_home="/private/var/root"
+        [[ -d "$root_home" && ! -L "$root_home" && -O "$root_home" ]] || root_home="/var/root"
+        [[ -d "$root_home" && ! -L "$root_home" && -O "$root_home" ]] || return 1
+
+        local root_temp="$root_home/.cache/pear/tmp"
+        mkdir -p "$root_temp" 2> /dev/null || return 1
+        chmod 700 "$root_home/.cache" "$root_home/.cache/pear" "$root_temp" 2> /dev/null || true
+        root_temp=$(cd -P "$root_temp" 2> /dev/null && pwd) || return 1
+        [[ "$root_temp" == "$root_home/.cache/pear/tmp" && -d "$root_temp" && ! -L "$root_temp" && -O "$root_temp" ]] || return 1
+
+        PEAR_RESOLVED_TMPDIR="$root_temp"
+        export PEAR_RESOLVED_TMPDIR
+        prune_stale_pear_temp_files "$PEAR_RESOLVED_TMPDIR"
+        case "${PEAR_TEMP_REGISTRY_FILE:-}" in
+            "$root_temp"/pear.registry.*) ;;
+            *) unset PEAR_TEMP_REGISTRY_FILE ;;
+        esac
+        initialize_pear_temp_registry_path || true
+        return 0
+    fi
+
     if [[ -n "${PEAR_RESOLVED_TMPDIR:-}" ]]; then
         initialize_pear_temp_registry_path || true
         return 0
@@ -863,26 +909,31 @@ note_activity() {
     fi
 }
 
-# Start a section spinner with optional message
+# Start a section spinner with optional message. When a spinner is already
+# running, swap its text in place instead of restarting the subprocess: the
+# stop/start cycle blanks the line for a frame and reads as flicker.
 # Usage: start_section_spinner "message"
 start_section_spinner() {
     local message="${1:-Scanning...}"
-    stop_inline_spinner || true
     if [[ -t 1 ]]; then
+        if declare -F update_inline_spinner_message > /dev/null 2>&1 &&
+            update_inline_spinner_message "$message"; then
+            return 0
+        fi
+        stop_inline_spinner || true
         PEAR_SPINNER_PREFIX="  " start_inline_spinner "$message"
+    else
+        stop_inline_spinner || true
     fi
 }
 
 # Stop spinner and clear the line
 # Usage: stop_section_spinner
 stop_section_spinner() {
-    # Always try to stop spinner (function handles empty PID gracefully)
+    # stop_inline_spinner clears the line itself when a spinner was running;
+    # a second unconditional clear here only blanked the row an extra frame
+    # right before result rows printed.
     stop_inline_spinner || true
-    # Always clear line to handle edge cases where spinner output remains
-    # (e.g., spinner was stopped elsewhere but line not cleared)
-    if [[ -t 1 ]]; then
-        printf "\r\033[2K" >&2 || true
-    fi
 }
 
 # Safe terminal line clearing with terminal type detection
@@ -896,11 +947,17 @@ safe_clear_lines() {
     # Note: This forward reference works because functions are parsed before execution
     is_ansi_supported 2> /dev/null || return 1
 
-    # Clear lines one by one (more reliable than multi-line sequences)
+    [[ "$lines" =~ ^[0-9]+$ && "$lines" -gt 0 ]] || return 0
+
+    # Emit the whole erase as one write so the terminal renders it in a
+    # single frame; per-line writes flash intermediate states.
+    local sequence=""
     local i
     for ((i = 0; i < lines; i++)); do
-        printf "\033[1A\r\033[2K" > "$tty_device" 2> /dev/null || return 1
+        sequence+="\033[1A\r\033[2K"
     done
+    # shellcheck disable=SC2059
+    printf "$sequence" > "$tty_device" 2> /dev/null || return 1
 
     return 0
 }
@@ -939,8 +996,8 @@ update_progress_if_needed() {
 
     # Check if enough time has elapsed
     if [[ $((current_time - last_time)) -ge $interval ]]; then
-        # Update the spinner with progress
-        stop_section_spinner
+        # Update the spinner text in place; restarting it here blinked the
+        # line on every progress tick.
         start_section_spinner "Scanning items... $completed/$total"
 
         # Update the last_update_time variable

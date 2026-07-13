@@ -184,11 +184,10 @@ func (m model) View() string {
 			if m.inOverviewMode() {
 				maxSize := maxDirEntrySize(m.entries)
 				totalSize := m.totalSize
-				// Overview paths are short; fixed width keeps layout stable.
+				// Overview labels are short; fixed width keeps layout stable.
 				nameWidth := 22
 				displayNum := 0
 				for idx, entry := range m.entries {
-					icon := insightIcon(entry)
 					sizeVal := entry.Size
 					// Hide entries that have been scanned and are empty (standard dirs
 					// are never 0 bytes; only insight dirs in unused tool paths are).
@@ -202,10 +201,7 @@ func (m model) View() string {
 					} else {
 						percent = 0
 					}
-					percentStr := fmt.Sprintf("%5.1f%%", percent)
-					if totalSize == 0 || sizeVal < 0 {
-						percentStr = "  --  "
-					}
+					percentStr := formatPercent(percent, totalSize > 0 && sizeVal >= 0)
 					bar := coloredProgressBar(barValue, maxSize, percent)
 					sizeText := "pending.."
 					if sizeVal >= 0 {
@@ -218,12 +214,12 @@ func (m model) View() string {
 					entryPrefix := "   "
 					name := trimNameWithWidth(entry.Name, nameWidth)
 					paddedName := padName(name, nameWidth)
-					nameSegment := fmt.Sprintf("%s %s", icon, paddedName)
+					nameSegment := paddedName
 					numColor := ""
 					percentColor := ""
 					if idx == m.selected {
 						entryPrefix = fmt.Sprintf(" %s%s▶%s ", colorCyan, colorBold, colorReset)
-						nameSegment = fmt.Sprintf("%s%s %s%s", colorCyan, icon, paddedName, colorReset)
+						nameSegment = fmt.Sprintf("%s%s%s", colorCyan, paddedName, colorReset)
 						numColor = colorCyan
 						percentColor = colorCyan
 						sizeColor = colorCyan
@@ -231,11 +227,8 @@ func (m model) View() string {
 					displayNum++
 					displayIndex := displayNum
 
-					// In overview mode the leading icon (👀 vs 📁) already
-					// signals "inspect this" vs "browse this", so the
-					// right-side hint shows only the unused-time tag.
-					// The cleanable broom (🧹) belongs to non-overview
-					// directory rows, where it acts as a per-row marker.
+					// Keep the overview text-only. Emoji width and baselines vary
+					// across terminals, while every row has the same navigation.
 					hintLabel := ""
 					if unusedTime := formatUnusedTime(entry.LastAccess); unusedTime != "" {
 						hintLabel = fmt.Sprintf("%s%s%s", colorGray, unusedTime, colorReset)
@@ -273,10 +266,7 @@ func (m model) View() string {
 					if m.totalSize > 0 && entry.Size >= 0 {
 						percent = float64(entry.Size) / float64(m.totalSize) * 100
 					}
-					percentStr := fmt.Sprintf("%5.1f%%", percent)
-					if entry.Size < 0 || m.totalSize <= 0 {
-						percentStr = "  --  "
-					}
+					percentStr := formatPercent(percent, entry.Size >= 0 && m.totalSize > 0)
 
 					bar := coloredProgressBar(sizeValue, maxSize, percent)
 

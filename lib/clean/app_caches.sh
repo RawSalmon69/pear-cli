@@ -230,10 +230,11 @@ clean_ai_apps() {
     safe_clean ~/Library/Caches/com.anthropic.claudefordesktop/* "Claude desktop cache"
     safe_clean ~/Library/Logs/Claude/* "Claude logs"
     safe_clean ~/Library/Caches/com.lmstudio.lmstudio/* "LM Studio cache"
-    # LM Studio's CLI/update staging cache; also the main leftover when the app
-    # was removed outside pe uninstall (#1179). Models live in ~/.lmstudio and
-    # are review-only, never touched here.
-    safe_clean ~/.cache/lm-studio/* "LM Studio cache"
+    # LM Studio <=0.3.5 used ~/.cache/lm-studio as its complete home directory,
+    # including models, presets, chats, and runtime state. LM Studio moved new
+    # installs to ~/.lmstudio in 0.3.6, but existing data is not migrated, so
+    # never recursively clean the legacy root. The Library/Caches target above
+    # is the only path treated as an auto-rebuildable cache here.
     safe_clean ~/Library/Caches/CCTClearcutLogger "Google Clearcut logs"
     if [[ -d "$HOME/Library/Application Support/Codex" || -d "$HOME/Library/Logs/com.openai.codex" ]]; then
         echo -e "  ${GRAY}${ICON_WARNING}${NC} Codex Desktop state · preserved (sessions, credentials)"

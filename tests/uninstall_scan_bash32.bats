@@ -188,6 +188,72 @@ EOF
 	[[ "$output" == *"|4" ]]
 }
 
+@test "scan_applications falls back to bounded du when the quick mdls size probe misses" {
+	src="$HOME/uninstall_source.sh"
+	sourceable_uninstall_sh "$src"
+
+	apps_root="$HOME/Applications"
+	app_path="$apps_root/DuApp.app"
+	create_test_app_bundle "$app_path" "com.example.DuApp" "DuApp"
+
+	run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" \
+		PEAR_TEST_NO_AUTH=1 APPS_ROOT="$apps_root" SRC_PATH="$src" \
+		PEAR_UNINSTALL_INLINE_MDLS_DISPLAY_TIMEOUT_SEC=0 \
+		PEAR_UNINSTALL_INLINE_MDLS_SIZE_TIMEOUT_SEC=0 \
+		PEAR_UNINSTALL_INLINE_DU_SIZE_TIMEOUT_SEC=0 \
+		/bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+
+# shellcheck source=/dev/null
+source "$SRC_PATH"
+
+uninstall_print_app_search_dirs() { printf '%s\n' "$APPS_ROOT"; }
+# Spotlight has not indexed the freshly installed app yet.
+mdls() { printf '(null)\n'; }
+du() { printf '2048\t/mocked\n'; }
+
+apps_file=$(scan_applications)
+cat "$apps_file"
+EOF
+
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"|$app_path|DuApp|com.example.DuApp|2.1MB|"* ]]
+	[[ "$output" == *"|2048" ]]
+}
+
+@test "scan_applications keeps the fast path when cold rows exceed the du fallback cap" {
+	src="$HOME/uninstall_source.sh"
+	sourceable_uninstall_sh "$src"
+
+	apps_root="$HOME/Applications"
+	app_path="$apps_root/CapApp.app"
+	create_test_app_bundle "$app_path" "com.example.CapApp" "CapApp"
+
+	run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" \
+		PEAR_TEST_NO_AUTH=1 APPS_ROOT="$apps_root" SRC_PATH="$src" \
+		PEAR_UNINSTALL_INLINE_MDLS_DISPLAY_TIMEOUT_SEC=0 \
+		PEAR_UNINSTALL_INLINE_MDLS_SIZE_TIMEOUT_SEC=0 \
+		PEAR_UNINSTALL_INLINE_DU_SIZE_TIMEOUT_SEC=0 \
+		PEAR_UNINSTALL_INLINE_DU_MAX_COLD_ROWS=0 \
+		/bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+
+# shellcheck source=/dev/null
+source "$SRC_PATH"
+
+uninstall_print_app_search_dirs() { printf '%s\n' "$APPS_ROOT"; }
+mdls() { printf '(null)\n'; }
+du() { printf '2048\t/mocked\n'; }
+
+apps_file=$(scan_applications)
+cat "$apps_file"
+EOF
+
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"|$app_path|CapApp|com.example.CapApp|--|"* ]]
+	[[ "$output" == *"|0" ]]
+}
+
 @test "scan_applications includes Artpaper's two-segment bundle id (#861)" {
 	src="$HOME/uninstall_source.sh"
 	sourceable_uninstall_sh "$src"

@@ -19,7 +19,7 @@ Before drafting, confirm:
 5. **Issue reporters and PR contributors in this cycle**. Use the merged PRs and fixed issues in the release range. Keep it short, for example `Issue reporters and PR contributors this cycle: @a · @b.` Exclude `tw93` and bots.
 6. **Verify release exists**. `gh release view V<version> --repo RawSalmon69/pear-cli --json id,name` should return non-empty. If it doesn't, the workflow hasn't finished, wait, don't `gh release create`.
 
-## Pre-flight (cross-check against CLAUDE.md)
+## Pre-flight (cross-check against AGENTS.md)
 
 These should already be true if the tag was pushed correctly. Confirm before publishing notes:
 
@@ -75,8 +75,8 @@ No `---` separators between sections, and no trailing repository link; the publi
 - **No inline PR refs, no inline `@handle` thanks**. PRs and people belong in the dedicated Thanks block only.
 - **English block first, 中文 block second**. Same numbered order in both blocks. Same number of items.
 - **Order items by user-perceived impact, not commit chronology**. Headline change first; internal safety hardening, performance, and bug fixes follow.
-- **Pick icons that match the action, not the category**. A broom (🧹) on insight rows mis-signalled "all of these are safe to delete", which is wrong for iOS Backups, Xcode Archives, and Old Downloads. Eyes (👀) match "look here" without that false promise.
-- **Verify every command mentioned in the notes actually exists in HEAD**. CLAUDE.md cites `pe check / pe doctor` as a case where a removed command nearly shipped as a "feature".
+- **Do not describe overview icons that no longer exist**. Analyze overview rows are text-only because emoji width and baselines vary across terminals. If icons return later, they must not imply that user data such as iOS Backups, Xcode Archives, or Old Downloads is safe to delete.
+- **Verify every command mentioned in the notes actually exists in HEAD**. AGENTS.md cites `pe check / pe doctor` as a case where a removed command nearly shipped as a "feature".
 - **Keep the Pear Mac App cross-link only if it matches the current release style**. Do not turn it into a sales block.
 
 ## Publish
@@ -91,7 +91,7 @@ gh release edit V<version> --repo RawSalmon69/pear-cli \
 
 **Never** `gh release create`, it conflicts with the release the workflow already made.
 
-Then add the six reactions: `bash scripts/post-reactions.sh V<version>`.
+Then add the six reactions with this skill's helper (path is relative to this SKILL.md, not the repo-root `scripts/`): `bash "$(dirname <this SKILL.md>)/scripts/post-reactions.sh" V<version>`.
 
 ## After publish
 
@@ -107,6 +107,8 @@ This skill is user-invocable only. It must not run unprompted:
 - If the user has not given an explicit "publish" / "提交" signal, stop after the draft.
 
 ## Helper scripts
+
+Both live in this skill's `scripts/` directory (next to this SKILL.md), not in the repo-root `scripts/`:
 
 - `scripts/sponsors.sh` - legacy helper for fetching recent sponsors. Do not use it in Pear release notes unless the user explicitly asks for sponsor names.
 - `scripts/post-reactions.sh <tag>` - adds the six reactions (`+1`, `laugh`, `hooray`, `heart`, `rocket`, `eyes`) to the release.

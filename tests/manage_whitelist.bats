@@ -103,6 +103,30 @@ setup() {
     [ "$status" -ne 0 ]
 }
 
+@test "whitelist inventory exposes LM Studio app cache" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/manage/whitelist.sh"
+get_all_cache_items
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"LM Studio app cache|\$HOME/Library/Caches/com.lmstudio.lmstudio/*|ai_ml_cache"* ]]
+    [[ "$output" != *".cache/lm-studio"* ]]
+}
+
+@test "whitelist inventory exposes Codex staging and Tart caches" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/manage/whitelist.sh"
+get_all_cache_items
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Codex Desktop update staging|\$HOME/Library/Caches/com.openai.codex/org.sparkle-project.Sparkle/Installation|ai_ml_cache"* ]] || return 1
+    [[ "$output" == *"Tart OCI/IPSW cache|\$HOME/.tart/cache|container_cache"* ]] || return 1
+}
+
 @test "pe clean --whitelist persists selections" {
     whitelist_file="$HOME/.config/pear/whitelist"
     mkdir -p "$(dirname "$whitelist_file")"

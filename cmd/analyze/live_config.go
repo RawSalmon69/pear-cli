@@ -11,10 +11,10 @@ const liveSortModeEnv = "PEAR_ANALYZE_LIVE_SORT"
 
 func liveScanSortModeFromEnv() liveSortMode {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(liveSortModeEnv))) {
-	case "freeze", "freeze-on-move", "freeze_on_move", "stop-on-move", "stop_on_move":
-		return liveSortFreezeOnMove
-	default:
+	case "continuous":
 		return liveSortContinuous
+	default:
+		return liveSortFreezeOnMove
 	}
 }
 

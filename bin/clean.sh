@@ -29,13 +29,15 @@ EXTERNAL_VOLUME_TARGET=""
 IS_M_SERIES=$([[ "$(uname -m)" == "arm64" ]] && echo "true" || echo "false")
 
 # Whitelist and preview belong to the invoking user even when the whole
-# command runs as root: stock macOS sudo keeps HOME, but sudo -H and root
-# shells reset it to /var/root, which would silently load an empty whitelist
-# and hide the preview file from the user. See #1210.
+# command runs as root. Root dry-runs stage preview content in a root-owned
+# file and publish it through an invoking-user process so user-controlled
+# symlinks are never opened for writing with root privileges. See #1210.
 PEAR_USER_HOME="$(get_invoking_home)"
 [[ -n "$PEAR_USER_HOME" ]] || PEAR_USER_HOME="$HOME"
 
-EXPORT_LIST_FILE="$PEAR_USER_HOME/.config/pear/clean-list.txt"
+CLEAN_PREVIEW_FINAL_FILE="$PEAR_USER_HOME/.config/pear/clean-list.txt"
+CLEAN_PREVIEW_STAGING_FILE=""
+EXPORT_LIST_FILE="$CLEAN_PREVIEW_FINAL_FILE"
 CURRENT_SECTION=""
 readonly PROTECTED_SW_DOMAINS=(
     # Web editors
@@ -133,6 +135,44 @@ expand_whitelist_patterns() {
     fi
 }
 expand_whitelist_patterns
+
+prepare_clean_preview_file() {
+    EXPORT_LIST_FILE="$CLEAN_PREVIEW_FINAL_FILE"
+    CLEAN_PREVIEW_STAGING_FILE=""
+
+    if is_root_user && [[ -n "${SUDO_USER:-}" && "${SUDO_USER:-}" != "root" ]]; then
+        ensure_pear_temp_root || return 1
+        local root_temp_dir="$PEAR_RESOLVED_TMPDIR"
+
+        CLEAN_PREVIEW_STAGING_FILE=$(umask 077 && mktemp "$root_temp_dir/pear.clean-preview.XXXXXX") || return 1
+        [[ -f "$CLEAN_PREVIEW_STAGING_FILE" && ! -L "$CLEAN_PREVIEW_STAGING_FILE" && -O "$CLEAN_PREVIEW_STAGING_FILE" ]] || return 1
+        PEAR_TEMP_FILES+=("$CLEAN_PREVIEW_STAGING_FILE")
+        EXPORT_LIST_FILE="$CLEAN_PREVIEW_STAGING_FILE"
+    else
+        ensure_user_file "$EXPORT_LIST_FILE"
+    fi
+}
+
+run_clean_preview_as_invoking_user() {
+    /usr/bin/sudo -u "$SUDO_USER" -- "$@"
+}
+
+publish_clean_preview_file() {
+    [[ -n "$CLEAN_PREVIEW_STAGING_FILE" ]] || return 0
+    [[ -f "$CLEAN_PREVIEW_STAGING_FILE" && ! -L "$CLEAN_PREVIEW_STAGING_FILE" && -O "$CLEAN_PREVIEW_STAGING_FILE" ]] || return 1
+    [[ -n "${SUDO_USER:-}" && "${SUDO_USER:-}" != "root" ]] || return 1
+
+    local final_dir
+    final_dir=$(dirname "$CLEAN_PREVIEW_FINAL_FILE")
+    run_clean_preview_as_invoking_user /bin/mkdir -p "$final_dir" 2> /dev/null || return 1
+    if ! /bin/cat "$CLEAN_PREVIEW_STAGING_FILE" |
+        run_clean_preview_as_invoking_user /usr/bin/tee "$CLEAN_PREVIEW_FINAL_FILE" > /dev/null; then
+        return 1
+    fi
+
+    EXPORT_LIST_FILE="$CLEAN_PREVIEW_FINAL_FILE"
+    return 0
+}
 
 if [[ ${#WHITELIST_PATTERNS[@]} -gt 0 ]]; then
     for entry in "${WHITELIST_PATTERNS[@]}"; do
@@ -304,15 +344,39 @@ trap 'cleanup TERM 143; exit 143' TERM
 
 # IMPORTANT: This file overrides start_section / end_section from
 # lib/core/base.sh by virtue of being sourced after it. The clean variant adds
-# CURRENT_SECTION tracking, dry-run EXPORT_LIST_FILE writes and a section
-# spinner stop. See the cross-reference block in lib/core/base.sh and the
-# differing purge variant in bin/purge.sh before changing any of these three.
+# CURRENT_SECTION tracking, dry-run EXPORT_LIST_FILE writes, a section
+# spinner stop, and idle-header recycling. See the cross-reference block in
+# lib/core/base.sh and the differing purge variant in bin/purge.sh before
+# changing any of these three.
+#
+# Idle-header recycling: an idle section used to erase its own header after
+# the fact, which made all content below jump up two lines per idle section.
+# Instead the header stays put and the NEXT start_section overwrites it in
+# place, so the screen never moves vertically. Any output that is not a
+# section header must clear a leftover idle header first via
+# flush_idle_section_slot.
+IDLE_SECTION_PENDING=0
+
+flush_idle_section_slot() {
+    if [[ "${IDLE_SECTION_PENDING:-0}" == "1" ]]; then
+        IDLE_SECTION_PENDING=0
+        safe_clear_lines 2 || true
+    fi
+}
+
 start_section() {
     TRACK_SECTION=1
     SECTION_ACTIVITY=0
     CURRENT_SECTION="$1"
-    echo ""
-    echo -e "${PURPLE_BOLD}${ICON_ARROW} $1${NC}"
+    if [[ "${IDLE_SECTION_PENDING:-0}" == "1" ]]; then
+        # Overwrite the previous idle section's header line in place (the
+        # pending flag is only ever set on an interactive ANSI terminal).
+        IDLE_SECTION_PENDING=0
+        printf '\033[1A\r\033[2K%b\n' "${PURPLE_BOLD}${ICON_ARROW} $1${NC}"
+    else
+        echo ""
+        echo -e "${PURPLE_BOLD}${ICON_ARROW} $1${NC}"
+    fi
 
     if [[ "$DRY_RUN" == "true" ]]; then
         ensure_user_file "$EXPORT_LIST_FILE"
@@ -325,16 +389,18 @@ end_section() {
     stop_section_spinner
 
     if [[ "${TRACK_SECTION:-0}" == "1" && "${SECTION_ACTIVITY:-0}" == "0" ]]; then
-        # On an interactive ANSI terminal, erase the just-printed header and
-        # its leading blank line so idle sections disappear instead of adding
-        # a noise row. Piped output keeps the explicit fallback so logs stay
-        # self-describing. PE_DEBUG interleaves stderr lines that the two-line
-        # erase would eat, so keep the fallback there too.
-        if [[ -t 1 && "${PE_DEBUG:-}" != "1" ]] && safe_clear_lines 2; then
-            :
+        # On an interactive ANSI terminal, leave the header on screen and let
+        # the next start_section recycle its line, so idle sections disappear
+        # without the erase-and-jump. Piped output keeps the explicit fallback
+        # so logs stay self-describing. PE_DEBUG interleaves stderr lines that
+        # line recycling would corrupt, so keep the fallback there too.
+        if [[ -t 1 && "${PE_DEBUG:-}" != "1" ]] && is_ansi_supported 2> /dev/null; then
+            IDLE_SECTION_PENDING=1
         else
             echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Nothing to clean"
         fi
+    else
+        IDLE_SECTION_PENDING=0
     fi
     TRACK_SECTION=0
 }
@@ -602,8 +668,8 @@ safe_clean() {
     local show_scan_feedback=false
     if [[ ${#targets[@]} -gt 20 && -t 1 ]]; then
         show_scan_feedback=true
-        stop_section_spinner
-        PEAR_SPINNER_PREFIX="  " start_inline_spinner "Scanning ${#targets[@]} items..."
+        # Updates a running section spinner in place instead of restarting it.
+        start_section_spinner "Scanning ${#targets[@]} items..."
     fi
 
     local _perf_scan_start
@@ -637,7 +703,9 @@ safe_clean() {
 
     debug_timer_end "$description: path scan" _perf_scan_start
 
-    if [[ "$show_scan_feedback" == "true" ]]; then
+    # Keep the spinner alive between phases; the next phase swaps its text in
+    # place. Under PE_DEBUG stop it so debug lines print on a clean line.
+    if [[ "$show_scan_feedback" == "true" && "${PE_DEBUG:-}" == "1" ]]; then
         stop_section_spinner
     fi
 
@@ -668,6 +736,11 @@ safe_clean() {
     fi
 
     if [[ ${#existing_paths[@]} -eq 0 ]]; then
+        # The scan spinner we started (or took over) must not outlive this
+        # call; callers print rows without stopping spinners themselves.
+        if [[ "$show_scan_feedback" == "true" ]]; then
+            stop_section_spinner
+        fi
         return 0
     fi
 
@@ -688,7 +761,7 @@ safe_clean() {
     if [[ ${#existing_paths[@]} -gt 10 ]]; then
         show_spinner=true
         local total_paths=${#existing_paths[@]}
-        if [[ -t 1 ]]; then PEAR_SPINNER_PREFIX="  " start_inline_spinner "Scanning items..."; fi
+        if [[ -t 1 ]]; then start_section_spinner "Scanning items..."; fi
     fi
 
     local cleaning_spinner_started=false
@@ -713,7 +786,7 @@ safe_clean() {
         # Heuristic: mostly files -> bulk stat is faster than per-file subshells.
         if [[ $dir_count -lt 5 && ${#existing_paths[@]} -gt 20 ]]; then
             if [[ -t 1 && "$show_spinner" == "false" ]]; then
-                PEAR_SPINNER_PREFIX="  " start_inline_spinner "Scanning items..."
+                start_section_spinner "Scanning items..."
                 show_spinner=true
             fi
 
@@ -802,7 +875,7 @@ safe_clean() {
         # Read results back in original order.
         # Start spinner for cleaning phase
         if [[ "$DRY_RUN" != "true" && ${#existing_paths[@]} -gt 0 && -t 1 ]]; then
-            PEAR_SPINNER_PREFIX="  " start_inline_spinner "Cleaning..."
+            start_section_spinner "Cleaning..."
             cleaning_spinner_started=true
         fi
         idx=0
@@ -846,7 +919,7 @@ safe_clean() {
 
         # Start spinner for cleaning phase (small batch)
         if [[ "$DRY_RUN" != "true" && ${#existing_paths[@]} -gt 0 && -t 1 ]]; then
-            PEAR_SPINNER_PREFIX="  " start_inline_spinner "Cleaning..."
+            start_section_spinner "Cleaning..."
             cleaning_spinner_started=true
         fi
         local idx=0
@@ -883,7 +956,7 @@ safe_clean() {
         debug_timer_end "$description: deletion" _perf_del_start
     fi
 
-    if [[ "$show_spinner" == "true" || "$cleaning_spinner_started" == "true" ]]; then
+    if [[ "$show_spinner" == "true" || "$cleaning_spinner_started" == "true" || "$show_scan_feedback" == "true" ]]; then
         stop_inline_spinner
     fi
 
@@ -1020,7 +1093,10 @@ start_cleanup() {
         echo -e "${YELLOW}Dry Run Mode${NC}, Preview only, no deletions"
         echo ""
 
-        ensure_user_file "$EXPORT_LIST_FILE"
+        prepare_clean_preview_file || {
+            echo -e "${YELLOW}${ICON_WARNING}${NC} Unable to create a safe cleanup preview file" >&2
+            return 1
+        }
         cat > "$EXPORT_LIST_FILE" << EOF
 # Pear Cleanup Preview - $(date '+%Y-%m-%d %H:%M:%S')
 #
@@ -1212,6 +1288,7 @@ perform_cleanup() {
         fi
 
         if [[ ${#WHITELIST_WARNINGS[@]} -gt 0 ]]; then
+            flush_idle_section_slot
             echo ""
             for warning in "${WHITELIST_WARNINGS[@]}"; do
                 echo -e "  ${GRAY}${ICON_WARNING}${NC} Whitelist: $warning"
@@ -1315,6 +1392,7 @@ perform_cleanup() {
     fi
 
     # ===== Final summary =====
+    flush_idle_section_slot
     echo ""
 
     local summary_heading=""
@@ -1368,8 +1446,6 @@ perform_cleanup() {
                 echo "# Categories: $total_items"
             } >> "$EXPORT_LIST_FILE"
 
-            summary_details+=("Detailed file list: ${GRAY}$EXPORT_LIST_FILE${NC}")
-            summary_details+=("Use ${GRAY}pe clean --whitelist${NC} to add protection rules")
         else
             local summary_line="Tracked cleanup: ${GREEN}${freed_size_human}${NC}"
 
@@ -1413,6 +1489,17 @@ perform_cleanup() {
         while IFS= read -r free_space_line; do
             summary_details+=("$free_space_line")
         done < <(emit_free_space_summary "$initial_free_space_kb")
+    fi
+
+    if [[ "$DRY_RUN" == "true" && $total_size_cleaned -gt 0 ]]; then
+        if publish_clean_preview_file; then
+            summary_details+=("Detailed file list: ${GRAY}$CLEAN_PREVIEW_FINAL_FILE${NC}")
+            summary_details+=("Use ${GRAY}pe clean --whitelist${NC} to add protection rules")
+        else
+            summary_details+=("Cleanup preview file could not be written safely")
+        fi
+    elif [[ "$DRY_RUN" == "true" ]]; then
+        publish_clean_preview_file || true
     fi
 
     if [[ $had_errexit -eq 1 ]]; then

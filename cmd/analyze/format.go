@@ -85,9 +85,22 @@ func humanizeBytes(size int64) string {
 	return units.BytesSI(size)
 }
 
+func formatPercent(percent float64, known bool) string {
+	const width = 6
+	if !known {
+		return "  --  "
+	}
+
+	label := fmt.Sprintf("%.1f%%", percent)
+	if percent > 0 && percent < 0.1 {
+		label = "< 0.1%"
+	}
+	return fmt.Sprintf("%*s", width, label)
+}
+
 func coloredProgressBar(value, maxValue int64, percent float64) string {
-	if maxValue <= 0 {
-		return colorGray + strings.Repeat("░", barWidth) + colorReset
+	if value <= 0 || maxValue <= 0 {
+		return strings.Repeat(" ", barWidth)
 	}
 
 	filled := min(int((value*int64(barWidth))/maxValue), barWidth)
@@ -101,6 +114,9 @@ func coloredProgressBar(value, maxValue int64, percent float64) string {
 		barColor = colorBlue
 	} else {
 		barColor = colorGreen
+	}
+	if filled == 0 {
+		return barColor + "▏" + strings.Repeat(" ", barWidth-1) + colorReset
 	}
 
 	var bar strings.Builder
@@ -120,7 +136,7 @@ func coloredProgressBar(value, maxValue int64, percent float64) string {
 				}
 			}
 		} else {
-			bar.WriteString(colorGray + "░" + barColor)
+			bar.WriteString(" ")
 		}
 	}
 	return bar.String() + colorReset

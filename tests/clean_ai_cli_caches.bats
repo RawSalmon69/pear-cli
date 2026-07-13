@@ -216,7 +216,7 @@ EOF
     assert_output_not_contains "SWC:"
 }
 
-@test "clean_dev_misc invokes clean_codex_cli and clean_antigravity_caches" {
+@test "clean_dev_misc invokes Codex and Antigravity cleanup helpers" {
     run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" bash --noprofile --norc <<'EOF'
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
@@ -225,6 +225,7 @@ safe_clean() { :; }
 safe_find_delete() { :; }
 clean_service_worker_cache() { :; }
 clean_codex_runtimes() { :; }
+clean_codex_desktop_staging() { echo "CODEX_STAGING_CALLED"; }
 note_activity() { :; }
 clean_codex_cli() { echo "CODEX_CLI_CALLED"; }
 clean_antigravity_caches() { echo "ANTIGRAVITY_CALLED"; }
@@ -233,6 +234,7 @@ EOF
 
     assert_run_success
     assert_output_contains "CODEX_CLI_CALLED"
+    assert_output_contains "CODEX_STAGING_CALLED"
     assert_output_contains "ANTIGRAVITY_CALLED"
 }
 

@@ -1,0 +1,101 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: "0 9 * * 1" # Mondays 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/tw93/Mole
+          git fetch upstream main
+
+      - name: Compare against UPSTREAM_BASE
+        id: check
+        run: |
+          OLD_BASE=$(cat scripts/UPSTREAM_BASE)
+          NEW_BASE=$(git rev-parse upstream/main)
+          echo "old_base=$OLD_BASE" >> "$GITHUB_OUTPUT"
+          echo "new_base=$NEW_BASE" >> "$GITHUB_OUTPUT"
+          if [ "$OLD_BASE" = "$NEW_BASE" ]; then
+            echo "Upstream unchanged at $NEW_BASE; nothing to sync."
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Upstream moved: $OLD_BASE -> $NEW_BASE"
+            echo "up_to_date=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rebrand upstream tree and open PR
+        if: steps.check.outputs.up_to_date == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OLD_BASE: ${{ steps.check.outputs.old_base }}
+          NEW_BASE: ${{ steps.check.outputs.new_base }}
+        run: |
+          set -euo pipefail
+
+          SYNC_DATE=$(date -u +%Y%m%d)
+          SYNC_DATE_H=$(date -u +%Y-%m-%d)
+          BRANCH="sync/upstream-${SYNC_DATE}"
+
+          # Rebrand a fresh copy of upstream/main.
+          WORK=$(mktemp -d)
+          git archive "$NEW_BASE" | tar -x -C "$WORK"
+          bash scripts/rebrand-upstream.sh "$WORK"
+
+          # Overlay the rebranded tree onto the working tree. Protected paths
+          # are ours: never generated from upstream, never deleted here.
+          rsync -a --delete \
+            --exclude='.git' \
+            --exclude='README.md' \
+            --exclude='docs/superpowers/' \
+            --exclude='companion/' \
+            --exclude='scripts/rebrand-upstream.sh' \
+            --exclude='scripts/UPSTREAM_BASE' \
+            --exclude='.github/workflows/sync-upstream.yml' \
+            --exclude='.github/workflows/companion.yml' \
+            --exclude='.github/workflows/companion-release.yml' \
+            "$WORK/" ./
+          rm -rf "$WORK"
+
+          echo "$NEW_BASE" > scripts/UPSTREAM_BASE
+
+          if git diff --quiet && [ -z "$(git status --porcelain)" ]; then
+            echo "Rebranded upstream tree matches main; only bumping UPSTREAM_BASE was needed... nothing changed at all, skipping PR."
+            exit 0
+          fi
+
+          UPSTREAM_LOG=$(git log --oneline "$OLD_BASE".."$NEW_BASE")
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add -A
+          git commit -m "Upstream sync $SYNC_DATE_H" -m "Upstream commits:" -m "$UPSTREAM_LOG"
+          git push -f origin "$BRANCH"
+
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$EXISTING_PR" ]; then
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "Upstream sync $SYNC_DATE_H" \
+              --body "$UPSTREAM_LOG"
+          else
+            gh pr edit "$EXISTING_PR" --body "$UPSTREAM_LOG"
+          fi

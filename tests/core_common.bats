@@ -537,6 +537,78 @@ EOF
     [ ! -f "$marker" ]
 }
 
+@test "update_inline_spinner_message returns 1 without an active spinner" {
+    run bash --noprofile --norc -c \
+        "source '$PROJECT_ROOT/lib/core/common.sh'; update_inline_spinner_message 'New text'"
+    [ "$status" -eq 1 ]
+}
+
+@test "update_inline_spinner_message swaps a live TTY spinner's text in place" {
+    if ! /usr/bin/script -q /dev/null /bin/true > /dev/null 2>&1; then
+        skip "script cannot allocate a TTY in this environment"
+    fi
+
+    local raw="$HOME/spinner-update.raw"
+    # shellcheck disable=SC2016  # inner bash expands these from its environment
+    PROJECT_ROOT="$PROJECT_ROOT" HOME="$HOME" TERM=xterm-256color \
+        /usr/bin/script -q "$raw" /bin/bash --noprofile --norc -c '
+            source "$PROJECT_ROOT/lib/core/common.sh"
+            PEAR_SPINNER_PREFIX="  " start_inline_spinner "Phase one..."
+            pid_before="$INLINE_SPINNER_PID"
+            control_dir="$INLINE_SPINNER_CONTROL_DIR"
+            control_mode=$(stat -f%Lp "$control_dir")
+            [[ "$INLINE_SPINNER_MSG_FILE" == "$control_dir/message" && "$control_mode" == "700" ]] && echo "CONTROL_PRIVATE"
+            /bin/sleep 0.2
+            update_inline_spinner_message "Phase two..." || echo "UPDATE_FAILED"
+            /bin/sleep 0.2
+            pid_after="$INLINE_SPINNER_PID"
+            stop_inline_spinner
+            [[ "$pid_before" == "$pid_after" && -n "$pid_before" ]] && echo "PID_STABLE"
+        ' > /dev/null 2>&1
+
+    raw_content="$(cat "$raw")"
+    [[ "$raw_content" == *"Phase one..."* ]] || return 1
+    [[ "$raw_content" == *"Phase two..."* ]] || return 1
+    [[ "$raw_content" != *"UPDATE_FAILED"* ]] || return 1
+    [[ "$raw_content" == *"PID_STABLE"* ]] || return 1
+    [[ "$raw_content" == *"CONTROL_PRIVATE"* ]] || return 1
+}
+
+@test "update_progress_if_needed updates spinner text without restarting it" {
+    if ! /usr/bin/script -q /dev/null /bin/true > /dev/null 2>&1; then
+        skip "script cannot allocate a TTY in this environment"
+    fi
+
+    local raw="$HOME/spinner-progress.raw"
+    # shellcheck disable=SC2016  # inner bash expands these from its environment
+    PROJECT_ROOT="$PROJECT_ROOT" HOME="$HOME" TERM=xterm-256color \
+        /usr/bin/script -q "$raw" /bin/bash --noprofile --norc -c '
+            source "$PROJECT_ROOT/lib/core/common.sh"
+            start_section_spinner "Scanning items... 0/10"
+            pid_before="$INLINE_SPINNER_PID"
+            last_tick=0
+            update_progress_if_needed 5 10 last_tick 1
+            pid_after="$INLINE_SPINNER_PID"
+            /bin/sleep 0.2
+            stop_inline_spinner
+            [[ "$pid_before" == "$pid_after" && -n "$pid_before" ]] && echo "PID_STABLE"
+        ' > /dev/null 2>&1
+
+    raw_content="$(cat "$raw")"
+    [[ "$raw_content" == *"Scanning items... 5/10"* ]] || return 1
+    [[ "$raw_content" == *"PID_STABLE"* ]] || return 1
+}
+
+@test "safe_clear_lines emits the same erase sequence per line to the target device" {
+    local out="$HOME/clear-lines.out"
+    run bash --noprofile --norc -c \
+        "export PEAR_ANSI_SUPPORTED_CACHE=0; source '$PROJECT_ROOT/lib/core/common.sh'; safe_clear_lines 2 '$out'"
+    [ "$status" -eq 0 ]
+
+    expected="$(printf '\033[1A\r\033[2K\033[1A\r\033[2K')"
+    [ "$(cat "$out")" = "$expected" ]
+}
+
 @test "read_key maps j/k/h/l to navigation" {
     run bash -c "export PEAR_BASE_LOADED=1; source '$PROJECT_ROOT/lib/core/ui.sh'; echo -n 'j' | read_key"
     [ "$output" = "DOWN" ]

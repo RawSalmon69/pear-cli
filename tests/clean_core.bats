@@ -347,9 +347,12 @@ EOF
 </plist>
 PLIST
 
-    run env HOME="$HOME" PEAR_TEST_MODE=1 "$PROJECT_ROOT/pear" clean --dry-run
+    # PEAR_TEST_MODE=1 short-circuits clean into a stub that never reaches
+    # the App leftovers section, so the report assertion needs the real
+    # sections to run. Dry-run keeps this side-effect free.
+    run env HOME="$HOME" PEAR_TEST_MODE=0 PEAR_TEST_NO_AUTH=1 "$PROJECT_ROOT/pear" clean --dry-run
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Potential stale login item: com.example.stale.plist"* ]]
+    [[ "$output" == *"Stale login item · com.example.stale.plist"* ]] || return 1
     [ -f "$HOME/Library/LaunchAgents/com.example.stale.plist" ]
 }
 
@@ -614,4 +617,128 @@ EOF
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"Time Machine cleanup · skipped (backup in progress)"* ]]
+}
+
+@test "start_section recycles an idle section header in place on a TTY" {
+    if ! /usr/bin/script -q /dev/null /bin/true > /dev/null 2>&1; then
+        skip "script cannot allocate a TTY in this environment"
+    fi
+
+    raw="$HOME/section-recycle.raw"
+    # shellcheck disable=SC2016  # inner bash expands these from its environment
+    env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" \
+        PEAR_TEST_NO_AUTH=1 TERM=xterm-256color \
+        /usr/bin/script -q "$raw" /bin/bash --noprofile --norc -c '
+            source "$PROJECT_ROOT/bin/clean.sh"
+            start_section "Idle Alpha"
+            end_section
+            start_section "Active Beta"
+            note_activity
+            echo "  row output"
+            end_section
+        ' > /dev/null 2>&1
+
+    raw_content="$(cat "$raw")"
+    # Idle header painted, then the next header overwrites its line in place.
+    [[ "$raw_content" == *"Idle Alpha"* ]] || return 1
+    [[ "$raw_content" == *$'\033[1A\r\033[2K'*"Active Beta"* ]] || return 1
+    # TTY path must not fall back to the piped-output placeholder row.
+    [[ "$raw_content" != *"Nothing to clean"* ]] || return 1
+}
+
+@test "log_success rows mark section activity so headers keep their blank separator" {
+    if ! /usr/bin/script -q /dev/null /bin/true > /dev/null 2>&1; then
+        skip "script cannot allocate a TTY in this environment"
+    fi
+
+    raw="$HOME/section-log-activity.raw"
+    # shellcheck disable=SC2016  # inner bash expands these from its environment
+    env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" \
+        PEAR_TEST_NO_AUTH=1 TERM=xterm-256color \
+        /usr/bin/script -q "$raw" /bin/bash --noprofile --norc -c '
+            source "$PROJECT_ROOT/bin/clean.sh"
+            start_section "System"
+            log_success "System crash reports"
+            end_section
+            start_section "User essentials"
+            note_activity
+            end_section
+        ' > /dev/null 2>&1
+
+    raw_content="$(cat "$raw")"
+    # The log_success row counts as activity: the section is not idle, so the
+    # next header must not recycle (and eat) the row line.
+    [[ "$raw_content" == *"System crash reports"* ]] || return 1
+    [[ "$raw_content" != *$'\033[1A'* ]] || return 1
+    [[ "$raw_content" != *"Nothing to clean"* ]] || return 1
+}
+
+@test "sections whose rows come only from log_success are not marked idle in pipes" {
+    # shellcheck disable=SC2016  # inner bash expands these from its environment
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PEAR_TEST_NO_AUTH=1 \
+        bash --noprofile --norc -c '
+            source "$PROJECT_ROOT/bin/clean.sh"
+            start_section "System"
+            log_success "System crash reports"
+            end_section
+        '
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"System crash reports"* ]] || return 1
+    [[ "$output" != *"Nothing to clean"* ]] || return 1
+}
+
+@test "log rows do not trigger purge's export-only note_activity override" {
+    export_file="$HOME/purge-log-activity.txt"
+    # shellcheck disable=SC2016  # inner bash expands these from its environment
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" EXPORT_LIST_FILE="$export_file" \
+        PEAR_SKIP_MAIN=1 PEAR_TEST_NO_AUTH=1 bash --noprofile --norc -c '
+            source "$PROJECT_ROOT/bin/purge.sh"
+            start_section "Project artifacts"
+            log_success "Project cache"
+            end_section
+            [[ ! -s "$EXPORT_LIST_FILE" ]]
+        '
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Project cache"* ]] || return 1
+}
+
+@test "root preview staging is published through the invoking-user boundary" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PEAR_TEST_NO_AUTH=1 \
+        bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/bin/clean.sh"
+
+calls="$HOME/preview-user-boundary.calls"
+CLEAN_PREVIEW_STAGING_FILE="$HOME/root-owned-preview.stage"
+CLEAN_PREVIEW_FINAL_FILE="$HOME/user-config/clean-list.txt"
+EXPORT_LIST_FILE="$CLEAN_PREVIEW_STAGING_FILE"
+SUDO_USER="preview-user"
+printf 'preview content\n' > "$CLEAN_PREVIEW_STAGING_FILE"
+
+run_clean_preview_as_invoking_user() {
+    printf '%s\n' "$*" >> "$calls"
+    "$@"
+}
+
+publish_clean_preview_file
+[[ "$EXPORT_LIST_FILE" == "$CLEAN_PREVIEW_FINAL_FILE" ]]
+[[ "$(cat "$CLEAN_PREVIEW_FINAL_FILE")" == "preview content" ]]
+grep -q '^/bin/mkdir -p ' "$calls"
+grep -q '^/usr/bin/tee ' "$calls"
+EOF
+
+    [ "$status" -eq 0 ]
+}
+
+@test "end_section keeps the Nothing-to-clean fallback for piped output" {
+    # shellcheck disable=SC2016  # inner bash expands these from its environment
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PEAR_TEST_NO_AUTH=1 \
+        bash --noprofile --norc -c '
+            source "$PROJECT_ROOT/bin/clean.sh"
+            start_section "Idle Alpha"
+            end_section
+        '
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Idle Alpha"* ]] || return 1
+    [[ "$output" == *"Nothing to clean"* ]] || return 1
 }

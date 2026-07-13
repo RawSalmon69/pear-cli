@@ -44,19 +44,10 @@ If the answer is no or unclear, decline the feature, narrow it, or park it until
 
 ## Repository Map
 
-- `pear` - main shell entrypoint.
-- `bin/` - command entry scripts such as clean, analyze, status, uninstall, purge, installer, completion, and touchid.
 - `lib/core/` - shared shell safety, UI, file operations, operation logs, app protection logic, and centralized timeout constants (`timeouts.sh`).
 - `lib/core/app_protection_data.sh` - readonly bundle ID and pattern arrays consumed by `app_protection.sh`. Data only, no logic.
-- `lib/clean/` - cleanup flows.
-- `lib/manage/` - whitelist and purge path management.
-- `lib/optimize/` - optimization tasks.
-- `lib/check/` - health, diagnostics, and dev environment checks.
-- `lib/uninstall/` - app uninstall flows and package-manager removal helpers.
-- `lib/ui/` - reusable menus and app selectors.
 - `cmd/analyze/` - Go disk-analysis TUI. `main.go` is bootstrap only; `model.go` holds types and accessor methods; `update.go` holds the Bubble Tea Update chain.
-- `cmd/status/` - Go status dashboard.
-- `tests/` - Bats and shell test coverage. `tests/fuzz_corpus/` holds property-test corpora consumed by `path_validation_fuzz.bats`.
+- `tests/fuzz_corpus/` holds property-test corpora consumed by `path_validation_fuzz.bats`.
 - `scripts/` - check, test, build, and release helpers. `audit_bundle_drift.sh` backs the monthly bundle audit; per-PR perf is covered by `tests/core_performance.bats`.
 - `docs/SECURITY_DESIGN.md` - design doc for the path validation / app protection / # SAFE annotation contract.
 - `SECURITY_AUDIT.md` - security review notes.
@@ -110,7 +101,7 @@ Public docs and examples should prefer the installed `pe` command. Use `./pear` 
 - Prefer targeted Bats tests during development; run the full suite before committing.
 - Do not add AI attribution trailers to commits.
 - `start_section` / `end_section` / `note_activity` have three intentionally different implementations in `lib/core/base.sh`, `bin/clean.sh`, and `bin/purge.sh`. Source order decides which one wins, and the wording, color, and dry-run export semantics differ on purpose. Read the cross-reference comment in `lib/core/base.sh` before changing any of them.
-- **Test-orphan pattern: grep the whole repo including top-level entry scripts before declaring a function dead.** Pear has a recurring shape where a helper is defined in `lib/core/base.sh` (or similar core lib), has full bats coverage in `tests/`, and is referenced by zero production callers. Known instances: `is_sip_enabled`, `is_darwin_ge`, `get_invoking_user`, `get_brand_name`, `get_pear_temp_root`, `scan_external_volumes`, `clean_dev_editors`, `perform_updates`, `format_brew_update_label`, `brew_has_outdated`. A "zero callers" verdict requires three checks: (1) grep across `lib`, `bin`, `cmd`, `scripts`, `tests`, AND the top-level entry (`pear` shim, install/uninstall scripts), not just core lib dirs; (2) check for string-built call sites (`eval`, `declare -f`, `compgen`); (3) re-grep after removal to confirm nothing was hand-wired. When deleting a write-only helper, also trace every variable it wrote and every config it read; the entire data path may be orphaned. Sub-agent "dead code" reports are starting points, not verdicts.
+- **Test-orphan pattern: grep the whole repo including top-level entry scripts before declaring a function dead.** Pear has a recurring shape where a helper is defined in `lib/core/base.sh` (or similar core lib), has full bats coverage in `tests/`, and is referenced by zero production callers. Past instances, all since removed from the repo: `is_sip_enabled`, `is_darwin_ge`, `get_invoking_user`, `get_brand_name`, `get_pear_temp_root`, `scan_external_volumes`, `clean_dev_editors`, `perform_updates`, `format_brew_update_label`, `brew_has_outdated`. A "zero callers" verdict requires three checks: (1) grep across `lib`, `bin`, `cmd`, `scripts`, `tests`, AND the top-level entry (`pear` shim, install/uninstall scripts), not just core lib dirs; (2) check for string-built call sites (`eval`, `declare -f`, `compgen`); (3) re-grep after removal to confirm nothing was hand-wired. When deleting a write-only helper, also trace every variable it wrote and every config it read; the entire data path may be orphaned. Sub-agent "dead code" reports are starting points, not verdicts.
 
 ## Hotspot Ownership
 
@@ -126,17 +117,6 @@ These files are intentionally large. Do not start by splitting them. Keep edits 
 - `bin/clean.sh` owns clean command orchestration, section output, and safe cleanup execution. Run `PEAR_TEST_NO_AUTH=1 bats tests/clean_core.bats tests/clean_apps.bats tests/cli.bats`.
 - `cmd/analyze/update.go` owns the Bubble Tea `Update` chain and message handlers (Init, scanCmd, updateKey, goBack, switchToOverviewMode, enterSelectedDir). This is the largest file in `cmd/analyze/` and the natural landing spot for new key bindings, message types, or navigation behavior. Run `go test ./cmd/analyze`. `cmd/analyze/main.go` is bootstrap only (flag parsing, `main()`, helpers); `cmd/analyze/model.go` holds types and the model struct.
 - `cmd/analyze/analyze_test.go` and `cmd/status/view_test.go` are test hotspots. Add new cases near related behavior; split later only when touching many adjacent cases. Run `go test ./cmd/...`.
-
-## Command Surface
-
-- `pe clean` - deep cleanup and leftovers for apps that are already gone.
-- `pe uninstall` - remove installed apps and related leftovers.
-- `pe optimize` - maintenance and diagnostics, with `--whitelist` support.
-- `pe analyze` / `pe analyse` - Go disk explorer; safer for ad hoc cleanup because it uses Trash routing.
-- `pe status` - live health dashboard and JSON output for automation.
-- `pe purge` - project build artifact cleanup, with configurable scan paths through `pe purge --paths`.
-- `pe installer` - installer-file discovery and cleanup.
-- `pe completion`, `pe touchid`, `pe update`, and `pe remove` manage shell integration, sudo auth convenience, updates, and uninstalling Pear itself.
 
 ## Verification
 
@@ -167,32 +147,9 @@ golangci-lint run ./cmd/...
 
 ## Release
 
-Tag-driven flow. The `release.yml` workflow watches `'V*'` tag pushes (capital `V`), builds amd64 and arm64 binaries on macOS, generates `SHA256SUMS`, attaches build provenance, creates the GitHub Release without notes, then bumps the personal Homebrew tap and opens a Homebrew core PR.
+Tag-driven flow via `release.yml` on capital-`V` tag pushes. The full release runbook (distribution channels, pre-flight checklist, tag/publish commands, curated notes handoff, release-only pitfalls) lives in `.claude/skills/release-flow/SKILL.md`; read it before starting any release-flavored task. Notes formatting stays owned by `.claude/skills/release-notes/SKILL.md`. One rule that always applies: restate which distribution channels a release-flavored run will touch and confirm with the maintainer before acting; channel scope is specified by the maintainer, never inferred.
 
-### Pre-flight checklist
-
-1. `grep '^VERSION=' pear` matches the new version.
-2. `SECURITY_AUDIT.md` opening line reflects the new version and date.
-3. `git status -s` is empty or only contains intentionally staged release work.
-4. `git log origin/main..HEAD --oneline` shows only commits you intend to ship.
-5. `./scripts/check.sh --format` and `PEAR_TEST_NO_AUTH=1 PEAR_TEST_JOBS=2 BATS_FORMATTER=tap ./scripts/test.sh` both exit 0.
-6. `go test ./cmd/...` and `make build` both pass.
-
-### Tag and publish
-
-```bash
-git push origin main
-git tag V<version>          # capital V; release workflow ignores lowercase v
-git push origin V<version>
-```
-
-Wait for the workflow to finish (typically 2 minutes for V1.38.0). The workflow creates the release with assets but `generate_release_notes: false`, so notes must be added in a follow-up step.
-
-### Apply curated release notes
-
-The curated-notes flow (bilingual format, `gh release edit` instead of `create`, thanks block, and the six-reaction set) is owned by `.claude/skills/release-notes/SKILL.md`. Follow that skill; do not duplicate its format details here. Version, codename, and emoji go only in the release title; the body h1 is just `Pear`.
-
-### Shell and release pitfalls (cumulative)
+## Shell and Test Pitfalls (cumulative)
 
 These are real bugs hit on this codebase. Each one cost time. Re-read before touching the same area.
 
@@ -204,10 +161,4 @@ These are real bugs hit on this codebase. Each one cost time. Re-read before tou
 - **A test can pass vacuously when the function early-returns**: `clean_apps.bats` `setup_file` exports `PEAR_TEST_MODE=1`, and `clean_orphaned_system_services` returns immediately under that flag, leaving `$output` empty. A test whose *last* assertion is a `[[ "$output" != *"..."* ]]` (true on empty) then passes green while its real `==` assertion in the middle is silently swallowed (same shape as #886). Always end each assertion with `|| return 1`, and override `PEAR_TEST_MODE=0` (plus a `sudo -n true` mock) when the test needs the function body to actually run.
 - **BSD grep has no GNU `-Z`/`--null` output mode**: on stock macOS `grep -Z` means `--decompress` (ugrep aliases treat it as fuzzy matching), so `grep -rlZ ... | while read -d ''` consumes nothing and the loop is silently dead. Enumerate with `find ... -print0` and probe each file with `grep -qF` instead. The path-referenced LaunchAgent unload in `stop_launch_services` shipped dead this way from #816 until 2026-07.
 - **PlistBuddy announces file creation on stdout**: `/usr/libexec/PlistBuddy -c "Add ..."` against a missing file prints `File Doesn't Exist, Will Create: <path>` to stdout, which lands in bats `$output` and trips negative `[[ "$output" != *"<name>"* ]]` assertions. Redirect stdout too (`> /dev/null 2>&1`) when creating plist fixtures.
-- **`gh release create` conflicts with the workflow-created release**: the workflow already creates the release on tag push, so post-tag note publishing must use `gh release edit`, never `create`.
-- **Tag prefix is case-sensitive**: `release.yml` filters on `'V*'`. A lowercase `v1.38.0` tag will not trigger the workflow.
 - **macOS 14's /bin/bash fires errexit through if-guarded mock functions**: the macos-14 runner's bash 3.2.57 build kills a `set -e` script when an exported shell-function `sudo` mock returns nonzero inside an `if fn; then` condition with a `2> /dev/null` redirect; the same bash version on macOS 15+ and dev machines does not, so the failure reproduces on no local machine. Symptom: a bats inner script exits 1 with empty output at the first failing mock probe. Fix pattern: disable errexit before the first sudo probe inside the helper (see `safe_sudo_find_delete`) and restore it before each validation-gate return. When a test fails only on one runner image, make the test print exit status, captured output, and a mock call trace on failure instead of a bare rc assertion; that evidence trail is how this one was pinned. Hit fixing test 31 of `core_safe_functions.bats`, 2026-07.
-
-### Release-notes craft
-
-Format rules (impact ordering, command existence checks, icon semantics, no em dash, no inline PR refs) live in `.claude/skills/release-notes/SKILL.md` under "Format rules". Keep that skill as the single source of truth for notes formatting.

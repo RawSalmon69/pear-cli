@@ -55,40 +55,6 @@ func TestCreateInsightEntriesIncludesOrbStackData(t *testing.T) {
 	t.Fatal("OrbStack Data insight not found")
 }
 
-func TestInsightIcon(t *testing.T) {
-	// Two-icon scheme: top-level directories use 📁, every insight row
-	// uses 👀 (eyes; signals "peek here" without promising deletability).
-	tests := []struct {
-		name string
-		want string
-	}{
-		// Top-level dirs.
-		{"Home", "📁"},
-		{"User Library", "📁"},
-		{"App Library", "📁"}, // Legacy name retained for backwards compatibility.
-		{"Applications", "📁"},
-		{"System Library", "📁"},
-		// Insights collapsed to a single eyes glyph.
-		{"iOS Backups", "👀"},
-		{"Old Downloads (90d+)", "👀"},
-		{"Homebrew Cache", "👀"},
-		{"System Logs", "👀"},
-		{"Xcode DerivedData", "👀"},
-		{"Xcode Simulators", "👀"},
-		{"Xcode Archives", "👀"},
-		{"Docker Data", "👀"},
-		{"OrbStack Data", "👀"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := insightIcon(dirEntry{Name: tt.name})
-			if got != tt.want {
-				t.Errorf("insightIcon(%q) = %q, want %q", tt.name, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestMeasureOldDownloads(t *testing.T) {
 	// Create a temp directory with old and new files.
 	dir := t.TempDir()

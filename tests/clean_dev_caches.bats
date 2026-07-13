@@ -548,6 +548,151 @@ EOF
     [[ "$output" != *"SAFE_CLEAN:"* ]]
 }
 
+@test "clean_codex_desktop_staging selects only stale first-level installation directories" {
+    local staging_root="$HOME/Library/Caches/com.openai.codex/org.sparkle-project.Sparkle/Installation"
+    rm -rf "$staging_root"
+    mkdir -p "$staging_root/stale/Codex.app" "$staging_root/fresh/Codex.app"
+    touch -t 202001010000 "$staging_root/stale"
+    # A newly staged app may preserve an old bundle timestamp. The fresh outer
+    # Sparkle directory, not its nested app, is the retention boundary.
+    touch -t 202001010000 "$staging_root/fresh/Codex.app"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" DRY_RUN=false bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+pgrep() { return 1; }
+lsof() { return 1; }
+run_with_timeout() { shift; "$@"; }
+is_path_whitelisted() { return 1; }
+safe_clean() { echo "SAFE_CLEAN:$2|$1"; }
+note_activity() { :; }
+clean_codex_desktop_staging
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"SAFE_CLEAN:Codex Desktop stale update staging|$staging_root/stale"* ]] || return 1
+    [[ "$output" != *"$staging_root/fresh"* ]] || return 1
+    [[ "$output" != *"$HOME/.codex"* ]] || return 1
+    [[ "$output" != *"$HOME/Library/Application Support/Codex"* ]] || return 1
+    [[ "$output" != *"$HOME/Library/Logs/com.openai.codex"* ]] || return 1
+}
+
+@test "clean_codex_desktop_staging skips while Codex or Sparkle updater is running" {
+    local staging_root="$HOME/Library/Caches/com.openai.codex/org.sparkle-project.Sparkle/Installation"
+    rm -rf "$staging_root"
+    mkdir -p "$staging_root/stale"
+    touch -t 202001010000 "$staging_root/stale"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" DRY_RUN=false bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+pgrep() { [[ "$1" == "-x" && "$2" == "Codex" ]]; }
+is_path_whitelisted() { return 1; }
+safe_clean() { echo "SAFE_CLEAN:$2|$1"; }
+note_activity() { :; }
+clean_codex_desktop_staging
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"skipped (Codex running)"* ]] || return 1
+    [[ "$output" != *"SAFE_CLEAN:"* ]] || return 1
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" DRY_RUN=false bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+pgrep() { [[ "$1" == "-f" && "$2" == *"sparkle-project"* ]]; }
+is_path_whitelisted() { return 1; }
+safe_clean() { echo "SAFE_CLEAN:$2|$1"; }
+note_activity() { :; }
+clean_codex_desktop_staging
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"skipped (updater running)"* ]] || return 1
+    [[ "$output" != *"SAFE_CLEAN:"* ]] || return 1
+}
+
+@test "clean_codex_desktop_staging skips open files and honors whitelist" {
+    local staging_root="$HOME/Library/Caches/com.openai.codex/org.sparkle-project.Sparkle/Installation"
+    rm -rf "$staging_root"
+    mkdir -p "$staging_root/stale"
+    touch -t 202001010000 "$staging_root/stale"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" DRY_RUN=false bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+pgrep() { return 1; }
+lsof() { printf 'n%s\n' "$HOME/Library/Caches/com.openai.codex/org.sparkle-project.Sparkle/Installation/stale/Codex.app"; }
+run_with_timeout() { shift; "$@"; }
+is_path_whitelisted() { return 1; }
+safe_clean() { echo "SAFE_CLEAN:$2|$1"; }
+note_activity() { :; }
+clean_codex_desktop_staging
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"skipped (files in use)"* ]] || return 1
+    [[ "$output" != *"SAFE_CLEAN:"* ]] || return 1
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" DRY_RUN=false bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+pgrep() { return 1; }
+lsof() { return 1; }
+run_with_timeout() { return 124; }
+is_path_whitelisted() { return 1; }
+safe_clean() { echo "SAFE_CLEAN:$2|$1"; }
+note_activity() { :; }
+clean_codex_desktop_staging
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"skipped (open-file check unavailable)"* ]] || return 1
+    [[ "$output" != *"SAFE_CLEAN:"* ]] || return 1
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" DRY_RUN=true bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+is_path_whitelisted() { [[ "$1" == "$HOME/Library/Caches/com.openai.codex/org.sparkle-project.Sparkle/Installation" ]]; }
+safe_clean() { echo "SAFE_CLEAN:$2|$1"; }
+note_activity() { :; }
+clean_codex_desktop_staging
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"would skip (whitelist)"* ]] || return 1
+    [[ "$output" != *"SAFE_CLEAN:"* ]] || return 1
+}
+
+@test "clean_codex_desktop_staging routes dry-run candidates through safe_clean" {
+    local staging_root="$HOME/Library/Caches/com.openai.codex/org.sparkle-project.Sparkle/Installation"
+    rm -rf "$staging_root"
+    mkdir -p "$staging_root/stale"
+    touch -t 202001010000 "$staging_root/stale"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" DRY_RUN=true bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+pgrep() { return 1; }
+lsof() { return 1; }
+run_with_timeout() { shift; "$@"; }
+is_path_whitelisted() { return 1; }
+safe_clean() { echo "SAFE_CLEAN:$DRY_RUN|$2|$1"; }
+note_activity() { :; }
+clean_codex_desktop_staging
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"SAFE_CLEAN:true|Codex Desktop stale update staging|$staging_root/stale"* ]] || return 1
+}
+
 @test "clean_dev_mise respects MISE_CACHE_DIR and only targets cache" {
     run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" MISE_CACHE_DIR="/tmp/mise-cache" bash --noprofile --norc <<'EOF'
 set -euo pipefail
@@ -785,7 +930,7 @@ EOF
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"AI agent worktrees"* ]] || return 1
-    [[ "$output" == *"review only"* ]] || return 1
+    [[ "$output" == *"GB"* ]] || return 1
     [[ "$output" == *".claude/worktrees"* ]] || return 1
     # Report only: the worktree must still exist afterwards.
     [ -d "$HOME/code/proj/.claude/worktrees/wt-one" ]

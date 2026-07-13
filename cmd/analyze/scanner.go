@@ -22,6 +22,10 @@ import (
 	"time"
 )
 
+var spotlightQueryRunner = func(ctx context.Context, root, query string) ([]byte, error) {
+	return exec.CommandContext(ctx, "mdfind", "-onlyin", root, query).Output()
+}
+
 // scanLimiter bundles the concurrency budgets used by a single scan pass.
 //
 // There are five separate semaphores on purpose: each protects a different
@@ -594,8 +598,7 @@ func findLargeFilesWithSpotlight(root string, minSize int64) []fileEntry {
 	ctx, cancel := context.WithTimeout(context.Background(), mdlsTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "mdfind", "-onlyin", root, query)
-	output, err := cmd.Output()
+	output, err := spotlightQueryRunner(ctx, root, query)
 	if err != nil {
 		return nil
 	}

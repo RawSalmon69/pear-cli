@@ -1,32 +1,58 @@
 #!/bin/bash
-# Format the just-edited file with the project's configured formatters.
-# Invoked by .claude/settings.json as a PostToolUse hook on Edit/MultiEdit/Write.
-# Stdin is the Claude Code hook payload (JSON). Failures must not block the edit.
+# Format files changed by Claude Code with the project's configured formatters.
+# Stdin is the tool hook payload (JSON). Failures must not block the edit.
 
 set -u
 
-# Extract file path from hook payload. Tolerate missing jq.
 if ! command -v jq > /dev/null 2>&1; then
     exit 0
 fi
 
-FILE=$(jq -r '.tool_input.file_path // empty' 2> /dev/null || true)
-[[ -z "$FILE" ]] && exit 0
-[[ ! -f "$FILE" ]] && exit 0
+PAYLOAD=$(cat)
+HOOK_CWD=$(printf '%s' "$PAYLOAD" | jq -r '.cwd // empty' 2> /dev/null || true)
+[[ -n "$HOOK_CWD" ]] || HOOK_CWD="$PWD"
 
-case "$FILE" in
-    *.sh | */pear)
-        if command -v shfmt > /dev/null 2>&1; then
-            shfmt -i 4 -ci -sr -w "$FILE" > /dev/null 2>&1 || true
-        fi
-        ;;
-    *.go)
-        if command -v goimports > /dev/null 2>&1; then
-            goimports -w -local github.com/RawSalmon69/pear-cli "$FILE" > /dev/null 2>&1 || true
-        elif command -v gofmt > /dev/null 2>&1; then
-            gofmt -w "$FILE" > /dev/null 2>&1 || true
-        fi
-        ;;
-esac
+PROJECT_ROOT=$(git -C "$HOOK_CWD" rev-parse --show-toplevel 2> /dev/null || true)
+[[ -n "$PROJECT_ROOT" ]] || exit 0
+PROJECT_ROOT=$(cd -P "$PROJECT_ROOT" 2> /dev/null && pwd) || exit 0
+
+format_repo_file() {
+    local input_path="$1"
+    local candidate=""
+    local candidate_dir=""
+    local resolved=""
+
+    case "$input_path" in
+        /*) candidate="$input_path" ;;
+        *) candidate="$HOOK_CWD/$input_path" ;;
+    esac
+
+    # Never follow an edited symlink outside the repository.
+    [[ -f "$candidate" && ! -L "$candidate" ]] || return 0
+    candidate_dir=$(cd -P "$(dirname "$candidate")" 2> /dev/null && pwd) || return 0
+    resolved="$candidate_dir/$(basename "$candidate")"
+    case "$resolved" in
+        "$PROJECT_ROOT"/*) ;;
+        *) return 0 ;;
+    esac
+
+    case "$resolved" in
+        *.sh | "$PROJECT_ROOT/pear")
+            if command -v shfmt > /dev/null 2>&1; then
+                shfmt -i 4 -ci -sr -w "$resolved" > /dev/null 2>&1 || true
+            fi
+            ;;
+        *.go)
+            if command -v goimports > /dev/null 2>&1; then
+                goimports -w -local github.com/RawSalmon69/pear-cli "$resolved" > /dev/null 2>&1 || true
+            elif command -v gofmt > /dev/null 2>&1; then
+                gofmt -w "$resolved" > /dev/null 2>&1 || true
+            fi
+            ;;
+    esac
+}
+
+FILE=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.file_path // empty' 2> /dev/null || true)
+[[ -n "$FILE" ]] && format_repo_file "$FILE"
 
 exit 0

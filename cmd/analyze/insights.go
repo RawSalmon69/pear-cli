@@ -22,7 +22,7 @@ func createInsightEntries() []dirEntry {
 
 	var entries []dirEntry
 
-	// iOS Backups — ~/Library/Application Support/MobileSync/Backup
+	// iOS Backups: ~/Library/Application Support/MobileSync/Backup
 	backupPath := filepath.Join(home, "Library", "Application Support", "MobileSync", "Backup")
 	if info, err := os.Stat(backupPath); err == nil && info.IsDir() {
 		entries = append(entries, dirEntry{
@@ -33,7 +33,7 @@ func createInsightEntries() []dirEntry {
 		})
 	}
 
-	// Old Downloads — ~/Downloads (files older than 90 days)
+	// Old Downloads: ~/Downloads (files older than 90 days)
 	downloadsPath := filepath.Join(home, "Downloads")
 	if info, err := os.Stat(downloadsPath); err == nil && info.IsDir() {
 		entries = append(entries, dirEntry{
@@ -44,7 +44,7 @@ func createInsightEntries() []dirEntry {
 		})
 	}
 
-	// Cleanable paths — things mo clean can remove or the user can safely delete.
+	// Cleanable paths: things mo clean can remove or the user can safely delete.
 	// System Caches (~Library/Caches) is intentionally omitted here because the
 	// specific cache subdirectories below are already its children; listing both
 	// would double-count the same bytes.
@@ -139,29 +139,6 @@ func measureOldDownloads(dir string, daysOld int) (int64, error) {
 	}
 
 	return total, nil
-}
-
-// insightIcon returns the icon for an overview entry.
-//
-// Two-icon scheme so the column stays visually clean:
-//   - 📁 for top-level directories (Home, User Library, Applications, System
-//     Library) where the user is browsing structure.
-//   - 👀 for "hidden space insights": paths that silently accumulate disk
-//     usage and deserve a peek. Eyes signal attention without promising the
-//     contents are safe to delete, which matters for iOS Backups, Xcode
-//     Archives, and Old Downloads (valuable user data, not just cache).
-//
-// History: an earlier per-name icon zoo (📋 💾 🔨 📲 🐳 📱 📥) varied in
-// render width and added no information. A broom (🧹) followed but
-// mis-signalled "all of these are cleanable", which Xcode Archives and iOS
-// Backups are not.
-func insightIcon(entry dirEntry) string {
-	switch entry.Name {
-	case "Home", "User Library", "App Library", "Applications", "System Library":
-		return "📁"
-	default:
-		return "👀"
-	}
 }
 
 // getDirSizeFast measures directory size using du.

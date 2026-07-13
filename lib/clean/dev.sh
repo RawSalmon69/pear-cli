@@ -1593,6 +1593,84 @@ codex_desktop_running() {
     return 1
 }
 
+codex_sparkle_updater_running() {
+    command -v pgrep > /dev/null 2>&1 || return 1
+
+    pgrep -f "org[.]sparkle-project[.]Sparkle" > /dev/null 2>&1 && return 0
+    pgrep -f "Sparkle[.]framework/.*/(Autoupdate|Installer|Downloader|Updater)" > /dev/null 2>&1 && return 0
+    return 1
+}
+
+codex_sparkle_staging_has_open_files() {
+    local staging_root="$1"
+    command -v lsof > /dev/null 2>&1 || return 1
+
+    local lsof_output=""
+    local lsof_rc=0
+    if lsof_output=$(run_with_timeout "$PEAR_TIMEOUT_QUICK_DETECT_SEC" lsof -Fn +D "$staging_root" 2> /dev/null); then
+        [[ -n "$lsof_output" ]]
+        return
+    else
+        lsof_rc=$?
+    fi
+
+    # `lsof +D` returns 1 when no open files match. Timeouts or other failures
+    # are different: the caller must conservatively skip cleanup.
+    [[ "$lsof_rc" -eq 1 ]] && return 1
+    return 2
+}
+
+clean_codex_desktop_staging() {
+    local staging_root="$HOME/Library/Caches/com.openai.codex/org.sparkle-project.Sparkle/Installation"
+    [[ -d "$staging_root" ]] || return 0
+
+    local entry_count=0
+    entry_count=$(command find -P "$staging_root" -mindepth 1 -maxdepth 1 -type d -print 2> /dev/null | wc -l | tr -d ' ')
+    [[ "$entry_count" =~ ^[0-9]+$ ]] || entry_count=0
+    [[ "$entry_count" -gt 0 ]] || return 0
+
+    if is_path_whitelisted "$staging_root"; then
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Codex Desktop update staging · would skip (whitelist)"
+        else
+            echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Codex Desktop update staging · skipped (whitelist)"
+        fi
+        note_activity
+        return 0
+    fi
+
+    if codex_desktop_running; then
+        echo -e "  ${GRAY}${ICON_WARNING}${NC} Codex Desktop update staging · skipped (Codex running)"
+        note_activity
+        return 0
+    fi
+
+    if codex_sparkle_updater_running; then
+        echo -e "  ${GRAY}${ICON_WARNING}${NC} Codex Desktop update staging · skipped (updater running)"
+        note_activity
+        return 0
+    fi
+
+    local open_file_state=0
+    if codex_sparkle_staging_has_open_files "$staging_root"; then
+        echo -e "  ${GRAY}${ICON_WARNING}${NC} Codex Desktop update staging · skipped (files in use)"
+        note_activity
+        return 0
+    else
+        open_file_state=$?
+    fi
+    if [[ "$open_file_state" -eq 2 ]]; then
+        echo -e "  ${GRAY}${ICON_WARNING}${NC} Codex Desktop update staging · skipped (open-file check unavailable)"
+        note_activity
+        return 0
+    fi
+
+    local stale_entry
+    while IFS= read -r -d '' stale_entry; do
+        safe_clean "$stale_entry" "Codex Desktop stale update staging"
+    done < <(command find -P "$staging_root" -mindepth 1 -maxdepth 1 -type d -mtime +"$PEAR_ORPHAN_AGE_DAYS" -print0 2> /dev/null)
+}
+
 # True when the Codex CLI or the Codex Desktop app is running.
 codex_running() {
     command -v pgrep > /dev/null 2>&1 || return 1
@@ -1846,6 +1924,8 @@ clean_dev_misc() {
     fi
     # Codex Desktop runtimes contain active Node/Python dependencies.
     clean_codex_runtimes
+    # Sparkle uses random first-level directories for each update installation.
+    clean_codex_desktop_staging
     # Codex CLI working-directory caches (~/.codex)
     clean_codex_cli
     # Cursor Agent session logs (versions cleaned separately in clean_dev_ai_agents)

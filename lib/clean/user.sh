@@ -1666,6 +1666,69 @@ clean_utm_caches() {
     safe_clean ~/Library/Containers/com.utmapp.UTM/Data/tmp/* "UTM temporary files"
 }
 
+clean_tart_caches() {
+    local cache_root="$HOME/.tart/cache"
+    [[ -d "$cache_root" ]] || return 0
+    command -v tart > /dev/null 2>&1 || return 0
+
+    local cache_size_kb=0
+    cache_size_kb=$(get_path_size_kb "$cache_root" 2> /dev/null || echo 0)
+    [[ "$cache_size_kb" =~ ^[0-9]+$ ]] || cache_size_kb=0
+    [[ "$cache_size_kb" -gt 0 ]] || return 0
+
+    if is_path_whitelisted "$cache_root"; then
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Tart caches · would skip (whitelist)"
+        else
+            echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Tart caches · skipped (whitelist)"
+        fi
+        note_activity
+        return 0
+    fi
+
+    if pgrep -x "tart" > /dev/null 2>&1; then
+        echo -e "  ${GRAY}${ICON_WARNING}${NC} Tart caches · skipped (Tart running)"
+        note_activity
+        return 0
+    fi
+
+    local cache_size_human
+    cache_size_human=$(bytes_to_human "$((cache_size_kb * 1024))")
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Tart caches · would prune items older than ${PEAR_ORPHAN_AGE_DAYS} days (${cache_size_human})"
+        echo -e "    ${GRAY}tart prune --entries caches --older-than ${PEAR_ORPHAN_AGE_DAYS}${NC}"
+        note_activity
+        return 0
+    fi
+
+    if [[ -t 1 ]]; then
+        start_section_spinner "Pruning Tart caches..."
+    fi
+    local prune_succeeded=false
+    if run_with_timeout "$PEAR_TIMEOUT_PKG_CLEANUP_SEC" tart prune --entries caches --older-than "$PEAR_ORPHAN_AGE_DAYS" > /dev/null 2>&1; then
+        prune_succeeded=true
+    fi
+    if [[ -t 1 ]]; then
+        stop_section_spinner
+    fi
+
+    if [[ "$prune_succeeded" != "true" ]]; then
+        echo -e "  ${GRAY}${ICON_WARNING}${NC} Tart caches · prune failed"
+        debug_log "tart prune failed for cache-only ${PEAR_ORPHAN_AGE_DAYS}-day policy"
+        note_activity
+        return 0
+    fi
+
+    local remaining_kb=0
+    remaining_kb=$(get_path_size_kb "$cache_root" 2> /dev/null || echo 0)
+    [[ "$remaining_kb" =~ ^[0-9]+$ ]] || remaining_kb=0
+    local reclaimed_kb=$((cache_size_kb - remaining_kb))
+    [[ "$reclaimed_kb" -ge 0 ]] || reclaimed_kb=0
+
+    echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Tart caches · pruned, $(bytes_to_human "$((reclaimed_kb * 1024))") reclaimed"
+    note_activity
+}
+
 clean_virtualization_tools() {
     stop_section_spinner
     safe_clean ~/Library/Caches/com.vmware.fusion "VMware Fusion cache"
@@ -1674,6 +1737,7 @@ clean_virtualization_tools() {
     safe_clean ~/VirtualBox\ VMs/.cache "VirtualBox cache"
     safe_clean ~/Library/Caches/lima/download/by-url-sha256/* "Lima download cache"
     safe_clean ~/.vagrant.d/tmp/* "Vagrant temporary files"
+    clean_tart_caches
 }
 
 # Estimate item size for Application Support cleanup.
@@ -2012,7 +2076,7 @@ clean_application_support_logs() {
     fi
 }
 # Remove cached device firmware (.ipsw) from iTunes, Finder, and Apple Configurator 2.
-# These are installers for firmware already applied (or superseded) — macOS will
+# These are installers for firmware already applied (or superseded); macOS will
 # re-download them on demand. Typical size: 5-8GB per file. Never touches backups.
 clean_cached_device_firmware() {
     local -a shallow_dirs=(
@@ -2139,8 +2203,7 @@ report_agent_worktree_candidates() {
             size_kb=$(get_path_size_kb "$container" 2> /dev/null || echo 0)
             [[ "$size_kb" =~ ^[0-9]+$ ]] || size_kb=0
             [[ "$size_kb" -ge "$threshold_kb" ]] || continue
-            echo -e "  ${YELLOW}${ICON_WARNING}${NC} AI agent worktrees · ${GREEN}$(bytes_to_human "$((size_kb * 1024))")${NC}${GRAY}, review only${NC}"
-            echo -e "  ${GRAY}${ICON_SUBLIST}${NC} ${GRAY}$(format_path_link "$container")${NC}"
+            echo -e "  ${YELLOW}${ICON_WARNING}${NC} AI agent worktrees · ${GREEN}$(bytes_to_human "$((size_kb * 1024))")${NC} · ${GRAY}$(format_path_link "$container")${NC}"
             note_activity
         done < <(run_with_timeout "$PEAR_TIMEOUT_PKG_CLEANUP_SEC" command find "$root" -maxdepth 6 -type d -path "*/.claude/worktrees" -prune -print0 2> /dev/null)
     done
@@ -2163,15 +2226,17 @@ check_large_file_candidates() {
         printf '%s\n' "$size_kb"
     }
 
-    # One row per large item: "label · size, review only" with the clickable
-    # path on its own sub-line (spaces in paths break terminal auto-linking).
+    # One row per large item: "label · size · path". The ◎ icon carries the
+    # review-only semantics; format_path_link keeps the path clickable even
+    # with spaces (OSC 8 link, not terminal auto-linking).
     _report_large_review_row() {
         local label="$1"
         local size_human="$2"
         local path="$3"
-        echo -e "  ${YELLOW}${ICON_WARNING}${NC} ${label} · ${GREEN}${size_human}${NC}${GRAY}, review only${NC}"
-        echo -e "  ${GRAY}${ICON_SUBLIST}${NC} ${GRAY}$(format_path_link "$path")${NC}"
+        stop_section_spinner
+        echo -e "  ${YELLOW}${ICON_WARNING}${NC} ${label} · ${GREEN}${size_human}${NC} · ${GRAY}$(format_path_link "$path")${NC}"
         found_any=true
+        start_section_spinner "Scanning large files..."
     }
 
     _report_large_review_dir() {
@@ -2186,6 +2251,10 @@ check_large_file_candidates() {
         size_human=$(bytes_to_human "$((size_kb * 1024))")
         _report_large_review_row "$label" "$size_human" "$path"
     }
+
+    # The du probes below (Mail, backups, package stores) take seconds in
+    # total; keep loading feedback on screen between rows.
+    start_section_spinner "Scanning large files..."
 
     local mail_dir="$HOME/Library/Mail"
     if [[ -d "$mail_dir" ]]; then
@@ -2240,8 +2309,10 @@ check_large_file_candidates() {
         if [[ -n "$snapshot_list" ]]; then
             snapshot_count=$(echo "$snapshot_list" | { grep -Eo 'com\.apple\.TimeMachine\.[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}' || true; } | wc -l | awk '{print $1}')
             if [[ "$snapshot_count" =~ ^[0-9]+$ && "$snapshot_count" -gt 0 ]]; then
-                echo -e "  ${YELLOW}${ICON_WARNING}${NC} Time Machine local snapshots · ${GREEN}${snapshot_count}${NC} ${GRAY}(review: tmutil listlocalsnapshots /)${NC}"
+                stop_section_spinner
+                echo -e "  ${YELLOW}${ICON_WARNING}${NC} Time Machine local snapshots · ${GREEN}${snapshot_count}${NC}"
                 found_any=true
+                start_section_spinner "Scanning large files..."
             fi
         fi
     fi
@@ -2250,18 +2321,24 @@ check_large_file_candidates() {
         local docker_output
         docker_output=$(run_with_timeout "$PEAR_TIMEOUT_SHORT_QUERY_SEC" docker system df --format '{{.Type}}\t{{.Size}}\t{{.Reclaimable}}' 2> /dev/null || true)
         if [[ -n "$docker_output" ]]; then
-            echo -e "  ${YELLOW}${ICON_WARNING}${NC} Docker storage:"
+            local docker_detail=""
             while IFS=$'\t' read -r dtype dsize dreclaim; do
                 [[ -z "$dtype" ]] && continue
-                echo -e "    ${GRAY}${ICON_LIST} $dtype: $dsize, Reclaimable: $dreclaim${NC}"
+                docker_detail+="${docker_detail:+ · }${dtype} ${dsize} (${dreclaim} reclaimable)"
             done <<< "$docker_output"
-            found_any=true
+            if [[ -n "$docker_detail" ]]; then
+                stop_section_spinner
+                echo -e "  ${YELLOW}${ICON_WARNING}${NC} Docker storage · ${GRAY}${docker_detail}${NC}"
+                found_any=true
+                start_section_spinner "Scanning large files..."
+            fi
         else
             docker_output=$(run_with_timeout "$PEAR_TIMEOUT_SHORT_QUERY_SEC" docker system df 2> /dev/null || true)
             if [[ -n "$docker_output" ]]; then
-                echo -e "  ${YELLOW}${ICON_WARNING}${NC} Docker storage:"
-                echo -e "  ${GRAY}${ICON_REVIEW}${NC} ${GRAY}Run: docker system df${NC}"
+                stop_section_spinner
+                echo -e "  ${YELLOW}${ICON_WARNING}${NC} Docker storage · ${GRAY}docker system df${NC}"
                 found_any=true
+                start_section_spinner "Scanning large files..."
             fi
         fi
     fi
@@ -2295,6 +2372,8 @@ check_large_file_candidates() {
     done < <(jetbrains_stale_version_dirs "$jetbrains_support")
 
     report_agent_worktree_candidates
+
+    stop_section_spinner
 
     unset -f _large_candidate_size_kb _report_large_review_dir _report_large_review_row
 

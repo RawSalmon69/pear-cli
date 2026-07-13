@@ -148,7 +148,7 @@ func createOverviewEntriesWithInsights(insightEntries []dirEntry) []dirEntry {
 		dirEntry{Name: "System Library", Path: "/Library", IsDir: true, Size: -1},
 	)
 
-	// Hidden space insights — paths that silently accumulate disk usage.
+	// Hidden space insights: paths that silently accumulate disk usage.
 	entries = append(entries, insightEntries...)
 
 	return entries

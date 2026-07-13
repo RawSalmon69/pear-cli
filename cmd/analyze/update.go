@@ -184,7 +184,7 @@ func (m *model) applyLiveChildSize(entry dirEntry, complete bool, result scanRes
 		m.cache[entry.Path] = historyEntryFromScanResult(entry.Path, childResult, m.cache[entry.Path], true)
 	}
 	if m.autoSortLiveEntries {
-		m.sortLiveEntriesPreservingSelection()
+		m.sortLiveEntriesForActiveMode()
 	} else {
 		m.applyEntryFilter()
 	}
@@ -193,6 +193,7 @@ func (m *model) applyLiveChildSize(entry dirEntry, complete bool, result scanRes
 }
 
 func (m *model) finishLiveScan(result scanResult) {
+	pinFirstRow := m.liveSortMode == liveSortFreezeOnMove && m.autoSortLiveEntries
 	m.scanning = false
 	m.liveScanID = 0
 	m.liveScanCancel = nil
@@ -210,7 +211,10 @@ func (m *model) finishLiveScan(result scanResult) {
 	m.viewNeedsRefresh = false
 	m.applyEntryFilter()
 	m.applyLargeFilter()
-	if selectedPath != "" {
+	if pinFirstRow {
+		m.selected = 0
+		m.offset = 0
+	} else if selectedPath != "" {
 		m.selectEntryPath(selectedPath)
 	}
 	m.cache[m.path] = historyEntryFromScanResult(m.path, result, m.cache[m.path], false)
@@ -239,11 +243,19 @@ func (m *model) finishCanceledLiveScan() {
 	m.status = "Scan cancelled"
 }
 
-func (m *model) sortLiveEntriesPreservingSelection() {
+func (m *model) sortLiveEntriesForActiveMode() {
 	m.ensureLiveEntryBacking()
-	selectedPath := m.selectedEntryPath()
+	selectedPath := ""
+	if m.liveSortMode == liveSortContinuous {
+		selectedPath = m.selectedEntryPath()
+	}
 	sortDirEntriesBySize(m.entriesAll)
 	m.applyEntryFilter()
+	if m.liveSortMode == liveSortFreezeOnMove {
+		m.selected = 0
+		m.offset = 0
+		return
+	}
 	if selectedPath == "" {
 		return
 	}
@@ -399,7 +411,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.liveScanningPaths[path] = true
 		}
 		m.autoSortLiveEntries = true
-		selectedPath := m.selectedEntryPath()
+		selectedPath := ""
+		if m.liveSortMode == liveSortContinuous {
+			selectedPath = m.selectedEntryPath()
+		}
 		m.entriesAll = slices.Clone(msg.entries)
 		m.largeFilesAll = slices.Clone(msg.largeFiles)
 		m.totalSize = msg.totalSize
@@ -407,7 +422,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewNeedsRefresh = false
 		m.scanning = true
 		m.status = fmt.Sprintf("Scanning %s...", displayPath(m.path))
-		m.sortLiveEntriesPreservingSelection()
+		m.sortLiveEntriesForActiveMode()
 		m.applyLargeFilter()
 		if selectedPath != "" {
 			m.selectEntryPath(selectedPath)
@@ -581,7 +596,6 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m.goBack()
 	case "up", "k", "K":
-		m.noteLiveCursorMove()
 		if m.showLargeFiles {
 			if m.largeSelected > 0 {
 				m.largeSelected--
@@ -590,6 +604,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 		} else if len(m.entries) > 0 && m.selected > 0 {
+			m.noteLiveCursorMove()
 			next := m.selected - 1
 			for next > 0 && m.entries[next].Size == 0 {
 				next--
@@ -600,7 +615,6 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "down", "j", "J":
-		m.noteLiveCursorMove()
 		if m.showLargeFiles {
 			if m.largeSelected < len(m.largeFiles)-1 {
 				m.largeSelected++
@@ -610,6 +624,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 		} else if len(m.entries) > 0 && m.selected < len(m.entries)-1 {
+			m.noteLiveCursorMove()
 			next := m.selected + 1
 			for next < len(m.entries)-1 && m.entries[next].Size == 0 {
 				next++
@@ -646,6 +661,8 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.overviewSizeCache = make(map[string]int64)
 			m.overviewScanningSet = make(map[string]bool)
 			m.hydrateOverviewEntries() // Reset sizes to pending
+			m.selected = 0
+			m.offset = 0
 
 			for i := range m.entries {
 				m.entries[i].Size = -1
@@ -706,7 +723,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.liveSortMode = nextLiveSortMode(m.liveSortMode)
 			m.autoSortLiveEntries = m.liveSortMode == liveSortContinuous
 			if m.autoSortLiveEntries {
-				m.sortLiveEntriesPreservingSelection()
+				m.sortLiveEntriesForActiveMode()
 			}
 			m.status = fmt.Sprintf("Live sort: %s", liveSortModeLabel(m.liveSortMode))
 		}

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestRuneWidth(t *testing.T) {
@@ -88,6 +90,64 @@ func TestFormatNumber(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("formatNumber(%d) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestFormatPercentKeepsFixedWidth(t *testing.T) {
+	tests := []struct {
+		name    string
+		percent float64
+		known   bool
+		want    string
+	}{
+		{"whole", 47, true, " 47.0%"},
+		{"fraction", 0.9, true, "  0.9%"},
+		{"threshold", 0.1, true, "  0.1%"},
+		{"tiny nonzero", 0.046, true, "< 0.1%"},
+		{"zero", 0, true, "  0.0%"},
+		{"pending", 0, false, "  --  "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatPercent(tt.percent, tt.known)
+			if got != tt.want {
+				t.Fatalf("formatPercent(%v, %v) = %q, want %q", tt.percent, tt.known, got, tt.want)
+			}
+			if displayWidth(got) != 6 {
+				t.Fatalf("formatPercent width = %d, want 6 for %q", displayWidth(got), got)
+			}
+		})
+	}
+}
+
+func TestColoredProgressBarKeepsFixedWidthWithoutGrayTrack(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     int64
+		maxValue  int64
+		percent   float64
+		wantSmall bool
+	}{
+		{"empty", 0, 100, 0, false},
+		{"tiny nonzero", 1, 1000, 0.01, true},
+		{"partial", 25, 100, 25, false},
+		{"full", 100, 100, 100, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := coloredProgressBar(tt.value, tt.maxValue, tt.percent)
+			if width := lipgloss.Width(got); width != barWidth {
+				t.Fatalf("progress bar width = %d, want %d for %q", width, barWidth, got)
+			}
+			if strings.Contains(got, "░") {
+				t.Fatalf("progress bar should not render a gray track: %q", got)
+			}
+			if tt.wantSmall && !strings.Contains(got, "▏") {
+				t.Fatalf("tiny nonzero progress should render a thin marker: %q", got)
+			}
+		})
 	}
 }
 

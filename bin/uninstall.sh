@@ -40,6 +40,11 @@ readonly PEAR_UNINSTALL_EPOCH_FLOOR=978307200
 # cold Spotlight.
 readonly PEAR_UNINSTALL_INLINE_MDLS_DISPLAY_TIMEOUT_SEC="${PEAR_UNINSTALL_INLINE_MDLS_DISPLAY_TIMEOUT_SEC:-0.04}"
 readonly PEAR_UNINSTALL_INLINE_MDLS_SIZE_TIMEOUT_SEC="${PEAR_UNINSTALL_INLINE_MDLS_SIZE_TIMEOUT_SEC:-0.04}"
+# Bounded inline du fallback for cold rows whose quick mdls probe missed
+# (new apps are often not yet Spotlight-indexed). Only enabled when the
+# cold-row count is small so a fully cold first scan keeps the fast path.
+readonly PEAR_UNINSTALL_INLINE_DU_SIZE_TIMEOUT_SEC="${PEAR_UNINSTALL_INLINE_DU_SIZE_TIMEOUT_SEC:-2}"
+readonly PEAR_UNINSTALL_INLINE_DU_MAX_COLD_ROWS="${PEAR_UNINSTALL_INLINE_DU_MAX_COLD_ROWS:-20}"
 
 uninstall_normalize_size_display() {
     local size="${1:-}"
@@ -72,6 +77,25 @@ uninstall_quick_app_size_kb() {
     logical_size=$(run_with_timeout "$PEAR_UNINSTALL_INLINE_MDLS_SIZE_TIMEOUT_SEC" mdls -name kMDItemLogicalSize -raw "$app_path" 2> /dev/null || echo "")
     if [[ "$logical_size" =~ ^[0-9]+$ && "$logical_size" -gt 0 ]]; then
         echo $(((logical_size + 1023) / 1024))
+        return 0
+    fi
+
+    echo "0"
+}
+
+# du can underreport APFS-cloned bundles relative to Finder, so this only
+# stands in until the deferred refresh recomputes the logical size.
+uninstall_inline_du_size_kb() {
+    local app_path="$1"
+    [[ -n "$app_path" && -d "$app_path" ]] || {
+        echo "0"
+        return 0
+    }
+
+    local du_size_kb
+    du_size_kb=$(run_with_timeout "$PEAR_UNINSTALL_INLINE_DU_SIZE_TIMEOUT_SEC" du -sk "$app_path" 2> /dev/null | awk '{print $1; exit}') || du_size_kb=""
+    if [[ "$du_size_kb" =~ ^[0-9]+$ && "$du_size_kb" -gt 0 ]]; then
+        echo "$du_size_kb"
         return 0
     fi
 
@@ -628,6 +652,15 @@ _scan_partition_cache() {
 _scan_resolve_uncached() {
     local app_count=0
     local total_apps=${#app_data_tuples[@]}
+    # Cold rows are usually the handful of newly installed or updated apps;
+    # give those a bounded du when the quick mdls probe misses so the size
+    # shows on first paint. A fully cold cache (first run) exceeds the cap
+    # and keeps the fast path; the deferred refresh still fills the cache.
+    local inline_du_fallback=0
+    if [[ "$PEAR_UNINSTALL_INLINE_DU_MAX_COLD_ROWS" =~ ^[0-9]+$ ]] &&
+        ((total_apps > 0 && total_apps <= PEAR_UNINSTALL_INLINE_DU_MAX_COLD_ROWS)); then
+        inline_du_fallback=1
+    fi
     local max_parallel
     max_parallel=$(get_optimal_parallel_jobs "io")
     if [[ $max_parallel -lt 8 ]]; then
@@ -658,6 +691,11 @@ _scan_resolve_uncached() {
         local quick_size_kb
         quick_size_kb=$(uninstall_quick_app_size_kb "$app_path")
         [[ "$quick_size_kb" =~ ^[0-9]+$ ]] || quick_size_kb=0
+
+        if [[ "$quick_size_kb" -eq 0 && "${inline_du_fallback:-0}" == "1" ]]; then
+            quick_size_kb=$(uninstall_inline_du_size_kb "$app_path")
+            [[ "$quick_size_kb" =~ ^[0-9]+$ ]] || quick_size_kb=0
+        fi
 
         echo "${app_path}|${display_name}|${bundle_id}|${app_mtime}|${quick_size_kb}" >> "$output_file"
     }
