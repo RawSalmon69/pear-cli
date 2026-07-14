@@ -38,6 +38,7 @@ final class OCRService {
 
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(trimmed, forType: .string)
+        SoundEffects.play(.done)
 
         let preview = trimmed.count > 90 ? String(trimmed.prefix(90)) + "…" : trimmed
         notify(title: "Copied text 📋", body: preview)
