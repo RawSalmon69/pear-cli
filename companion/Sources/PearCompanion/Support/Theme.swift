@@ -57,6 +57,7 @@ struct GlyphButton: View {
                 )
         }
         .buttonStyle(.plain)
+        .focusable(false)
         .help(help)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.15), value: hovering)

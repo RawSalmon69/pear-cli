@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Carbon.HIToolbox
 
 extension Notification.Name {
     /// Posted by the AppDelegate when APNs wakes us; the environment refreshes.
@@ -17,6 +18,7 @@ final class AppEnvironment: ObservableObject {
     let screenshot: ScreenshotService
     let ocr: OCRService
     let clipboard: ClipboardHistoryService
+    private let clipboardWindow = ClipboardWindowController()
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -30,6 +32,11 @@ final class AppEnvironment: ObservableObject {
         self.screenshot.registerHotKey()
         self.ocr.registerHotKey()
         self.clipboard.start()
+        HotKeyManager.shared.register(keyCode: kVK_ANSI_C, modifiers: controlKey | shiftKey) {
+            [weak self] in
+            guard let self else { return }
+            self.clipboardWindow.toggle(env: self)
+        }
         self.screenshot.onMarkupRequest = { image, done in
             MarkupWindow.present(image: image, onComplete: done)
         }

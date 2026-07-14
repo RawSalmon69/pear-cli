@@ -53,15 +53,18 @@ final class ScreenshotService {
 
         guard let data = try? Data(contentsOf: tempURL) else { return }
 
+        SoundEffects.play(.capture)
         copyToPasteboard(data)
 
-        // Save into the screenshot folder; if that fails we still have the
-        // temp file, so the preview (and send) keep working.
+        // Save into the screenshot folder when auto-save is on; either way the
+        // temp file backs the preview and send.
         var savedURL = tempURL
-        do {
-            savedURL = try persist(data)
-        } catch {
-            logger.error("screenshot save failed: \(error.localizedDescription, privacy: .public)")
+        if Prefs.screenshotAutoSave {
+            do {
+                savedURL = try persist(data)
+            } catch {
+                logger.error("screenshot save failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
 
         present(data: data, at: savedURL)
@@ -75,10 +78,14 @@ final class ScreenshotService {
         preview.show(
             imageData: data,
             canMarkup: onMarkupRequest != nil,
-            onCopy: { [weak self] in self?.copyToPasteboard(data) },
+            onCopy: { [weak self] in
+                self?.copyToPasteboard(data)
+                SoundEffects.play(.copy)
+            },
             onReveal: { NSWorkspace.shared.activateFileViewerSelecting([fileURL]) },
             onMarkup: { [weak self] in self?.markup(data: data, at: fileURL) },
             onSend: {
+                SoundEffects.play(.send)
                 Task { @MainActor in
                     do {
                         try await messaging.send(fileAt: fileURL, kind: .image)

@@ -29,10 +29,18 @@ struct ClipboardHistoryView: View {
                 ScrollView {
                     VStack(spacing: 4) {
                         ForEach(env.clipboard.items) { item in
-                            ClipRow(item: item, copied: copiedID == item.id) {
-                                env.clipboard.copy(item)
-                                withAnimation { copiedID = item.id }
-                            }
+                            ClipRow(
+                                item: item,
+                                copied: copiedID == item.id,
+                                onCopy: {
+                                    env.clipboard.copy(item)
+                                    withAnimation { copiedID = item.id }
+                                },
+                                onDiscard: {
+                                    SoundEffects.play(.discard)
+                                    withAnimation { env.clipboard.remove(item) }
+                                }
+                            )
                         }
                     }
                 }
@@ -47,41 +55,82 @@ struct ClipboardHistoryView: View {
 private struct ClipRow: View {
     let item: ClipItem
     let copied: Bool
-    let action: () -> Void
+    let onCopy: () -> Void
+    let onDiscard: () -> Void
+
     @State private var hovering = false
+    @State private var dragX: CGFloat = 0
+
+    private let discardThreshold: CGFloat = 80
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                if let data = item.imageData, let image = NSImage(data: data) {
-                    Image(nsImage: image)
-                        .resizable().scaledToFill()
-                        .frame(width: 30, height: 30)
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
-                    Text("Image").font(Theme.body).foregroundStyle(.secondary)
-                } else {
-                    Image(systemName: "text.alignleft")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 30)
-                    Text(item.text ?? "")
-                        .font(Theme.body)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: copied ? "checkmark" : "arrow.up.doc.on.clipboard")
-                    .font(.system(size: 10))
-                    .foregroundStyle(copied ? Theme.accent : (hovering ? .secondary : .clear))
+        ZStack(alignment: .trailing) {
+            // Revealed as the row slides right: a discard hint.
+            HStack {
+                Spacer()
+                Image(systemName: "trash")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.warn)
+                    .padding(.trailing, 12)
+                    .opacity(min(dragX / discardThreshold, 1))
             }
-            .padding(8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(hovering ? Theme.accentSoft : .clear)
+
+            Button(action: onCopy) {
+                HStack(spacing: 8) {
+                    if let data = item.imageData, let image = NSImage(data: data) {
+                        Image(nsImage: image)
+                            .resizable().scaledToFill()
+                            .frame(width: 30, height: 30)
+                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                        Text("Image").font(Theme.body).foregroundStyle(.secondary)
+                    } else {
+                        Image(systemName: "text.alignleft")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 30)
+                        Text(item.text ?? "")
+                            .font(Theme.body)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                    }
+                    Spacer(minLength: 0)
+                    if copied {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10)).foregroundStyle(Theme.accent)
+                    } else if hovering {
+                        Button {
+                            onDiscard()
+                        } label: {
+                            Image(systemName: "xmark").font(.system(size: 9))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(hovering ? Theme.accentSoft : .clear)
+                )
+            }
+            .buttonStyle(.plain)
+            .offset(x: dragX)
+            .gesture(
+                DragGesture(minimumDistance: 12)
+                    .onChanged { value in
+                        dragX = max(0, value.translation.width)
+                    }
+                    .onEnded { value in
+                        if value.translation.width > discardThreshold {
+                            withAnimation(.easeOut(duration: 0.18)) { dragX = 400 }
+                            onDiscard()
+                        } else {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { dragX = 0 }
+                        }
+                    }
             )
         }
-        .buttonStyle(.plain)
         .onHover { hovering = $0 }
     }
 }

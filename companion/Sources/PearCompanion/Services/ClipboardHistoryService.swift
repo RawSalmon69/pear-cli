@@ -49,6 +49,12 @@ final class ClipboardHistoryService: ObservableObject {
         }
         selfCopyGuard = true
         lastChangeCount = pasteboard.changeCount
+        SoundEffects.play(.copy)
+    }
+
+    func remove(_ item: ClipItem) {
+        items.removeAll { $0.id == item.id }
+        persistText()
     }
 
     func clear() {

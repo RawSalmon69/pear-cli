@@ -8,19 +8,17 @@ struct PanelView: View {
     @EnvironmentObject private var env: AppEnvironment
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.sectionGap) {
-                HeaderSection()
-                ConnectionBanner()
-                NotesSection()
-                ToolsSection()
-                StatsSection()
-                BottomBar()
-            }
-            .padding(16)
+        VStack(alignment: .leading, spacing: Theme.sectionGap) {
+            HeaderSection()
+            ConnectionBanner()
+            NotesSection()
+            ToolsSection()
+            StatsSection()
+            BottomBar()
         }
+        .padding(16)
         .frame(width: 360)
-        .frame(maxHeight: 640)
+        .fixedSize(horizontal: false, vertical: true)
         .task {
             await env.messaging.refresh()
             await env.stats.refresh()
@@ -309,13 +307,13 @@ struct ToolsSection: View {
                 ToolTile(symbol: "text.viewfinder", label: "Grab Text", hint: "⌃⇧O") {
                     Task { await env.ocr.grab() }
                 }
-                ToolTile(symbol: "doc.on.clipboard", label: "Clipboard", hint: nil) {
+                ToolTile(symbol: "doc.on.clipboard", label: "Clipboard", hint: "⌃⇧C") {
                     showClipboard = true
                 }
                 .popover(isPresented: $showClipboard, arrowEdge: .bottom) {
                     ClipboardHistoryView()
                 }
-                ToolTile(symbol: "chart.pie", label: "Disk", hint: nil) {
+                ToolTile(symbol: "chart.pie", label: "Disk", hint: " ") {
                     showDisk = true
                 }
                 .popover(isPresented: $showDisk, arrowEdge: .bottom) {
@@ -338,20 +336,25 @@ struct ToolTile: View {
             VStack(spacing: 4) {
                 Image(systemName: symbol).font(.system(size: 16, weight: .medium))
                 Text(label).font(.system(size: 10, weight: .medium, design: .rounded))
-                if let hint {
-                    Text(hint).font(.system(size: 8, design: .rounded)).foregroundStyle(.quaternary)
-                }
+                // Always render the hint line (blank when none) so every tile
+                // is the same height whether or not it has a shortcut.
+                Text(hint ?? " ")
+                    .font(.system(size: 8, design: .rounded))
+                    .foregroundStyle(.quaternary)
             }
             .foregroundStyle(hovering ? Theme.accent : .primary)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
+            .frame(height: 58)
             .glassCard(cornerRadius: 12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(hovering ? Theme.accent.opacity(0.5) : .clear, lineWidth: 1)
-            )
+            .overlay {
+                if hovering {
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(Theme.accent.opacity(0.5), lineWidth: 1)
+                }
+            }
         }
         .buttonStyle(.plain)
+        .focusable(false)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
     }

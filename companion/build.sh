@@ -26,7 +26,8 @@ if [[ -n "$SPARKLE_FRAMEWORK" ]]; then
     install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/PearCompanion"
 fi
 
-sed "s/<string>0\.1\.0<\/string>/<string>${VERSION}<\/string>/" Resources/Info.plist > "$APP/Contents/Info.plist"
+cp Resources/Info.plist "$APP/Contents/Info.plist"
+plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP/Contents/Info.plist"
 
 # Embed the Developer ID provisioning profile that authorizes the CloudKit and
 # push entitlements. Without it a hardened, entitled build will not launch.

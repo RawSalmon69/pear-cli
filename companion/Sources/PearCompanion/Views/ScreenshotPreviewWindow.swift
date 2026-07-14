@@ -115,15 +115,22 @@ private struct ScreenshotPreviewView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Image(nsImage: image)
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: 252, maxHeight: 150)
+            // Fill a fixed rounded frame so the image meets the card's curve
+            // cleanly with no square corners or letterbox gaps.
+            RoundedRectangle(cornerRadius: 10)
+                .fill(.black.opacity(0.15))
+                .frame(width: 252, height: 150)
+                .overlay {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 252, height: 150)
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(
+                .overlay {
                     RoundedRectangle(cornerRadius: 10)
                         .strokeBorder(.white.opacity(0.12), lineWidth: 1)
-                )
+                }
                 .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
 
             HStack(spacing: 6) {
@@ -200,6 +207,7 @@ private struct PreviewAction: View {
             )
         }
         .buttonStyle(.plain)
+        .focusable(false)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
     }
