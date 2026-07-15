@@ -1,16 +1,68 @@
 import SwiftUI
 import AppKit
 
-/// Native disk-usage visualization backed by `pear analyze --json`. Opens on
-/// the storage overview and drills into directories one level at a time, with a
-/// Back path stack. Self-contained: owns its service and fits a ~340 pt panel
-/// or a small window.
+/// Disk tool popover: a three-mode explorer.
+///
+/// Sunburst and treemap are drawn from a native, off-main disk scan
+/// (`Tools/Disk`, engine vendored from Radix); bars keeps the existing
+/// `pear analyze` overview + one-level drill. The chart scan runs lazily, only
+/// when a chart mode is on screen. Fits a ~380 pt menu-bar panel.
 struct DiskAnalyzeView: View {
+    // Defaults to bars so the popover paints instantly with the fast
+    // `pear analyze` overview; the native home-folder scan behind sunburst and
+    // treemap runs only when the user selects one of those modes.
+    @State private var mode: DiskViewMode = .bars
+
+    init() {}
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            Picker("View", selection: $mode) {
+                ForEach(DiskViewMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            switch mode {
+            case .bars:
+                DiskBarsView()
+            case .sunburst, .treemap:
+                DiskChartView(style: mode == .treemap ? .treemap : .sunburst)
+            }
+        }
+        .padding(16)
+        .frame(width: 380)
+    }
+}
+
+/// The three view modes offered by the Disk tool.
+enum DiskViewMode: String, CaseIterable, Identifiable {
+    case sunburst
+    case treemap
+    case bars
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .sunburst: return "Sunburst"
+        case .treemap: return "Treemap"
+        case .bars: return "Bars"
+        }
+    }
+}
+
+// MARK: - Bars mode
+
+/// Disk usage as a proportional bar list, backed by `pear analyze --json`.
+/// Opens on the storage overview and drills into directories one level at a
+/// time, with a Back path stack.
+private struct DiskBarsView: View {
     @State private var service = DiskAnalyzeService()
     /// Directories drilled into, deepest last. Empty == the overview.
     @State private var pathStack: [String] = []
-
-    init() {}
 
     private var maxEntrySize: Int64 {
         service.entries.map(\.size).max() ?? 1
@@ -21,8 +73,6 @@ struct DiskAnalyzeView: View {
             header
             content
         }
-        .padding(16)
-        .frame(width: 340)
         .task {
             if service.entries.isEmpty && service.errorMessage == nil {
                 await service.scan(path: nil)
