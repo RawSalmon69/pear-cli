@@ -4,6 +4,7 @@ import AppKit
 /// One small surface for the two things the app needs configured:
 /// the couple key (once, on both Macs) and the screenshot folder.
 struct SettingsPopover: View {
+    @Environment(AppEnvironment.self) private var env
     @State private var keyField = ""
     @State private var role = CoupleKey.deviceRole
     @State private var keyStatus: String?
@@ -43,6 +44,19 @@ struct SettingsPopover: View {
             }
 
             VStack(alignment: .leading, spacing: Theme.itemGap) {
+                SectionLabel(text: "Tools")
+                Text("Disabled tools never load. Takes effect after relaunch.")
+                    .font(Theme.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(env.tools.known, id: \.id) { tool in
+                    Toggle(tool.title, isOn: toolBinding(tool.id))
+                        .font(Theme.body)
+                        .toggleStyle(.switch)
+                        .tint(Theme.accent)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: Theme.itemGap) {
                 SectionLabel(text: "Feedback")
                 Toggle("Sound effects", isOn: $soundsEnabled)
                     .font(Theme.body)
@@ -52,6 +66,13 @@ struct SettingsPopover: View {
         }
         .padding(16)
         .frame(width: 300)
+    }
+
+    private func toolBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { Prefs.isToolEnabled(id) },
+            set: { Prefs.setToolEnabled(id, $0) }
+        )
     }
 
     private var coupleKeySection: some View {

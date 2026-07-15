@@ -42,13 +42,29 @@ extension Tool {
 }
 
 /// Launch-time list of tools. Registers hotkeys and starts always-on
-/// engines; adding a tool to the app is one `register` call.
+/// engines; adding a tool to the app is one `offer` call.
 @MainActor
 final class ToolRegistry {
+    struct KnownTool {
+        let id: String
+        let title: String
+    }
+
+    /// Enabled tools, in panel order.
     private(set) var all: [any Tool] = []
+    /// Every offered tool, enabled or not — drives the settings toggles.
+    private(set) var known: [KnownTool] = []
     private var hotkeyTokens: [String: HotKeyManager.Token] = [:]
 
-    func register(_ tool: any Tool) {
+    /// Catalogs the tool and registers it unless the user disabled it —
+    /// a disabled tool's hotkeys and engines never load.
+    func offer(_ tool: any Tool) {
+        known.append(KnownTool(id: tool.id, title: tool.title))
+        guard Prefs.isToolEnabled(tool.id) else { return }
+        register(tool)
+    }
+
+    private func register(_ tool: any Tool) {
         all.append(tool)
         if let chord = tool.hotkey {
             hotkeyTokens[tool.id] = HotKeyManager.shared.register(

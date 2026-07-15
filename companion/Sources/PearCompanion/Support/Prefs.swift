@@ -13,4 +13,18 @@ enum Prefs {
     static var screenshotAutoSave: Bool {
         UserDefaults.standard.object(forKey: autoSaveKey) as? Bool ?? true
     }
+
+    // MARK: - Per-tool toggles
+
+    /// Disabled tools are never registered, so their hotkeys and engines
+    /// never load. Default on; takes effect at next launch.
+    static func toolDisabledKey(_ id: String) -> String { "toolDisabled.\(id)" }
+
+    static func isToolEnabled(_ id: String) -> Bool {
+        !UserDefaults.standard.bool(forKey: toolDisabledKey(id))
+    }
+
+    static func setToolEnabled(_ id: String, _ enabled: Bool) {
+        UserDefaults.standard.set(!enabled, forKey: toolDisabledKey(id))
+    }
 }

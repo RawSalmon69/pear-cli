@@ -27,15 +27,15 @@ final class AppEnvironment {
 
         // Adding a tool to the app is one registration here.
         let tools = ToolRegistry()
-        tools.register(ScreenshotTool(messaging: messaging))
-        tools.register(OCRTool())
-        tools.register(ClipboardTool())
-        tools.register(DiskTool())
-        tools.register(ShelfTool())
-        tools.register(ScratchpadTool())
-        tools.register(ColorPickerTool())
-        tools.register(MonitorTool())
-        tools.register(WindowsTool())
+        tools.offer(ScreenshotTool(messaging: messaging))
+        tools.offer(OCRTool())
+        tools.offer(ClipboardTool())
+        tools.offer(DiskTool())
+        tools.offer(ShelfTool())
+        tools.offer(ScratchpadTool())
+        tools.offer(ColorPickerTool())
+        tools.offer(MonitorTool())
+        tools.offer(WindowsTool())
         self.tools = tools
 
         if FeatureFlags.coupleNote {
