@@ -1,6 +1,5 @@
 import Foundation
 import AppKit
-import Carbon.HIToolbox
 import os
 
 /// Pure filename/folder policy for screenshots, factored out of the service
@@ -144,15 +143,6 @@ final class ScreenshotService {
                 }
                 continuation.resume(returning: FileManager.default.fileExists(atPath: url.path))
             }
-        }
-    }
-
-    // MARK: - Global hotkey (⌃⇧P)
-
-    func registerHotKey() {
-        HotKeyManager.shared.register(keyCode: kVK_ANSI_P, modifiers: controlKey | shiftKey) {
-            [weak self] in
-            Task { @MainActor in await self?.capture() }
         }
     }
 }

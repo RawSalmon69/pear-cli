@@ -1,5 +1,4 @@
 import AppKit
-import Carbon.HIToolbox
 import UserNotifications
 import Vision
 import os
@@ -10,13 +9,6 @@ import os
 @MainActor
 final class OCRService {
     private let logger = Logger(subsystem: CoupleKey.service, category: "ocr")
-
-    func registerHotKey() {
-        HotKeyManager.shared.register(keyCode: kVK_ANSI_O, modifiers: controlKey | shiftKey) {
-            [weak self] in
-            Task { @MainActor in await self?.grab() }
-        }
-    }
 
     func grab() async {
         let tempURL = FileManager.default.temporaryDirectory

@@ -1,6 +1,5 @@
 import Foundation
 import Observation
-import Carbon.HIToolbox
 
 extension Notification.Name {
     /// Posted by the AppDelegate when APNs wakes us; the environment refreshes.
@@ -17,29 +16,20 @@ final class AppEnvironment {
     let messaging: MessagingService
     let stats: PearStatsService
     let updater: UpdaterService?
-    let screenshot: ScreenshotService
-    let ocr: OCRService
-    let clipboard: ClipboardHistoryService
-    @ObservationIgnored private let clipboardWindow = ClipboardWindowController()
+    let tools: ToolRegistry
 
     init(messaging: MessagingService, stats: PearStatsService, updater: UpdaterService?) {
         self.messaging = messaging
         self.stats = stats
         self.updater = updater
-        self.screenshot = ScreenshotService(messaging: messaging)
-        self.ocr = OCRService()
-        self.clipboard = ClipboardHistoryService()
-        self.screenshot.registerHotKey()
-        self.ocr.registerHotKey()
-        self.clipboard.start()
-        HotKeyManager.shared.register(keyCode: kVK_ANSI_C, modifiers: controlKey | shiftKey) {
-            [weak self] in
-            guard let self else { return }
-            self.clipboardWindow.toggle(env: self)
-        }
-        self.screenshot.onMarkupRequest = { image, done in
-            MarkupWindow.present(image: image, onComplete: done)
-        }
+
+        // Adding a tool to the app is one registration here.
+        let tools = ToolRegistry()
+        tools.register(ScreenshotTool(messaging: messaging))
+        tools.register(OCRTool())
+        tools.register(ClipboardTool())
+        tools.register(DiskTool())
+        self.tools = tools
 
         NotificationCenter.default
             .addObserver(forName: .pearRemoteNotification, object: nil, queue: .main) { [weak self] _ in

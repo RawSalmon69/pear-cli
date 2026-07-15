@@ -7,17 +7,16 @@ import AppKit
 final class ClipboardWindowController {
     private var panel: NSPanel?
 
-    func toggle(env: AppEnvironment) {
+    func toggle(clipboard: ClipboardHistoryService) {
         if panel != nil {
             hide()
         } else {
-            show(env: env)
+            show(clipboard: clipboard)
         }
     }
 
-    private func show(env: AppEnvironment) {
-        let view = ClipboardHistoryView()
-            .environment(env)
+    private func show(clipboard: ClipboardHistoryService) {
+        let view = ClipboardHistoryView(clipboard: clipboard)
             .frame(width: 300)
 
         let panel = KeyablePanel(

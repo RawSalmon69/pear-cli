@@ -290,36 +290,40 @@ struct Composer: View {
     }
 }
 
-// MARK: - Tools (screenshot, OCR, clipboard, disk)
+// MARK: - Tools
 
+/// Data-driven from the tool registry: one tile per registered tool.
 struct ToolsSection: View {
     @Environment(AppEnvironment.self) private var env
-    @State private var showClipboard = false
-    @State private var showDisk = false
+    @State private var activePopoverID: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             SectionLabel(text: "Tools")
             HStack(spacing: Theme.itemGap) {
-                ToolTile(symbol: "camera.viewfinder", label: "Screenshot", hint: "⌃⇧P") {
-                    Task { await env.screenshot.capture() }
-                }
-                ToolTile(symbol: "text.viewfinder", label: "Grab Text", hint: "⌃⇧O") {
-                    Task { await env.ocr.grab() }
-                }
-                ToolTile(symbol: "doc.on.clipboard", label: "Clipboard", hint: "⌃⇧C") {
-                    showClipboard = true
-                }
-                .popover(isPresented: $showClipboard, arrowEdge: .bottom) {
-                    ClipboardHistoryView()
-                }
-                ToolTile(symbol: "chart.pie", label: "Disk", hint: " ") {
-                    showDisk = true
-                }
-                .popover(isPresented: $showDisk, arrowEdge: .bottom) {
-                    DiskAnalyzeView()
+                ForEach(env.tools.all, id: \.id) { tool in
+                    tile(for: tool)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func tile(for tool: any Tool) -> some View {
+        switch tool.entry {
+        case .action(let run):
+            ToolTile(symbol: tool.icon, label: tool.title, hint: tool.hotkey?.label, action: run)
+        case .popover(let content):
+            ToolTile(symbol: tool.icon, label: tool.title, hint: tool.hotkey?.label) {
+                activePopoverID = tool.id
+            }
+            .popover(
+                isPresented: Binding(
+                    get: { activePopoverID == tool.id },
+                    set: { if !$0 { activePopoverID = nil } }
+                ),
+                arrowEdge: .bottom
+            ) { content() }
         }
     }
 }

@@ -4,7 +4,7 @@ import AppKit
 /// Popover list of recent clipboard entries; click one to put it back on the
 /// clipboard. Text and image clips, newest first.
 struct ClipboardHistoryView: View {
-    @Environment(AppEnvironment.self) private var env
+    let clipboard: ClipboardHistoryService
     @State private var copiedID: UUID?
 
     var body: some View {
@@ -12,15 +12,15 @@ struct ClipboardHistoryView: View {
             HStack {
                 SectionLabel(text: "Clipboard")
                 Spacer()
-                if !env.clipboard.items.isEmpty {
-                    Button("Clear") { env.clipboard.clear() }
+                if !clipboard.items.isEmpty {
+                    Button("Clear") { clipboard.clear() }
                         .buttonStyle(.plain)
                         .font(Theme.caption)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            if env.clipboard.items.isEmpty {
+            if clipboard.items.isEmpty {
                 Text("Nothing copied yet. Anything you copy shows up here.")
                     .font(Theme.body)
                     .foregroundStyle(.secondary)
@@ -28,17 +28,17 @@ struct ClipboardHistoryView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 4) {
-                        ForEach(env.clipboard.items) { item in
+                        ForEach(clipboard.items) { item in
                             ClipRow(
                                 item: item,
                                 copied: copiedID == item.id,
                                 onCopy: {
-                                    env.clipboard.copy(item)
+                                    clipboard.copy(item)
                                     withAnimation { copiedID = item.id }
                                 },
                                 onDiscard: {
                                     SoundEffects.play(.discard)
-                                    withAnimation { env.clipboard.remove(item) }
+                                    withAnimation { clipboard.remove(item) }
                                 }
                             )
                         }
