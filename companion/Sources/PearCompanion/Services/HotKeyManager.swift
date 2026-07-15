@@ -6,17 +6,24 @@ import Carbon.HIToolbox
 /// double-fire. Register closures; they run on the main actor.
 @MainActor
 final class HotKeyManager {
+    /// Opaque handle returned by `register`; pass to `unregister` to release
+    /// both the Carbon hotkey and the stored action.
+    struct Token {
+        fileprivate let id: UInt32
+    }
+
     static let shared = HotKeyManager()
 
     private var actions: [UInt32: () -> Void] = [:]
-    private var refs: [EventHotKeyRef] = []
+    private var refs: [UInt32: EventHotKeyRef] = [:]
     private var handler: EventHandlerRef?
     private var nextID: UInt32 = 1
 
     private init() {}
 
     /// `keyCode` is a kVK_* value; `modifiers` an OR of controlKey/shiftKey/etc.
-    func register(keyCode: Int, modifiers: Int, action: @escaping () -> Void) {
+    @discardableResult
+    func register(keyCode: Int, modifiers: Int, action: @escaping () -> Void) -> Token {
         installHandlerIfNeeded()
 
         let id = nextID
@@ -32,7 +39,15 @@ final class HotKeyManager {
             0,
             &ref
         )
-        if let ref { refs.append(ref) }
+        if let ref { refs[id] = ref }
+        return Token(id: id)
+    }
+
+    func unregister(_ token: Token) {
+        if let ref = refs.removeValue(forKey: token.id) {
+            UnregisterEventHotKey(ref)
+        }
+        actions[token.id] = nil
     }
 
     fileprivate func fire(id: UInt32) {
