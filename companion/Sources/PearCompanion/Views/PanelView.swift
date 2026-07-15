@@ -305,7 +305,9 @@ struct ToolsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             SectionLabel(text: "Tools")
-            HStack(spacing: Theme.itemGap) {
+            // Four tiles per row; extra tools wrap instead of squeezing.
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.itemGap), count: 4),
+                      spacing: Theme.itemGap) {
                 ForEach(env.tools.all, id: \.id) { tool in
                     tile(for: tool)
                 }
