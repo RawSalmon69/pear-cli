@@ -111,6 +111,10 @@ struct MarkupEditorView: View {
     @State private var dragStart: CGPoint?
     @State private var dragCurrent: CGPoint?
 
+    /// In-progress freehand stroke, in image coordinates (built up as the
+    /// drag moves rather than derived from start/end like the other tools).
+    @State private var freehandPoints: [CGPoint] = []
+
     /// Inline text entry. Origin and font size are stored in image space so
     /// they survive window resizes; the visible field is derived from the
     /// current scale.
@@ -261,9 +265,15 @@ struct MarkupEditorView: View {
                 guard tool != .text else { return }
                 dragStart = value.startLocation
                 dragCurrent = value.location
+                if tool == .freehand {
+                    if freehandPoints.isEmpty {
+                        freehandPoints.append(imagePoint(value.startLocation, scale: scale))
+                    }
+                    freehandPoints.append(imagePoint(value.location, scale: scale))
+                }
             }
             .onEnded { value in
-                defer { dragStart = nil; dragCurrent = nil }
+                defer { dragStart = nil; dragCurrent = nil; freehandPoints = [] }
                 let start = imagePoint(value.startLocation, scale: scale)
                 let end = imagePoint(value.location, scale: scale)
                 let moved = hypot(value.translation.width, value.translation.height)
@@ -273,13 +283,28 @@ struct MarkupEditorView: View {
                     return
                 }
 
+                if tool == .freehand {
+                    guard freehandPoints.count > 2 else { return } // ignore stray clicks
+                    let width = strokeWidth.imageWidth(scale: scale)
+                    annotations.append(
+                        Annotation(kind: .freehand(points: freehandPoints, color: color, width: width))
+                    )
+                    return
+                }
+
                 guard moved > 3 else { return } // ignore stray clicks
                 addShape(from: start, to: end, scale: scale)
             }
     }
 
     private func previewAnnotation(scale: CGFloat) -> Annotation? {
-        guard tool != .text, let dragStart, let dragCurrent else { return nil }
+        guard tool != .text else { return nil }
+        if tool == .freehand {
+            guard freehandPoints.count > 2 else { return nil }
+            let width = strokeWidth.imageWidth(scale: scale)
+            return Annotation(kind: .freehand(points: freehandPoints, color: color, width: width))
+        }
+        guard let dragStart, let dragCurrent else { return nil }
         let start = imagePoint(dragStart, scale: scale)
         let end = imagePoint(dragCurrent, scale: scale)
         return shape(from: start, to: end, scale: scale)
@@ -296,7 +321,7 @@ struct MarkupEditorView: View {
             return Annotation(kind: .highlighter(start: start, end: end, color: color, width: width))
         case .blur:
             return Annotation(kind: .blur(rect: markupRect(start, end)))
-        case .text:
+        case .freehand, .text:
             return nil
         }
     }

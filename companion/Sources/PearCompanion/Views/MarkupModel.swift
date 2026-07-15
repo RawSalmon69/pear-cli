@@ -4,9 +4,9 @@ import CoreImage
 
 // MARK: - Tools
 
-/// The five markup tools. Exactly one is active at a time.
+/// The six markup tools. Exactly one is active at a time.
 enum MarkupTool: String, CaseIterable, Identifiable {
-    case arrow, rectangle, text, highlighter, blur
+    case arrow, rectangle, text, highlighter, freehand, blur
 
     var id: String { rawValue }
 
@@ -16,6 +16,7 @@ enum MarkupTool: String, CaseIterable, Identifiable {
         case .rectangle: return "rectangle"
         case .text: return "textformat"
         case .highlighter: return "highlighter"
+        case .freehand: return "pencil.line"
         case .blur: return "square.grid.3x3.fill"
         }
     }
@@ -26,6 +27,7 @@ enum MarkupTool: String, CaseIterable, Identifiable {
         case .rectangle: return "Rectangle"
         case .text: return "Text"
         case .highlighter: return "Highlighter"
+        case .freehand: return "Freehand"
         case .blur: return "Pixelate region"
         }
     }
@@ -83,6 +85,7 @@ struct Annotation: Identifiable {
         case rectangle(rect: CGRect, color: Color, width: CGFloat)
         case highlighter(start: CGPoint, end: CGPoint, color: Color, width: CGFloat)
         case text(origin: CGPoint, string: String, color: Color, fontSize: CGFloat)
+        case freehand(points: [CGPoint], color: Color, width: CGFloat)
         case blur(rect: CGRect)
     }
 }
@@ -204,6 +207,10 @@ struct MarkupCanvas: View {
             drawArrow(from: point(start, s), to: point(end, s),
                       color: color, lineWidth: width * s, in: context)
 
+        case let .freehand(points, color, width):
+            drawFreehand(points.map { point($0, s) }, color: color,
+                         lineWidth: width * s, in: context)
+
         case let .text(origin, string, color, fontSize):
             guard !string.isEmpty else { return }
             let text = Text(string)
@@ -234,6 +241,27 @@ struct MarkupCanvas: View {
         head.addLine(to: right)
         head.closeSubpath()
         context.fill(head, with: .color(color))
+    }
+
+    /// Smooths the raw drag points with a quad-curve through each midpoint,
+    /// so the stroke reads as a fluid line rather than jagged segments.
+    private func drawFreehand(_ points: [CGPoint], color: Color,
+                             lineWidth: CGFloat, in context: GraphicsContext) {
+        guard points.count > 1 else { return }
+        var path = Path()
+        path.move(to: points[0])
+        if points.count == 2 {
+            path.addLine(to: points[1])
+        } else {
+            for i in 1..<points.count - 1 {
+                let mid = CGPoint(x: (points[i].x + points[i + 1].x) / 2,
+                                  y: (points[i].y + points[i + 1].y) / 2)
+                path.addQuadCurve(to: mid, control: points[i])
+            }
+            path.addLine(to: points[points.count - 1])
+        }
+        context.stroke(path, with: .color(color),
+                       style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
     }
 
     private func point(_ p: CGPoint, _ s: CGFloat) -> CGPoint {
