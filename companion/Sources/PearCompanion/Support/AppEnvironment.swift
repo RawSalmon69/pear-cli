@@ -17,6 +17,8 @@ final class AppEnvironment {
     let stats: PearStatsService
     let updater: UpdaterService?
     let tools: ToolRegistry
+    /// Native clean/optimize progress panel (no Terminal window).
+    @ObservationIgnored let cleaner = CleanerWindowController()
 
     init(messaging: MessagingService, stats: PearStatsService, updater: UpdaterService?) {
         self.messaging = messaging

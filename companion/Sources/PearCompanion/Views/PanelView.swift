@@ -459,10 +459,10 @@ struct BottomBar: View {
 
     var body: some View {
         HStack(spacing: Theme.itemGap) {
-            Button { TerminalRunner.run("clean") } label: {
+            Button { env.cleaner.run(command: "clean") } label: {
                 Label("Clean", systemImage: "sparkles").font(Theme.body)
             }
-            Button { TerminalRunner.run("optimize") } label: {
+            Button { env.cleaner.run(command: "optimize") } label: {
                 Label("Optimize", systemImage: "wind").font(Theme.body)
             }
             Spacer()
