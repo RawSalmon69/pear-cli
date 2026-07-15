@@ -33,6 +33,7 @@ final class AppEnvironment {
         tools.register(DiskTool())
         tools.register(ShelfTool())
         tools.register(ScratchpadTool())
+        tools.register(ColorPickerTool())
         self.tools = tools
 
         if FeatureFlags.coupleNote {
