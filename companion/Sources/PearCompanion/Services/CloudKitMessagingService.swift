@@ -31,7 +31,7 @@ final class CloudKitMessagingService: MessagingService, ObservableObject {
     private let receiptRecordType = "Receipt"
     private let subscriptionID = "pear-message-created"
 
-    private var pollTimer: Timer?
+    private var pollTask: Task<Void, Never>?
     private var didLoadOnce = false
     private var didRequestNotificationAuth = false
     private var didAttemptSubscription = false
@@ -49,7 +49,7 @@ final class CloudKitMessagingService: MessagingService, ObservableObject {
     }
 
     deinit {
-        pollTimer?.invalidate()
+        pollTask?.cancel()
     }
 
     // MARK: - Sending
@@ -321,12 +321,14 @@ final class CloudKitMessagingService: MessagingService, ObservableObject {
     // MARK: - Polling
 
     private func startPolling() {
-        let timer = Timer(timeInterval: 300, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.refresh() }
+        // Task instead of Timer: Task<Void, Never> is Sendable, so the
+        // nonisolated deinit can cancel it under strict concurrency.
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.refresh()
+                try? await Task.sleep(for: .seconds(300))
+            }
         }
-        RunLoop.main.add(timer, forMode: .common)
-        pollTimer = timer
-        Task { await refresh() }
     }
 
     // MARK: - Temp files

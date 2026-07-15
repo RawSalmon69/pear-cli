@@ -1,9 +1,9 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
     name: "PearCompanion",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v14)],
     dependencies: [
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0")
     ],
@@ -12,11 +12,13 @@ let package = Package(
             name: "PearCompanion",
             dependencies: [
                 .product(name: "Sparkle", package: "Sparkle")
-            ]
+            ],
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
             name: "PearCompanionTests",
-            dependencies: ["PearCompanion"]
+            dependencies: ["PearCompanion"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]
 )

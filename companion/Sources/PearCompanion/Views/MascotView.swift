@@ -44,7 +44,7 @@ struct MascotView: View {
                 blinking = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { blinking = false }
             }
-            .onChange(of: mood == .excited) { excited in
+            .onChange(of: mood == .excited) { _, excited in
                 guard excited else { return }
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.45)) { bounce = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
