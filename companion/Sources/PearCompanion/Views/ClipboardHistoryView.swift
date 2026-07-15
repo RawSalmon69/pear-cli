@@ -6,6 +6,9 @@ import AppKit
 struct ClipboardHistoryView: View {
     let clipboard: ClipboardHistoryService
     @State private var copiedID: UUID?
+    @State private var query = ""
+
+    private var shown: [ClipItem] { clipboard.display(matching: query) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
@@ -17,7 +20,22 @@ struct ClipboardHistoryView: View {
                         .buttonStyle(.plain)
                         .font(Theme.caption)
                         .foregroundStyle(.secondary)
+                        .help("Clears history; pinned items stay")
                 }
+            }
+
+            if !clipboard.items.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                    TextField("Search…", text: $query)
+                        .textFieldStyle(.plain)
+                        .font(Theme.body)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(.quaternary.opacity(0.5)))
             }
 
             if clipboard.items.isEmpty {
@@ -25,16 +43,24 @@ struct ClipboardHistoryView: View {
                     .font(Theme.body)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 60)
+            } else if shown.isEmpty {
+                Text("No matches.")
+                    .font(Theme.body)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 40)
             } else {
                 ScrollView {
                     VStack(spacing: 4) {
-                        ForEach(clipboard.items) { item in
+                        ForEach(shown) { item in
                             ClipRow(
                                 item: item,
                                 copied: copiedID == item.id,
                                 onCopy: {
                                     clipboard.copy(item)
                                     withAnimation { copiedID = item.id }
+                                },
+                                onPin: {
+                                    withAnimation { clipboard.togglePin(item) }
                                 },
                                 onDiscard: {
                                     SoundEffects.play(.discard)
@@ -56,6 +82,7 @@ private struct ClipRow: View {
     let item: ClipItem
     let copied: Bool
     let onCopy: () -> Void
+    let onPin: () -> Void
     let onDiscard: () -> Void
 
     @State private var hovering = false
@@ -99,12 +126,25 @@ private struct ClipRow: View {
                             .font(.system(size: 10)).foregroundStyle(Theme.accent)
                     } else if hovering {
                         Button {
+                            onPin()
+                        } label: {
+                            Image(systemName: item.pinned ? "pin.slash" : "pin")
+                                .font(.system(size: 9))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help(item.pinned ? "Unpin" : "Pin")
+                        Button {
                             onDiscard()
                         } label: {
                             Image(systemName: "xmark").font(.system(size: 9))
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
+                    } else if item.pinned {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.tertiary)
                     }
                 }
                 .padding(8)
