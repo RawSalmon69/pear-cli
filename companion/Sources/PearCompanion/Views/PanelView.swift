@@ -5,7 +5,7 @@ import AppKit
 /// 8 pt within) and one dominant element: the latest note from the other
 /// side, shown as the hero card. Everything else supports it.
 struct PanelView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.sectionGap) {
@@ -39,10 +39,10 @@ struct PanelView: View {
 // MARK: - Header
 
 struct HeaderSection: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
 
     private var mood: MascotMood {
-        if let fraction = env.diskUsedFraction, fraction > 0.9 { return .worried }
+        if let fraction = env.stats.diskUsedFraction, fraction > 0.9 { return .worried }
         if env.hasUnseenIncoming { return .excited }
         return .idle
     }
@@ -54,7 +54,7 @@ struct HeaderSection: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(greeting(role: CoupleKey.deviceRole))
                     .font(Theme.title)
-                if let health = env.healthMessage {
+                if let health = env.stats.healthMessage {
                     Text(health)
                         .font(Theme.caption)
                         .foregroundStyle(.secondary)
@@ -72,7 +72,7 @@ struct HeaderSection: View {
 
 /// Setup / offline states, designed rather than apologetic.
 struct ConnectionBanner: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @State private var showSettings = false
 
     var body: some View {
@@ -107,7 +107,7 @@ struct ConnectionBanner: View {
 // MARK: - Notes
 
 struct NotesSection: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @State private var draft = ""
 
     private var thread: [Message] {
@@ -257,7 +257,7 @@ struct MessageBody: View {
 }
 
 struct Composer: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @Binding var draft: String
     @FocusState private var focused: Bool
 
@@ -293,7 +293,7 @@ struct Composer: View {
 // MARK: - Tools (screenshot, OCR, clipboard, disk)
 
 struct ToolsSection: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @State private var showClipboard = false
     @State private var showDisk = false
 
@@ -363,7 +363,7 @@ struct ToolTile: View {
 // MARK: - Stats
 
 struct StatsSection: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     private let refreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -371,14 +371,14 @@ struct StatsSection: View {
             HStack {
                 SectionLabel(text: "Mac")
                 Spacer()
-                if let uptime = env.uptime {
+                if let uptime = env.stats.uptime {
                     Text("up \(uptime)")
                         .font(Theme.caption)
                         .foregroundStyle(.quaternary)
                 }
             }
 
-            if env.statsCLIMissing {
+            if env.stats.cliMissing {
                 HStack(spacing: 6) {
                     Image(systemName: "terminal").foregroundStyle(.tertiary)
                     Text("Install the pear CLI to see disk, memory, CPU, and battery")
@@ -389,7 +389,7 @@ struct StatsSection: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .glassCard()
             } else {
-                let tiles = env.stats.current()
+                let tiles = env.stats.items
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.itemGap), count: 4),
                           spacing: Theme.itemGap) {
                     ForEach(tiles, id: \.label) { StatTile(stat: $0) }
@@ -449,7 +449,7 @@ struct StatTile: View {
 // MARK: - Bottom bar
 
 struct BottomBar: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @State private var showSettings = false
 
     var body: some View {

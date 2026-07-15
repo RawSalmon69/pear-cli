@@ -17,7 +17,7 @@ final class ClipboardWindowController {
 
     private func show(env: AppEnvironment) {
         let view = ClipboardHistoryView()
-            .environmentObject(env)
+            .environment(env)
             .frame(width: 300)
 
         let panel = KeyablePanel(

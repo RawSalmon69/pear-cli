@@ -1,5 +1,5 @@
 import Foundation
-import Combine
+import Observation
 import Carbon.HIToolbox
 
 extension Notification.Name {
@@ -8,21 +8,21 @@ extension Notification.Name {
 }
 
 /// Dependency container. `live()` picks the CloudKit backend when a couple key
-/// exists and the mock (surfacing `.needsSetup`) otherwise. The messaging
-/// protocol stays the only swap-in seam.
+/// exists and the mock (surfacing `.needsSetup`) otherwise. Services are
+/// `@Observable`; views read the specific service they use, so a clipboard
+/// tick re-renders only clipboard views, never the whole panel.
 @MainActor
-final class AppEnvironment: ObservableObject {
+@Observable
+final class AppEnvironment {
     let messaging: MessagingService
-    let stats: StatsService
+    let stats: PearStatsService
     let updater: UpdaterService?
     let screenshot: ScreenshotService
     let ocr: OCRService
     let clipboard: ClipboardHistoryService
-    private let clipboardWindow = ClipboardWindowController()
+    @ObservationIgnored private let clipboardWindow = ClipboardWindowController()
 
-    private var cancellables = Set<AnyCancellable>()
-
-    init(messaging: MessagingService, stats: StatsService, updater: UpdaterService?) {
+    init(messaging: MessagingService, stats: PearStatsService, updater: UpdaterService?) {
         self.messaging = messaging
         self.stats = stats
         self.updater = updater
@@ -41,45 +41,11 @@ final class AppEnvironment: ObservableObject {
             MarkupWindow.present(image: image, onComplete: done)
         }
 
-        clipboard.objectWillChange
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &cancellables)
-
-        // Re-publish the messaging service's changes so views observing the
-        // environment update. The main-queue hop lets the service's own value
-        // settle first (objectWillChange fires before the change).
-        messaging.changes
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &cancellables)
-
-        if let observableStats = stats as? PearStatsService {
-            observableStats.objectWillChange
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] in self?.objectWillChange.send() }
-                .store(in: &cancellables)
-        }
-
         NotificationCenter.default
             .addObserver(forName: .pearRemoteNotification, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in await self?.messaging.refresh() }
             }
     }
-
-    // Panel conveniences derived from the concrete services.
-
-    var diskUsedFraction: Double? {
-        (stats as? PearStatsService)?.diskUsedFraction
-    }
-
-    var statsCLIMissing: Bool {
-        (stats as? PearStatsService)?.cliMissing ?? false
-    }
-
-    var uptime: String? { (stats as? PearStatsService)?.uptime }
-    var healthScore: Int? { (stats as? PearStatsService)?.healthScore }
-    var healthMessage: String? { (stats as? PearStatsService)?.healthMessage }
 
     var hasUnseenIncoming: Bool {
         messaging.messages.contains {

@@ -4,7 +4,7 @@ import AppKit
 /// Popover list of recent clipboard entries; click one to put it back on the
 /// clipboard. Text and image clips, newest first.
 struct ClipboardHistoryView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @State private var copiedID: UUID?
 
     var body: some View {

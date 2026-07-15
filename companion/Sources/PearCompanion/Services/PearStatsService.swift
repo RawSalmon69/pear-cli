@@ -1,17 +1,27 @@
 import Foundation
+import Observation
+
+struct StatItem: Equatable, Sendable {
+    let label: String
+    let value: String
+    let symbol: String
+    /// 0...1 for ring gauges; nil when a ratio makes no sense.
+    let fraction: Double?
+}
 
 /// Real stats via `pear status --json`. Soft-fails to `cliMissing` so the
 /// panel can show a setup hint instead of empty tiles.
 @MainActor
-final class PearStatsService: StatsService, ObservableObject {
-    @Published private(set) var items: [StatItem] = []
-    @Published private(set) var cliMissing = false
+@Observable
+final class PearStatsService {
+    private(set) var items: [StatItem] = []
+    private(set) var cliMissing = false
     /// Root-disk used fraction; drives the mascot's worried mood.
-    @Published private(set) var diskUsedFraction: Double?
+    private(set) var diskUsedFraction: Double?
     /// Secondary glanceable line: uptime + overall health.
-    @Published private(set) var uptime: String?
-    @Published private(set) var healthScore: Int?
-    @Published private(set) var healthMessage: String?
+    private(set) var uptime: String?
+    private(set) var healthScore: Int?
+    private(set) var healthMessage: String?
 
     private nonisolated static let candidates = [
         "/usr/local/bin/pear",
@@ -21,8 +31,6 @@ final class PearStatsService: StatsService, ObservableObject {
     nonisolated static func pearBinary() -> String? {
         candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
-
-    func current() -> [StatItem] { items }
 
     func refresh() async {
         guard let binary = Self.pearBinary() else {

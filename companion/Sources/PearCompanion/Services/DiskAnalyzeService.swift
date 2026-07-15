@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 // MARK: - Byte formatting
 
@@ -57,15 +58,16 @@ struct DiskFile: Identifiable, Equatable {
 /// the view stays declarative. Soft-fails (an error message) when the CLI is
 /// missing or the scan times out.
 @MainActor
-final class DiskAnalyzeService: ObservableObject {
-    @Published private(set) var entries: [DiskEntry] = []
-    @Published private(set) var largeFiles: [DiskFile] = []
-    @Published private(set) var totalSize: Int64 = 0
+@Observable
+final class DiskAnalyzeService {
+    private(set) var entries: [DiskEntry] = []
+    private(set) var largeFiles: [DiskFile] = []
+    private(set) var totalSize: Int64 = 0
     /// nil while showing the storage overview; a filesystem path once drilled in.
-    @Published private(set) var currentPath: String?
-    @Published private(set) var isOverview = true
-    @Published private(set) var isLoading = false
-    @Published private(set) var errorMessage: String?
+    private(set) var currentPath: String?
+    private(set) var isOverview = true
+    private(set) var isLoading = false
+    private(set) var errorMessage: String?
 
     /// Upper bound so a stuck scan can't hang the UI forever.
     private nonisolated static let timeoutSeconds: Double = 25

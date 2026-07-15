@@ -1,5 +1,5 @@
 import Foundation
-import Combine
+import Observation
 
 /// What the panel shows about the pipe. `.needsSetup` means no couple key is
 /// installed yet; `.offline` carries a short human reason (no iCloud account,
@@ -14,14 +14,12 @@ enum ConnectionState: Equatable, Sendable {
 /// Transport for the couple's pipe. CloudKit is the live backend; the mock
 /// keeps UI work unblocked and covers the no-iCloud / no-key case.
 ///
-/// Concrete services are `ObservableObject`s; `changes` erases their
-/// `objectWillChange` so `AppEnvironment` can re-publish it across the
-/// existential seam.
+/// Concrete services are `@Observable`, so views reading `messages` or
+/// `connectionState` through this existential still get change tracking.
 @MainActor
 protocol MessagingService: AnyObject {
     var messages: [Message] { get }
     var connectionState: ConnectionState { get }
-    var changes: AnyPublisher<Void, Never> { get }
 
     func send(text: String) async throws
     func send(fileAt url: URL, kind: MessageKind) async throws
@@ -31,13 +29,10 @@ protocol MessagingService: AnyObject {
 }
 
 @MainActor
-final class MockMessagingService: MessagingService, ObservableObject {
-    @Published private(set) var messages: [Message] = []
-    @Published private(set) var connectionState: ConnectionState
-
-    var changes: AnyPublisher<Void, Never> {
-        objectWillChange.map { _ in () }.eraseToAnyPublisher()
-    }
+@Observable
+final class MockMessagingService: MessagingService {
+    private(set) var messages: [Message] = []
+    private(set) var connectionState: ConnectionState
 
     init(connectionState: ConnectionState = .online) {
         self.connectionState = connectionState

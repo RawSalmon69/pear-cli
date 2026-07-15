@@ -1,5 +1,5 @@
 import Foundation
-import Combine
+import Observation
 import CloudKit
 import CryptoKit
 import UserNotifications
@@ -13,30 +13,28 @@ import os
 /// logs, sets `connectionState`, and returns. A 5-minute foreground poll
 /// covers delivery whenever push is unavailable.
 @MainActor
-final class CloudKitMessagingService: MessagingService, ObservableObject {
-    @Published private(set) var messages: [Message] = []
-    @Published private(set) var connectionState: ConnectionState = .connecting
+@Observable
+final class CloudKitMessagingService: MessagingService {
+    private(set) var messages: [Message] = []
+    private(set) var connectionState: ConnectionState = .connecting
 
-    var changes: AnyPublisher<Void, Never> {
-        objectWillChange.map { _ in () }.eraseToAnyPublisher()
-    }
+    @ObservationIgnored private let database: CKDatabase
+    @ObservationIgnored private let container: CKContainer
+    @ObservationIgnored private let envelope: Envelope
+    @ObservationIgnored private let deviceRole: String
+    @ObservationIgnored private let logger = Logger(subsystem: CoupleKey.service, category: "cloudkit")
 
-    private let database: CKDatabase
-    private let container: CKContainer
-    private let envelope: Envelope
-    private let deviceRole: String
-    private let logger = Logger(subsystem: CoupleKey.service, category: "cloudkit")
+    @ObservationIgnored private let messageRecordType = "Message"
+    @ObservationIgnored private let receiptRecordType = "Receipt"
+    @ObservationIgnored private let subscriptionID = "pear-message-created"
 
-    private let messageRecordType = "Message"
-    private let receiptRecordType = "Receipt"
-    private let subscriptionID = "pear-message-created"
-
-    private var pollTask: Task<Void, Never>?
-    private var didLoadOnce = false
-    private var didRequestNotificationAuth = false
-    private var didAttemptSubscription = false
-    private var knownMessageIDs: Set<UUID> = []
-    private var receiptedIDs: Set<UUID> = []
+    // Stored (not macro-computed) so the nonisolated deinit may cancel it.
+    @ObservationIgnored private var pollTask: Task<Void, Never>?
+    @ObservationIgnored private var didLoadOnce = false
+    @ObservationIgnored private var didRequestNotificationAuth = false
+    @ObservationIgnored private var didAttemptSubscription = false
+    @ObservationIgnored private var knownMessageIDs: Set<UUID> = []
+    @ObservationIgnored private var receiptedIDs: Set<UUID> = []
 
     private static let shelfExpiry: TimeInterval = 30 * 24 * 60 * 60
 

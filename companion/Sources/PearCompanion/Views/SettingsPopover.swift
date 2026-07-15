@@ -4,8 +4,6 @@ import AppKit
 /// One small surface for the two things the app needs configured:
 /// the couple key (once, on both Macs) and the screenshot folder.
 struct SettingsPopover: View {
-    @EnvironmentObject private var env: AppEnvironment
-
     @State private var keyField = ""
     @State private var role = CoupleKey.deviceRole
     @State private var keyStatus: String?
@@ -56,7 +54,7 @@ struct SettingsPopover: View {
                     Text("Pear 🍐").tag("pear")
                 }
                 .pickerStyle(.segmented)
-                .onChange(of: role) { CoupleKey.store(role: $0) }
+                .onChange(of: role) { _, newRole in CoupleKey.store(role: newRole) }
             }
 
             VStack(alignment: .leading, spacing: Theme.itemGap) {

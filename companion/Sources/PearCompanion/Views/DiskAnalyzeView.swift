@@ -6,7 +6,7 @@ import AppKit
 /// Back path stack. Self-contained: owns its service and fits a ~340 pt panel
 /// or a small window.
 struct DiskAnalyzeView: View {
-    @StateObject private var service = DiskAnalyzeService()
+    @State private var service = DiskAnalyzeService()
     /// Directories drilled into, deepest last. Empty == the overview.
     @State private var pathStack: [String] = []
 

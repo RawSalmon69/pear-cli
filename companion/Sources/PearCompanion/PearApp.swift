@@ -5,12 +5,12 @@ import UserNotifications
 @main
 struct PearApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var environment = AppEnvironment.live()
+    @State private var environment = AppEnvironment.live()
 
     var body: some Scene {
         MenuBarExtra {
             PanelView()
-                .environmentObject(environment)
+                .environment(environment)
         } label: {
             Image(nsImage: MenuBarIcon.image(unread: environment.hasUnseenIncoming))
         }

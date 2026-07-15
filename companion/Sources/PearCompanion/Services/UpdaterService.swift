@@ -1,14 +1,16 @@
 import Foundation
+import Observation
 import Sparkle
 
 /// Thin wrapper over Sparkle. Feed URL comes from SUFeedURL in Info.plist.
 /// Enables silent scheduled checks so the app updates itself without the
 /// first-run permission prompt (awkward for a menu-bar-only app).
 @MainActor
-final class UpdaterService: ObservableObject {
-    private let controller: SPUStandardUpdaterController
+@Observable
+final class UpdaterService {
+    @ObservationIgnored private let controller: SPUStandardUpdaterController
 
-    @Published private(set) var canCheck = false
+    private(set) var canCheck = false
 
     init() {
         controller = SPUStandardUpdaterController(

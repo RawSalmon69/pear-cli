@@ -1,5 +1,5 @@
 import AppKit
-import Combine
+import Observation
 
 /// One remembered clipboard entry.
 struct ClipItem: Identifiable, Equatable {
@@ -15,16 +15,17 @@ struct ClipItem: Identifiable, Equatable {
 /// text/image copies so they can be re-used with a click. Text history
 /// persists across launches; images are kept in memory only.
 @MainActor
-final class ClipboardHistoryService: ObservableObject {
-    @Published private(set) var items: [ClipItem] = []
+@Observable
+final class ClipboardHistoryService {
+    private(set) var items: [ClipItem] = []
 
-    private let maxItems = 20
-    private let textDefaultsKey = "clipboardTextHistory"
-    private var lastChangeCount = NSPasteboard.general.changeCount
-    private var timer: Timer?
+    @ObservationIgnored private let maxItems = 20
+    @ObservationIgnored private let textDefaultsKey = "clipboardTextHistory"
+    @ObservationIgnored private var lastChangeCount = NSPasteboard.general.changeCount
+    @ObservationIgnored private var timer: Timer?
     /// Set when we write to the pasteboard ourselves, so re-copying an existing
     /// item doesn't churn the list.
-    private var selfCopyGuard = false
+    @ObservationIgnored private var selfCopyGuard = false
 
     init() {
         loadPersistedText()
