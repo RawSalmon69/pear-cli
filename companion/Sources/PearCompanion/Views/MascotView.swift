@@ -64,12 +64,11 @@ struct MascotView: View {
 }
 
 /// Time-of-day greeting for the header.
-func greeting(now: Date = Date(), role: String) -> String {
-    let name = role.lowercased() == "pear" ? "Pear 🍐" : "raws"
+func greeting(now: Date = Date()) -> String {
     switch Calendar.current.component(.hour, from: now) {
-    case 5..<12: return "Good morning, \(name)"
-    case 12..<17: return "Good afternoon, \(name)"
-    case 17..<22: return "Good evening, \(name)"
-    default: return "Up late, \(name)?"
+    case 5..<12: return "Good morning"
+    case 12..<17: return "Good afternoon"
+    case 17..<22: return "Good evening"
+    default: return "Up late?"
     }
 }

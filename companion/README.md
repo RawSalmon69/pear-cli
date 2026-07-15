@@ -1,8 +1,9 @@
 # Pear Companion
 
-Private two-person menu-bar app: love notes, screenshot-send, shared shelf,
-Mac health — end-to-end encrypted over CloudKit. See the design spec at
-`docs/superpowers/specs/2026-07-13-sync-distribution-companion-design.md`.
+All-in-one macOS productivity app in the menu bar: screenshots with markup,
+grab-text OCR, clipboard history, disk explorer, scratchpad, cleanup and Mac
+health — one lightweight app instead of a stack of utilities, built on the
+pear CLI. Distributed to friends & family; source stays shareable.
 
 ## Build
 

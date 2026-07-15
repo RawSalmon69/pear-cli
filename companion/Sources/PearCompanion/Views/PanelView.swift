@@ -56,7 +56,7 @@ struct HeaderSection: View {
             MascotView(mood: mood)
                 .frame(width: 54, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
-                Text(greeting(role: CoupleKey.deviceRole))
+                Text(greeting())
                     .font(Theme.title)
                 if let health = env.stats.healthMessage {
                     Text(health)
