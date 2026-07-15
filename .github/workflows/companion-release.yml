@@ -75,6 +75,18 @@ jobs:
           cd companion
           ./build.sh "${{ steps.version.outputs.version }}"
 
+      - name: Check bundle size budget
+        run: |
+          set -euo pipefail
+          APP="companion/build/PearCompanion.app"
+          SIZE_MB=$(( $(du -sk "$APP" | cut -f1) / 1024 ))
+          echo "Bundle size: ${SIZE_MB} MB"
+          # Lightweightness is the pitch; 15 MB is triple the current bundle.
+          if [ "$SIZE_MB" -gt 15 ]; then
+            echo "::error::Bundle ${SIZE_MB} MB exceeds the 15 MB budget"
+            exit 1
+          fi
+
       - name: Notarize and staple
         id: notarize
         env:
