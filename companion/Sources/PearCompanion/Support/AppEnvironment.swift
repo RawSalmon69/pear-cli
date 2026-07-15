@@ -31,6 +31,7 @@ final class AppEnvironment {
         tools.register(OCRTool())
         tools.register(ClipboardTool())
         tools.register(DiskTool())
+        tools.register(ShelfTool())
         tools.register(ScratchpadTool())
         self.tools = tools
 
