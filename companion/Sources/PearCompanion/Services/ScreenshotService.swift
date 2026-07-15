@@ -48,7 +48,7 @@ final class ScreenshotService {
     func capture() async {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("pear-shot-\(UUID().uuidString).png")
-        guard await runCapture(to: tempURL) else { return } // cancelled or failed
+        guard await ScreenCapture.region(to: tempURL) else { return } // cancelled or failed
 
         guard let data = try? Data(contentsOf: tempURL) else { return }
 
@@ -124,25 +124,5 @@ final class ScreenshotService {
         let url = folder.appendingPathComponent(ScreenshotNaming.filename(for: Date()))
         try data.write(to: url)
         return url
-    }
-
-    /// Runs the (blocking, interactive) capture off the main thread. Returns
-    /// true only if a file was written — `screencapture -i` writes nothing when
-    /// the user hits Escape.
-    private func runCapture(to url: URL) async -> Bool {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-                process.arguments = ["-i", "-x", url.path]
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-                } catch {
-                    NSLog("Pear: screencapture failed: \(error.localizedDescription)")
-                }
-                continuation.resume(returning: FileManager.default.fileExists(atPath: url.path))
-            }
-        }
     }
 }

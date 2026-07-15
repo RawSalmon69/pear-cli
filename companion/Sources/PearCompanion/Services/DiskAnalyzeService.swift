@@ -72,6 +72,12 @@ final class DiskAnalyzeService {
     /// Upper bound so a stuck scan can't hang the UI forever.
     private nonisolated static let timeoutSeconds: Double = 25
 
+    @ObservationIgnored private let runner: CommandRunner
+
+    init(runner: CommandRunner = ProcessRunner()) {
+        self.runner = runner
+    }
+
     func scan(path: String?) async {
         guard let binary = PearStatsService.pearBinary() else {
             entries = []
@@ -85,10 +91,14 @@ final class DiskAnalyzeService {
         isLoading = true
         errorMessage = nil
 
-        let result = await Self.runAnalyze(binary: binary, path: path)
-        switch result {
-        case .failure(let scanError):
-            errorMessage = scanError.message
+        var arguments = ["analyze", "--json"]
+        if let path { arguments.append(path) }
+
+        switch await runner.run(binary: binary, arguments: arguments, timeout: Self.timeoutSeconds) {
+        case .timedOut:
+            errorMessage = "The scan took too long and was stopped."
+        case .failed:
+            errorMessage = "Couldn't analyze this location."
         case .success(let data):
             if let output = try? JSONDecoder().decode(AnalyzeJSON.self, from: data) {
                 apply(output)
@@ -123,56 +133,6 @@ final class DiskAnalyzeService {
         totalSize = output.totalSize
     }
 
-    // MARK: Process
-
-    private enum ScanError: Error {
-        case timedOut
-        case failed
-
-        var message: String {
-            switch self {
-            case .timedOut: return "The scan took too long and was stopped."
-            case .failed: return "Couldn't analyze this location."
-            }
-        }
-    }
-
-    private static func runAnalyze(binary: String, path: String?) async -> Result<Data, ScanError> {
-        await Task.detached(priority: .utility) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: binary)
-            var arguments = ["analyze", "--json"]
-            if let path { arguments.append(path) }
-            process.arguments = arguments
-
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = Pipe()
-
-            do {
-                try process.run()
-            } catch {
-                return .failure(.failed)
-            }
-
-            // Watchdog: terminate the scan if it overruns the timeout. The read
-            // below then unblocks on EOF and terminationReason marks the signal.
-            let watchdog = DispatchWorkItem {
-                if process.isRunning { process.terminate() }
-            }
-            DispatchQueue.global(qos: .utility)
-                .asyncAfter(deadline: .now() + timeoutSeconds, execute: watchdog)
-
-            let output = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            watchdog.cancel()
-
-            if process.terminationStatus == 0 {
-                return .success(output)
-            }
-            return process.terminationReason == .uncaughtSignal ? .failure(.timedOut) : .failure(.failed)
-        }.value
-    }
 }
 
 // MARK: - Decoding

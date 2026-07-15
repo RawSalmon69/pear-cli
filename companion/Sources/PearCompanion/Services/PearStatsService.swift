@@ -23,6 +23,12 @@ final class PearStatsService {
     private(set) var healthScore: Int?
     private(set) var healthMessage: String?
 
+    @ObservationIgnored private let runner: CommandRunner
+
+    init(runner: CommandRunner = ProcessRunner()) {
+        self.runner = runner
+    }
+
     private nonisolated static let candidates = [
         "/usr/local/bin/pear",
         "/opt/homebrew/bin/pear",
@@ -39,24 +45,9 @@ final class PearStatsService {
         }
         cliMissing = false
 
-        let data: Data? = await Task.detached(priority: .utility) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: binary)
-            process.arguments = ["status", "--json"]
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = Pipe()
-            do {
-                try process.run()
-            } catch {
-                return nil
-            }
-            let output = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            return process.terminationStatus == 0 ? output : nil
-        }.value
-
-        guard let data, let snapshot = try? JSONDecoder().decode(StatusSnapshot.self, from: data) else {
+        guard case .success(let data) = await runner.run(
+            binary: binary, arguments: ["status", "--json"], timeout: nil),
+            let snapshot = try? JSONDecoder().decode(StatusSnapshot.self, from: data) else {
             return
         }
         apply(snapshot)

@@ -13,7 +13,7 @@ final class OCRService {
     func grab() async {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("pear-ocr-\(UUID().uuidString).png")
-        guard await runCapture(to: tempURL) else { return }
+        guard await ScreenCapture.region(to: tempURL) else { return }
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         guard let image = NSImage(contentsOf: tempURL),
@@ -63,22 +63,5 @@ final class OCRService {
         content.body = body
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         center.add(request)
-    }
-
-    private func runCapture(to url: URL) async -> Bool {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-                process.arguments = ["-i", "-x", url.path]
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-                } catch {
-                    NSLog("Pear: OCR screencapture failed: \(error.localizedDescription)")
-                }
-                continuation.resume(returning: FileManager.default.fileExists(atPath: url.path))
-            }
-        }
     }
 }
