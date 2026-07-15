@@ -170,6 +170,7 @@ jobs:
           # marketing string. Use the built app's CFBundleVersion for
           # sparkle:version and the tag for the human shortVersionString.
           BUILD="$(plutil -extract CFBundleVersion raw companion/Resources/Info.plist)"
+          MINOS="$(plutil -extract LSMinimumSystemVersion raw companion/Resources/Info.plist)"
 
           ITEM=$(cat <<EOF
             <item>
@@ -177,7 +178,7 @@ jobs:
               <pubDate>${PUBDATE}</pubDate>
               <sparkle:version>${BUILD}</sparkle:version>
               <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
-              <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+              <sparkle:minimumSystemVersion>${MINOS}</sparkle:minimumSystemVersion>
               <enclosure url="${URL}" length="${LENGTH}" type="application/octet-stream" sparkle:edSignature="${SIGNATURE}" />
             </item>
           EOF
