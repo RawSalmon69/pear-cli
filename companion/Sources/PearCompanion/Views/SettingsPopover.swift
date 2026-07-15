@@ -16,6 +16,45 @@ struct SettingsPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.sectionGap) {
+            if FeatureFlags.coupleNote {
+                coupleKeySection
+            }
+
+            VStack(alignment: .leading, spacing: Theme.itemGap) {
+                SectionLabel(text: "Screenshots")
+                Text("Captures are copied to the clipboard and saved here.")
+                    .font(Theme.caption)
+                    .foregroundStyle(.secondary)
+                Toggle("Save a copy to this folder", isOn: $autoSave)
+                    .font(Theme.body)
+                    .toggleStyle(.switch)
+                    .tint(Theme.accent)
+                HStack(spacing: 6) {
+                    Text(folder)
+                        .font(Theme.caption)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundStyle(autoSave ? .secondary : .quaternary)
+                    Spacer()
+                    Button("Change…") { pickFolder() }
+                        .font(Theme.caption)
+                        .disabled(!autoSave)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: Theme.itemGap) {
+                SectionLabel(text: "Feedback")
+                Toggle("Sound effects", isOn: $soundsEnabled)
+                    .font(Theme.body)
+                    .toggleStyle(.switch)
+                    .tint(Theme.accent)
+            }
+        }
+        .padding(16)
+        .frame(width: 300)
+    }
+
+    private var coupleKeySection: some View {
             VStack(alignment: .leading, spacing: Theme.itemGap) {
                 SectionLabel(text: "Couple key")
                 Text("Generate on one Mac, paste on the other. Relaunch after saving.")
@@ -56,39 +95,6 @@ struct SettingsPopover: View {
                 .pickerStyle(.segmented)
                 .onChange(of: role) { _, newRole in CoupleKey.store(role: newRole) }
             }
-
-            VStack(alignment: .leading, spacing: Theme.itemGap) {
-                SectionLabel(text: "Screenshots")
-                Text("Captures are copied to the clipboard and saved here.")
-                    .font(Theme.caption)
-                    .foregroundStyle(.secondary)
-                Toggle("Save a copy to this folder", isOn: $autoSave)
-                    .font(Theme.body)
-                    .toggleStyle(.switch)
-                    .tint(Theme.accent)
-                HStack(spacing: 6) {
-                    Text(folder)
-                        .font(Theme.caption)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .foregroundStyle(autoSave ? .secondary : .quaternary)
-                    Spacer()
-                    Button("Change…") { pickFolder() }
-                        .font(Theme.caption)
-                        .disabled(!autoSave)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: Theme.itemGap) {
-                SectionLabel(text: "Feedback")
-                Toggle("Sound effects", isOn: $soundsEnabled)
-                    .font(Theme.body)
-                    .toggleStyle(.switch)
-                    .tint(Theme.accent)
-            }
-        }
-        .padding(16)
-        .frame(width: 300)
     }
 
     private func pickFolder() {

@@ -16,6 +16,7 @@ final class ScreenshotPreviewController {
     func show(
         imageData: Data,
         canMarkup: Bool,
+        canSend: Bool = FeatureFlags.coupleNote,
         onCopy: @escaping () -> Void,
         onReveal: @escaping () -> Void,
         onMarkup: @escaping () -> Void,
@@ -29,6 +30,7 @@ final class ScreenshotPreviewController {
         let content = ScreenshotPreviewView(
             image: image,
             canMarkup: canMarkup,
+            canSend: canSend,
             onCopy: onCopy,
             onReveal: onReveal,
             onMarkup: { [weak self] in
@@ -103,6 +105,7 @@ private final class NonActivatingPanel: NSPanel {
 private struct ScreenshotPreviewView: View {
     let image: NSImage
     let canMarkup: Bool
+    let canSend: Bool
     let onCopy: () -> Void
     let onReveal: () -> Void
     let onMarkup: () -> Void
@@ -144,8 +147,10 @@ private struct ScreenshotPreviewView: View {
                 if canMarkup {
                     PreviewAction(symbol: "pencil.tip.crop.circle", label: "Markup", action: onMarkup)
                 }
-                PreviewAction(symbol: "paperplane.fill", label: "Send",
-                              tint: Theme.accent, action: onSend)
+                if canSend {
+                    PreviewAction(symbol: "paperplane.fill", label: "Send",
+                                  tint: Theme.accent, action: onSend)
+                }
             }
         }
         .padding(12)

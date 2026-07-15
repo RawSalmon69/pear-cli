@@ -33,10 +33,12 @@ final class AppEnvironment {
         tools.register(DiskTool())
         self.tools = tools
 
-        NotificationCenter.default
-            .addObserver(forName: .pearRemoteNotification, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in await self?.messaging.refresh() }
-            }
+        if FeatureFlags.coupleNote {
+            NotificationCenter.default
+                .addObserver(forName: .pearRemoteNotification, object: nil, queue: .main) { [weak self] _ in
+                    Task { @MainActor in await self?.messaging.refresh() }
+                }
+        }
     }
 
     var hasUnseenIncoming: Bool {
@@ -50,6 +52,11 @@ final class AppEnvironment {
         // Sparkle only works from a bundled .app (not `swift run`); guard so
         // dev runs don't crash trying to start it.
         let updater = Bundle.main.bundleIdentifier != nil ? UpdaterService() : nil
+        // Couple-note hidden: inert mock, CloudKit never constructed.
+        guard FeatureFlags.coupleNote else {
+            let mock = MockMessagingService(connectionState: .online)
+            return AppEnvironment(messaging: mock, stats: stats, updater: updater)
+        }
         if let key = CoupleKey.load() {
             let service = CloudKitMessagingService(key: key, deviceRole: CoupleKey.deviceRole)
             return AppEnvironment(messaging: service, stats: stats, updater: updater)

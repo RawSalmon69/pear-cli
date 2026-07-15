@@ -10,8 +10,10 @@ struct PanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.sectionGap) {
             HeaderSection()
-            ConnectionBanner()
-            NotesSection()
+            if FeatureFlags.coupleNote {
+                ConnectionBanner()
+                NotesSection()
+            }
             ToolsSection()
             StatsSection()
             BottomBar()
@@ -20,9 +22,11 @@ struct PanelView: View {
         .frame(width: 360)
         .fixedSize(horizontal: false, vertical: true)
         .task {
-            await env.messaging.refresh()
+            if FeatureFlags.coupleNote {
+                await env.messaging.refresh()
+                markVisibleSeen()
+            }
             await env.stats.refresh()
-            markVisibleSeen()
         }
     }
 

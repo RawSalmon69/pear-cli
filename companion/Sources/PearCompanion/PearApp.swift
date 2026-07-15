@@ -23,7 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         UNUserNotificationCenter.current().delegate = self
         // Best-effort: unsigned dev builds have no push entitlement and land in
         // didFailToRegister — that's fine, the foreground poll covers delivery.
-        NSApplication.shared.registerForRemoteNotifications()
+        if FeatureFlags.coupleNote {
+            NSApplication.shared.registerForRemoteNotifications()
+        }
     }
 
     func application(_ application: NSApplication, didReceiveRemoteNotification userInfo: [String: Any]) {
