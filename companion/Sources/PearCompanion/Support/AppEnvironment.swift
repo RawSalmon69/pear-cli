@@ -35,6 +35,7 @@ final class AppEnvironment {
         tools.register(ScratchpadTool())
         tools.register(ColorPickerTool())
         tools.register(MonitorTool())
+        tools.register(WindowsTool())
         self.tools = tools
 
         if FeatureFlags.coupleNote {
