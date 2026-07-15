@@ -491,5 +491,7 @@ struct BottomBar: View {
         .buttonStyle(.bordered)
         .controlSize(.small)
         .tint(Theme.accent)
+        // Kill the key-focus ring that made the first button look selected.
+        .focusEffectDisabled()
     }
 }

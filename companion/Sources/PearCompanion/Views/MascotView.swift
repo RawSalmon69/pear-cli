@@ -63,12 +63,15 @@ struct MascotView: View {
     }
 }
 
-/// Time-of-day greeting for the header.
-func greeting(now: Date = Date()) -> String {
+/// Time-of-day greeting for the header, addressed to the Mac's login user
+/// by first name (falls back to a plain greeting for empty account names).
+func greeting(now: Date = Date(), fullName: String = NSFullUserName()) -> String {
+    let first = fullName.split(separator: " ").first.map(String.init) ?? ""
+    let name = first.isEmpty ? "" : ", \(first)"
     switch Calendar.current.component(.hour, from: now) {
-    case 5..<12: return "Good morning"
-    case 12..<17: return "Good afternoon"
-    case 17..<22: return "Good evening"
-    default: return "Up late?"
+    case 5..<12: return "Good morning\(name)"
+    case 12..<17: return "Good afternoon\(name)"
+    case 17..<22: return "Good evening\(name)"
+    default: return first.isEmpty ? "Up late?" : "Up late, \(first)?"
     }
 }

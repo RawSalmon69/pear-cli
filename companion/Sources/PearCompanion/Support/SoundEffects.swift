@@ -3,8 +3,9 @@ import AppKit
 /// Subtle audio feedback, CleanShot-style. Uses built-in system sounds so
 /// there are no bundled assets. Honors the Prefs.soundsEnabled toggle.
 enum SoundEffects {
+    // The screenshot shutter is not here: captures run `screencapture`
+    // unmuted, so macOS plays its native camera click.
     enum Cue {
-        case capture   // screenshot taken
         case copy      // something copied to clipboard
         case send      // note/photo sent to partner
         case done      // a longer action finished (clean, OCR)
@@ -12,7 +13,6 @@ enum SoundEffects {
 
         var systemName: String {
             switch self {
-            case .capture: return "Tink"
             case .copy: return "Pop"
             case .send: return "Submarine"
             case .done: return "Glass"

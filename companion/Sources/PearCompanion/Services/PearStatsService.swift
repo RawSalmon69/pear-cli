@@ -9,8 +9,8 @@ struct StatItem: Equatable, Sendable {
     let fraction: Double?
 }
 
-/// Real stats via `pear status --json`. Soft-fails to `cliMissing` so the
-/// panel can show a setup hint instead of empty tiles.
+/// The panel's compact Mac tiles, fed by the same native samplers the
+/// Monitor tool uses (Tools/Monitor) — no CLI dependency, always live.
 @MainActor
 @Observable
 final class PearStatsService {
@@ -18,17 +18,13 @@ final class PearStatsService {
     private(set) var cliMissing = false
     /// Root-disk used fraction; drives the mascot's worried mood.
     private(set) var diskUsedFraction: Double?
-    /// Secondary glanceable line: uptime + overall health.
+    /// Secondary glanceable line.
     private(set) var uptime: String?
     private(set) var healthScore: Int?
     private(set) var healthMessage: String?
 
-    @ObservationIgnored private let runner: CommandRunner
-
-    init(runner: CommandRunner = ProcessRunner()) {
-        self.runner = runner
-    }
-
+    // The pear CLI location is still needed by the disk bars view and the
+    // cleaner runner, so the lookup stays here.
     private nonisolated static let candidates = [
         "/usr/local/bin/pear",
         "/opt/homebrew/bin/pear",
@@ -39,70 +35,90 @@ final class PearStatsService {
     }
 
     func refresh() async {
-        guard let binary = Self.pearBinary() else {
-            cliMissing = true
-            return
-        }
-        cliMissing = false
+        // CPU needs two tick samples; the gap runs while everything else
+        // is gathered, so refresh still feels instant.
+        let firstTicks = CPUSampler.readTicks()
+        try? await Task.sleep(for: .milliseconds(500))
+        let secondTicks = CPUSampler.readTicks()
 
-        guard case .success(let data) = await runner.run(
-            binary: binary, arguments: ["status", "--json"], timeout: nil),
-            let snapshot = try? JSONDecoder().decode(StatusSnapshot.self, from: data) else {
-            return
-        }
-        apply(snapshot)
-    }
-
-    private func apply(_ s: StatusSnapshot) {
         var next: [StatItem] = []
 
-        if let disk = s.disks?.first(where: { $0.mount == "/" }) {
-            let freeBytes = disk.total - disk.used
-            let fraction = disk.usedPercent / 100
-            diskUsedFraction = fraction
+        if let disk = Self.rootDiskUsage() {
+            diskUsedFraction = disk.usedFraction
             next.append(
                 StatItem(
                     label: "Disk free",
-                    value: Self.gigabytes(freeBytes),
+                    value: Self.gigabytes(disk.free),
                     symbol: "internaldrive",
+                    fraction: disk.usedFraction
+                )
+            )
+        }
+        if let memory = MemorySampler.sample(), memory.total > 0 {
+            let fraction = Double(memory.used) / Double(memory.total)
+            next.append(
+                StatItem(
+                    label: "Memory",
+                    value: "\(Int((fraction * 100).rounded()))%",
+                    symbol: "memorychip",
                     fraction: fraction
                 )
             )
         }
-        if let mem = s.memory {
+        if let firstTicks, let secondTicks {
+            let usages = CPUUsage.coreUsages(previous: firstTicks, current: secondTicks)
+            if !usages.isEmpty {
+                let total = usages.reduce(0, +) / Double(usages.count)
+                next.append(
+                    StatItem(
+                        label: "CPU",
+                        value: "\(Int((total * 100).rounded()))%",
+                        symbol: "cpu",
+                        fraction: min(max(total, 0), 1)
+                    )
+                )
+            }
+        }
+        if let battery = BatterySampler.sample(), let percent = battery.percent {
             next.append(
                 StatItem(
-                    label: "Memory",
-                    value: "\(Int(mem.usedPercent.rounded()))%",
-                    symbol: "memorychip",
-                    fraction: mem.usedPercent / 100
+                    label: battery.isCharging ? "Charging" : "Battery",
+                    value: "\(percent)%",
+                    symbol: batterySymbol(percent, charging: battery.isCharging),
+                    fraction: Double(percent) / 100
                 )
             )
         }
-        if let cpu = s.cpu {
-            next.append(
-                StatItem(
-                    label: "CPU",
-                    value: "\(Int(cpu.usage.rounded()))%",
-                    symbol: "cpu",
-                    fraction: min(max(cpu.usage / 100, 0), 1)
-                )
-            )
-        }
-        if let battery = s.batteries?.first {
-            next.append(
-                StatItem(
-                    label: battery.status == "charging" ? "Charging" : "Battery",
-                    value: "\(battery.percent)%",
-                    symbol: batterySymbol(battery.percent, charging: battery.status == "charging"),
-                    fraction: Double(battery.percent) / 100
-                )
-            )
-        }
+
         items = next
-        uptime = s.uptime
-        healthScore = s.healthScore
-        healthMessage = s.healthScoreMsg
+        uptime = Self.uptimeString(ProcessInfo.processInfo.systemUptime)
+    }
+
+    // MARK: - Native readings
+
+    private static func rootDiskUsage() -> (free: Int64, usedFraction: Double)? {
+        let url = URL(fileURLWithPath: "/")
+        guard
+            let values = try? url.resourceValues(forKeys: [
+                .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey,
+            ]),
+            let total = values.volumeTotalCapacity, total > 0,
+            let free = values.volumeAvailableCapacityForImportantUsage, free >= 0
+        else {
+            return nil
+        }
+        let used = Int64(total) - free
+        return (free, Double(used) / Double(total))
+    }
+
+    private static func uptimeString(_ seconds: TimeInterval) -> String {
+        let minutes = Int(seconds) / 60
+        let days = minutes / 1440
+        let hours = (minutes % 1440) / 60
+        let mins = minutes % 60
+        if days > 0 { return "\(days)d \(hours)h" }
+        if hours > 0 { return "\(hours)h \(mins)m" }
+        return "\(mins)m"
     }
 
     static func gigabytes(_ bytes: Int64) -> String {
@@ -117,51 +133,5 @@ final class PearStatsService {
         case ..<90: return "battery.75percent"
         default: return "battery.100percent"
         }
-    }
-}
-
-// Decodes just the slice of `pear status --json` the tiles need.
-struct StatusSnapshot: Decodable {
-    struct Disk: Decodable {
-        let mount: String
-        let used: Int64
-        let total: Int64
-        let usedPercent: Double
-
-        enum CodingKeys: String, CodingKey {
-            case mount, used, total
-            case usedPercent = "used_percent"
-        }
-    }
-
-    struct Memory: Decodable {
-        let usedPercent: Double
-
-        enum CodingKeys: String, CodingKey {
-            case usedPercent = "used_percent"
-        }
-    }
-
-    struct Battery: Decodable {
-        let percent: Int
-        let status: String
-    }
-
-    struct CPU: Decodable {
-        let usage: Double
-    }
-
-    let disks: [Disk]?
-    let memory: Memory?
-    let batteries: [Battery]?
-    let cpu: CPU?
-    let uptime: String?
-    let healthScore: Int?
-    let healthScoreMsg: String?
-
-    enum CodingKeys: String, CodingKey {
-        case disks, memory, batteries, cpu, uptime
-        case healthScore = "health_score"
-        case healthScoreMsg = "health_score_msg"
     }
 }

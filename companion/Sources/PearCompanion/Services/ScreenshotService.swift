@@ -48,11 +48,14 @@ final class ScreenshotService {
     func capture() async {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("pear-shot-\(UUID().uuidString).png")
-        guard await ScreenCapture.region(to: tempURL) else { return } // cancelled or failed
+        // Unmuted capture = macOS's own camera shutter (the CleanShot feel);
+        // the sounds toggle mutes it.
+        guard await ScreenCapture.region(to: tempURL, muted: !Prefs.soundsEnabled) else {
+            return // cancelled or failed
+        }
 
         guard let data = try? Data(contentsOf: tempURL) else { return }
 
-        SoundEffects.play(.capture)
         copyToPasteboard(data)
 
         // Save into the screenshot folder when auto-save is on; either way the

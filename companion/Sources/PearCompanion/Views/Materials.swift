@@ -8,7 +8,10 @@ struct GlassBackground: ViewModifier {
 
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
+            // Clip the content to the same shape the glass uses; without it,
+            // square content layers leak a hairline past the curved rim.
             content
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
                 .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
         } else {
             content

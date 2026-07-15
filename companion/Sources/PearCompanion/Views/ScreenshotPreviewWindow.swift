@@ -8,6 +8,8 @@ import AppKit
 final class ScreenshotPreviewController {
     private var panel: NSPanel?
     private var dismissTimer: Timer?
+    private var scrollMonitor: Any?
+    private var scrollAccumulator: CGFloat = 0
 
     private static let panelSize = NSSize(width: 280, height: 236)
     private static let dismissDelay: TimeInterval = 6
@@ -77,14 +79,36 @@ final class ScreenshotPreviewController {
         }
         panel.orderFrontRegardless()
         self.panel = panel
+        installScrollDismiss(on: panel)
         scheduleDismiss()
     }
 
     func dismiss() {
         dismissTimer?.invalidate()
         dismissTimer = nil
+        if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
+        scrollMonitor = nil
         panel?.orderOut(nil)
         panel = nil
+    }
+
+    /// Two-finger trackpad swipe (right or down) over the preview flicks it
+    /// away — the gesture people reach for, alongside the click-drag flick.
+    private func installScrollDismiss(on panel: NSPanel) {
+        scrollAccumulator = 0
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) {
+            [weak self, weak panel] event in
+            guard let self, let panel, event.window === panel else { return event }
+            self.scrollAccumulator += max(event.scrollingDeltaX, -event.scrollingDeltaY)
+            if self.scrollAccumulator > 60 {
+                self.dismiss()
+                return nil
+            }
+            if event.phase == .ended || event.momentumPhase == .ended {
+                self.scrollAccumulator = 0
+            }
+            return event
+        }
     }
 
     private func scheduleDismiss() {

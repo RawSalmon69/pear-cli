@@ -35,6 +35,9 @@ enum WindowEngine {
             return
         }
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        // Default AX messaging timeout is ~6 s PER CALL; a beachballing target
+        // app would freeze our main thread across the ~8 calls below. Cap it.
+        AXUIElementSetMessagingTimeout(appElement, 0.5)
 
         guard let window = focusedWindow(of: appElement),
               let current = frame(of: window)
@@ -73,7 +76,9 @@ enum WindowEngine {
         else {
             return nil
         }
-        return (value as! AXUIElement)
+        let window = value as! AXUIElement
+        AXUIElementSetMessagingTimeout(window, 0.5) // per-element, see above
+        return window
     }
 
     private static func frame(of window: AXUIElement) -> NSRect? {
