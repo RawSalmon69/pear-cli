@@ -77,7 +77,7 @@ private struct ClipRow: View {
 
             Button(action: onCopy) {
                 HStack(spacing: 8) {
-                    if let data = item.imageData, let image = NSImage(data: data) {
+                    if item.isImage, let image = item.thumbnail {
                         Image(nsImage: image)
                             .resizable().scaledToFill()
                             .frame(width: 30, height: 30)

@@ -23,7 +23,8 @@ final class ScreenshotPreviewController {
     ) {
         dismiss() // one preview at a time
 
-        guard let image = NSImage(data: imageData) else { return }
+        // 252 pt display width @2x — never inflate the full capture here.
+        guard let image = Thumbnail.image(from: imageData, maxPixel: 504) else { return }
 
         let content = ScreenshotPreviewView(
             image: image,

@@ -6,6 +6,9 @@ struct ClipItem: Identifiable, Equatable {
     let id = UUID()
     let text: String?
     let imageData: Data?
+    /// Small preview decoded once at capture, so list rows never inflate
+    /// the full bitmap.
+    let thumbnail: NSImage?
     let date: Date
 
     var isImage: Bool { imageData != nil }
@@ -20,6 +23,9 @@ final class ClipboardHistoryService {
     private(set) var items: [ClipItem] = []
 
     @ObservationIgnored private let maxItems = 20
+    /// Images are capped by total bytes, not count — one 8K screenshot
+    /// costs what it costs, many small ones can coexist.
+    @ObservationIgnored private let maxImageBytes = 10 * 1024 * 1024
     @ObservationIgnored private let textDefaultsKey = "clipboardTextHistory"
     @ObservationIgnored private var lastChangeCount = NSPasteboard.general.changeCount
     @ObservationIgnored private var timer: Timer?
@@ -33,7 +39,9 @@ final class ClipboardHistoryService {
 
     func start() {
         guard timer == nil else { return }
-        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+        // 2 s is the accepted staleness for history capture; 1 s doubled the
+        // idle wakeups for no perceptible gain.
+        let timer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.poll() }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -75,9 +83,10 @@ final class ClipboardHistoryService {
 
         if let string = pasteboard.string(forType: .string),
            !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            add(ClipItem(text: string, imageData: nil, date: Date()))
+            add(ClipItem(text: string, imageData: nil, thumbnail: nil, date: Date()))
         } else if let data = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) {
-            add(ClipItem(text: nil, imageData: data, date: Date()))
+            let thumb = Thumbnail.image(from: data, maxPixel: 60)
+            add(ClipItem(text: nil, imageData: data, thumbnail: thumb, date: Date()))
         }
     }
 
@@ -91,7 +100,18 @@ final class ClipboardHistoryService {
         if items.count > maxItems {
             items = Array(items.prefix(maxItems))
         }
+        enforceImageBudget()
         persistText()
+    }
+
+    /// Drops the oldest image entries until stored image bytes fit the cap.
+    private func enforceImageBudget() {
+        var total = items.compactMap(\.imageData?.count).reduce(0, +)
+        while total > maxImageBytes {
+            guard let index = items.lastIndex(where: { $0.imageData != nil }) else { break }
+            total -= items[index].imageData?.count ?? 0
+            items.remove(at: index)
+        }
     }
 
     // MARK: - Text persistence
@@ -103,6 +123,6 @@ final class ClipboardHistoryService {
 
     private func loadPersistedText() {
         let texts = UserDefaults.standard.stringArray(forKey: textDefaultsKey) ?? []
-        items = texts.map { ClipItem(text: $0, imageData: nil, date: Date()) }
+        items = texts.map { ClipItem(text: $0, imageData: nil, thumbnail: nil, date: Date()) }
     }
 }

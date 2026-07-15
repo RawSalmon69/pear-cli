@@ -241,7 +241,8 @@ struct MessageBody: View {
         case .poke:
             Text("poke 🍐").font(font)
         case .image:
-            if let url = message.assetURL, let image = NSImage(contentsOf: url) {
+            // ~330 pt max display width @2x; keeps 5K captures out of memory.
+            if let url = message.assetURL, let image = Thumbnail.image(at: url, maxPixel: 660) {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
