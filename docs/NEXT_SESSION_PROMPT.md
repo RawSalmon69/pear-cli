@@ -4,151 +4,139 @@ Paste this as the opening message of the next session.
 
 ---
 
-You are the **Fable orchestrator** for the PearCompanion project. Work as an
-orchestrator: **spawn opus / sonnet-5 subagents** for parallelizable or
-mechanical work, and keep architecture, integration, and verification in your
-own (Fable) main loop. Use **isolated git worktrees** for agents that edit
-overlapping Swift files so they don't collide; integrate their new files
-yourself. **Adversarially verify** — never trust an agent's "done" without
-`swift build` + `swift test` passing and, for anything shippable, a signed
-launch. Commit per feature. Read the memory files under
+You are the **Fable orchestrator** for PearCompanion. Spawn **opus / sonnet-5
+subagents** for parallel or mechanical work (isolated git worktrees when they
+touch overlapping Swift files); keep architecture, integration, and
+verification in your own main loop. **Adversarially verify** — never trust an
+agent's "done" without `swift build` + `swift test` and, for shippables, a
+signed launch. Commit per feature. Read the memory files under
 `/Users/raws/.claude/projects/-Users-raws-Documents-Github-pear-cli/memory/`
-first — they hold the full project state and the hard-won gotchas.
+first.
 
-## Where things stand (built + shipped)
+## The product
 
-- Public CLI `pear` (rebranded fork of tw93/Mole), repo `RawSalmon69/pear-cli`,
-  latest CLI release V1.46.0, weekly upstream-sync automation live.
-- `companion/` = PearCompanion menu-bar app (SwiftUI, SPM, macOS 13+, Liquid
-  Glass on 26+). Shipped **v1.1.2** notarized via Sparkle auto-update. Features:
-  encrypted CloudKit couple-messaging, screenshot capture + markup + OCR,
-  clipboard history, disk analyze (bars), system stats, Clean/Optimize.
-- Signing/release fully wired: Developer ID cert, 7 GitHub secrets, provisioning
-  profile (valid to 2044), `companion-release.yml` sign→notarize→appcast.
-- Setup runbook: `companion/SETUP.md`. Full details + gotchas in memory.
+**PearCompanion = an all-in-one macOS productivity super-app** that replaces a
+stack of paid menu-bar apps (CleanShot, Swish/Magnet, Maccy/Paste, iStat Menus,
+CleanMyMac, Yoink/Dropover, Pika). General public release, possibly paid. The
+pear/cat identity is the **brand**, not "for my girlfriend."
 
-## The pivot (this is the rescope)
+Already built + shipped (v1.1.2, notarized, Sparkle auto-update): screenshot
+capture + markup + OCR, clipboard history, disk analyze (bars), system stats,
+Clean/Optimize, encrypted CloudKit couple-messaging. Signing fully wired
+(Developer ID cert, 7 GH secrets, **provisioning profile stays — keep it**).
 
-Stop treating this as a private gift for one couple. **PearCompanion is now a
-general-purpose, all-in-one macOS productivity super-app** aimed at anyone —
-the pitch: *stop paying for five separate menu-bar apps; one app does it all.*
-Planned for public release, possibly paid. The pear/cat identity stays as
-**brand**, not as "for my girlfriend." Rebrand copy accordingly (README, app
-strings, SETUP → a general onboarding).
+## Owner decisions already made
 
-## CRITICAL — licensing, decide before any commercial release
+- **Keep the provisioning profile.** Don't try to remove entitlements.
+- **Escape GPL by native rewrite.** The `pear`/Mole cleanup engine is GPL-3.0.
+  The clean, lawful way to make the GPL question disappear is to **reimplement
+  the cleanup/optimize/analyze functions natively in Swift** (no GPL code in the
+  app), using the **MIT-licensed** references below. Once there's no GPL code,
+  there's nothing to disclose and nothing to hide — that is the whole point of
+  the rewrite. (Do NOT ship GPL code while concealing it; that's a license
+  violation. The rewrite removes the issue legitimately.) The CLI can remain a
+  separate GPL project; the app stops depending on it.
+- **No Terminal windows.** Clean/Optimize currently `osascript` open Terminal.app
+  — the owner hates that. Fix below.
 
-- **The base (`pear` CLI) is GPL-3.0** (confirmed: repo LICENSE is GNU GPL v3).
-  GPL is copyleft/viral. A proprietary, sold GUI that **bundles** the GPL binary
-  in one `.app` is legally risky.
-- Options: (a) release the whole app **GPL-3.0** (you can still sell it, but must
-  provide source); (b) **arm's-length separation** — the GUI is a separate
-  program that `exec`s the `pear` CLI, with the CLI shipped/installed separately
-  under GPL (FSF treats pipe/exec as separate programs, generally OK); (c)
-  **native rewrite** of the system functions so no GPL code is involved (big).
-- Window-manager code you adapt: **use MIT-licensed Rectangle**
-  (github.com/rxhanson/Rectangle) — safe for a proprietary app. **Do NOT copy
-  GPL Loop** (github.com/MrKai77/Loop) into a proprietary build — reference only.
-- **Action:** surface this to the owner and get a decision. Recommended default:
-  arm's-length (b) if going paid; or embrace GPL (a) if going open-source-and-sell.
+## The "no Terminal" fix (do early)
 
-## burrow-public reality check
+Replace `TerminalRunner` (which opens Terminal.app) with a native in-app runner:
+- Run work with Swift `Process`, capture stdout/stderr + exit code, stream it
+  into a native progress/console sheet in the app. No visible Terminal.
+- When admin rights are needed, escalate with a **one-shot**
+  `osascript -e 'do shell script "…" with administrator privileges'` — that
+  shows the standard macOS auth dialog, no Terminal window. (Better long-term: a
+  `SMAppService`/privileged helper, but the osascript one-shot is fine to start.)
+- Best end state: once the cleanup is **rewritten natively**, most actions run
+  in-process with a real SwiftUI progress UI and no subprocess at all.
 
-`github.com/rmonst3r/burrow-public` is **closed source — compiled binaries
-only**, so there is **no code to steal**. It is a *proprietary GUI over Mole* —
-i.e. a direct competitor doing exactly our idea. Use it only as a **UX
-reference** (rearrangeable widgets, visual disk browser, always-available
-window). Note it claims its bundled Mole is "MIT" while our repo LICENSE is
-GPL-3.0 — verify Mole's actual licensing before relying on either.
+## Open-source building blocks (researched — licenses matter for a paid app)
+
+MIT / permissive = safe to adapt into a proprietary paid app. GPL / Commons
+Clause = do NOT copy into a closed/paid build (reference only).
+
+| Need | Repo | License | Use |
+|---|---|---|---|
+| **Disk viz (sunburst + treemap)** | colinvkim/Radix | **MIT** | Adapt directly. Native Swift, `RadixCore` package, **no deps**, dual sunburst/treemap, actor-based scanner, Quick Look + drag-drop. This is the owner's grid+circle, done right. |
+| **Native cleaner (GPL escape)** | momenbasel/PureMac | **MIT** | Adapt to replace GPL Mole cleanup. Native SwiftUI, trashes via `FileManager.trashItem`, cache/Xcode/Homebrew cleanup, scheduled auto-clean. |
+| Native cleaner (alt) | iliyami/MacSai | open (Swift 6/SwiftUI, notarized) | 16 scan categories; cross-check PureMac. Verify exact license before copying. |
+| **Shelf / drag-drop** | iamsumanp/Dropshit | **MIT** | Exact Dropover clone: NSPanel + NSFilePromiseProvider + QLThumbnailGenerator, shake-to-summon, drop-anywhere. The reference for the floating-shelf fix. |
+| **Window management** | rxhanson/Rectangle | **MIT** | AX (`AXUIElement`) move/resize + snap engine. Base for the Swish replacement. |
+| Window mgmt (GUI tiling) | ianyh/Amethyst | MIT | Reference for auto-tiling if wanted. (yabai is MIT but needs SIP disabled — bad for general users; skip.) |
+| **System monitor** | exelban/Stats | **MIT** | Expand our stats natively: per-core CPU, GPU, fans, sensors (temp/volt/power), network, battery detail. |
+| Menu-bar manager | sane-apps/SaneBar | **MIT** | If we do Bartender-style hiding. (jordanbaird/Ice is GPL-3.0 — reference only. Note macOS Tahoe now has native menu-bar controls.) |
+| Clipboard | p0deje/Maccy, Clipy/Clipy | MIT | Reference; we already have basic clipboard history. |
+| Color picker / eyedropper | superhighfives/Pika, sindresorhus/System-Color-Picker | MIT | Easy, high-value add. |
+| Launcher (stretch) | ospfranco/Sol, SuperCmd | MIT | Raycast-lite. Big scope — later. |
+| App uninstaller | (our `pear uninstall`, or rewrite) | — | AVOID alienator88/Pearcleaner: Apache **+ Commons Clause** forbids selling. Use PureMac (MIT) or native. |
+| Screenshot annotate | (ours, already native) | — | Keep ours. macshot/Flameshot/ksnip are all GPL — don't copy. |
 
 ## Work — orchestrate in this order (adjust with owner)
 
-1. **Simplify: hide the couple-note feature.** Feature-flag off the Notes hero /
-   composer / poke / seen UI and the CloudKit messaging wiring in
-   `AppEnvironment.live()`. Keep the files (don't delete) for a possible future
-   "sync" premium tier. **Big win:** with CloudKit + push gone, the app likely no
-   longer needs the iCloud/aps entitlements — test whether the signed build
-   launches **without** the provisioning profile (it was only required for those
-   entitlements). If so, signing/notarization gets much simpler. The Shelf (below)
-   becomes local-only.
-2. **Disk visualization → grid + circle.** Owner dislikes the plain bars. Add a
-   **treemap** (nested rectangles sized by bytes, GrandPerspective-style = the
-   "grid") and a **sunburst** (concentric rings, DaisyDisk-style = the "circle"),
-   built natively in a SwiftUI `Canvas` from `pear analyze --json` with recursive
-   drill-in + breadcrumb. Keep the bar list as a third view mode. This is a strong
-   candidate to delegate to an opus agent (self-contained view + a recursive model).
-3. **Reintroduce the Shelf — as a standalone floating window, not the menu-bar
-   popover.** The popover auto-closes on click-away and can't take drag-drop, which
-   is exactly why the old shelf failed. Model it on **Dropover/Yoink**: a
-   non-activating `NSPanel` (can become key, accepts drops, drag-out) that
-   (a) opens on a **hotkey** (propose ⌃⇧V) and/or (b) **materializes when a file
-   drag begins** near a screen edge, then **persists** as a floating shelf you can
-   drag items out of later. Local storage. This is the correct fix to the UX
-   problem the owner raised.
-4. **Window management (the Swish replacement).** Swish is closed/paid. Build a
-   native window manager: keyboard shortcuts + drag-to-screen-edge snapping +
-   **trackpad two-finger swipe on the title bar** (Swish's signature gesture),
-   using the **Accessibility API** (`AXUIElement`) to move/resize the focused
-   window. **Adapt from Rectangle (MIT)** for the AX plumbing; the trackpad-gesture
-   layer is custom `NSEvent` handling. Zones: halves, quarters, thirds, maximize,
-   center. Requires the user to grant Accessibility permission — build a clean
-   onboarding for that. Delegate the AX/snap engine to an agent; keep gesture
-   tuning in the main loop (hardware feel needs iteration).
-5. **Feature roadmap — pick with owner** (each replaces a paid app):
-   - Clipboard history (HAVE — Maccy/Paste) · Screenshot+markup+OCR (HAVE —
-     CleanShot) · System stats (HAVE — iStat) · Disk clean/analyze (HAVE —
-     CleanMyMac).
-   - NEW candidates: menu-bar icon manager (Bartender/Ice — but macOS Tahoe now
-     has native menu-bar controls, so maybe skip), color picker/eyedropper,
-     Pomodoro/timers, quick scratchpad notes, app-uninstaller UI over
-     `pear uninstall` (AppCleaner), battery/health alerts, scheduled cleanups,
-     a Raycast-lite launcher (big — probably out of scope).
-6. **Correctness / audit pass** ("make everything right, good, correct"): spawn
-   review agents — a code-review pass on the companion, the repo's existing
-   `bash32-portability-reviewer` + `safety-reviewer` on any CLI changes, and a
-   security pass. Confirm: `swift build` + `swift test`; a signed, **notarized**
-   release; and the **auto-update chain end-to-end**.
-7. **Rebrand/reposition copy**: README + app strings from couple-gift → general
-   product. Onboarding for Accessibility + (if kept) any permissions.
+1. **No-Terminal fix** (above) — native `Process` runner + progress UI; osascript
+   admin one-shot for privilege. Delete `TerminalRunner`'s Terminal path.
+2. **Hide couple-note** — feature-flag off Notes/composer/poke/seen + CloudKit
+   messaging wiring in `AppEnvironment.live()`. Keep files for a future sync tier.
+   (Profile/entitlements stay — no signing change needed.)
+3. **Disk viz → Radix** — adapt Radix's sunburst + treemap (MIT) to replace the
+   bar view; keep bars as a third mode. Drill-in + breadcrumb. Delegate to opus.
+4. **Shelf as floating window** — adapt Dropshit (MIT): non-activating NSPanel,
+   shake-to-summon / hotkey (⌃⇧V) / drop-anywhere, persistent, drag-in + drag-out,
+   Quick Look. NOT the menu-bar popover (that auto-closes — the bug the owner hit).
+5. **Native cleanup engine** — reimplement clean/optimize/analyze in Swift using
+   PureMac (MIT) as the base, trashing via `FileManager.trashItem`. Removes the
+   GPL dependency and the Terminal/subprocess entirely. Big; stage it.
+6. **Window management** — Rectangle (MIT) AX engine + custom trackpad title-bar
+   two-finger swipe (Swish's signature) via `NSEvent`. Zones: halves/quarters/
+   thirds/max/center + keyboard + edge-drag. Accessibility permission onboarding.
+7. **More features (pick with owner):** color picker (Pika, MIT), richer system
+   monitor (Stats, MIT — fans/sensors/per-core), menu-bar manager (SaneBar, MIT,
+   maybe skip given Tahoe), Pomodoro/timers, scratchpad, scheduled cleanups.
+8. **Correctness/audit pass** — review agents (companion code-review; repo's
+   bash32/safety reviewers on any CLI; security). Verify build+tests, notarized
+   release, and the auto-update chain.
+9. **Rebrand copy** — README + app strings + a general onboarding (not couple).
 
-## Known gotchas (from memory — do not rediscover the hard way)
+## Known gotchas (from memory — do not rediscover)
 
-- **Sparkle versioning (two separate bugs already burned):** the appcast
-  `sparkle:version` must be the **CFBundleVersion (build integer: 1,2,3,4…)**,
-  NOT the marketing string — Sparkle compares it against the installed app's
-  CFBundleVersion. AND bump **both** CFBundleShortVersionString and
-  CFBundleVersion every release. `companion-release.yml` now reads CFBundleVersion
-  via plutil; keep it that way.
-- **Signing:** Developer ID cert is in the login keychain + as GH secrets. If you
-  keep CloudKit, the embedded provisioning profile is required or the hardened+
-  entitled build won't even launch. If you drop CloudKit (step 1), re-test
-  whether the profile/entitlements can be removed.
-- **Notarizing Sparkle:** its nested Updater.app / Autoupdate / XPC services must
-  be signed **inside-out, each with `--timestamp --options runtime`** before the
-  framework + app (already handled in `build.sh` — don't regress it).
-- **Agent launcher is flaky:** sometimes spawns dead agents (0 tool uses) or
-  stalls at 600s. Resume via `SendMessage`; instruct agents to write files to disk
-  incrementally so a stall loses nothing; re-verify their output yourself.
-- **Pipe-safe CI checks:** `gh run watch | tail` returns tail's exit code and
-  masks workflow failure — always confirm with
+- **Sparkle:** appcast `sparkle:version` must be **CFBundleVersion (build int)**,
+  not the marketing string; bump BOTH version fields every release.
+  `companion-release.yml` reads CFBundleVersion via plutil — keep it.
+- **Sparkle notarization:** nested Updater.app/Autoupdate/XPC must be signed
+  inside-out with `--timestamp --options runtime` before framework+app (in
+  `build.sh` — don't regress).
+- **Agent launcher flaky:** dead spawns / 600s stalls happen — resume via
+  `SendMessage`, have agents write to disk incrementally, re-verify their output.
+- **Pipe-safe CI:** `gh run watch | tail` masks failure — confirm with
   `gh run view <id> --json conclusion`.
-- The app is `LSUIElement` (menu-bar only). Hotkeys use the shared
-  `HotKeyManager`; register new ones there (⌃⇧P screenshot, ⌃⇧O OCR, ⌃⇧C
-  clipboard already taken).
+- Hotkeys via shared `HotKeyManager` (taken: ⌃⇧P screenshot, ⌃⇧O OCR, ⌃⇧C
+  clipboard). App is `LSUIElement`.
 
 ## Success criteria
 
-- Couple-note hidden; app builds/launches; signing simplified if CloudKit dropped.
-- Disk view shows a treemap and a sunburst, drillable, from real data.
-- Shelf works as a persistent floating window with drag-in/drag-out, no auto-close.
-- Window snapping works via keyboard + edge-drag + trackpad title-bar swipe.
-- A notarized release ships and an installed older build auto-updates to it.
-- Copy reads as a general product, not a personal gift.
-- Licensing decision made and the build complies with it.
+- No Terminal window ever appears; actions show native progress.
+- Disk view: interactive sunburst + treemap from real data.
+- Shelf: persistent floating window, drag-in/out, no auto-close.
+- Window snapping: keyboard + edge-drag + trackpad title-bar swipe.
+- Cleanup runs natively (no GPL code, no subprocess) OR arm's-length if deferred.
+- Notarized release ships; installed build auto-updates.
+- Copy reads as a general product.
 
 ## Sources
 
-- Rectangle (MIT): https://github.com/rxhanson/Rectangle
-- Loop (GPL-3.0, reference only): https://github.com/MrKai77/Loop
-- Swish (closed/paid, the gesture UX to emulate): https://highlyopinionated.co/swish/
-- burrow-public (closed competitor): https://github.com/rmonst3r/burrow-public
+- Radix (MIT, disk sunburst+treemap): https://github.com/colinvkim/Radix
+- PureMac (MIT, native cleaner): https://github.com/momenbasel/PureMac
+- Mac Sai (native cleaner): https://github.com/iliyami/MacSai
+- Dropshit (MIT, shelf): https://github.com/iamsumanp/Dropshit
+- Rectangle (MIT, window mgmt): https://github.com/rxhanson/Rectangle
+- Amethyst (MIT, tiling): https://github.com/ianyh/Amethyst
+- Stats (MIT, system monitor): https://github.com/exelban/stats
+- SaneBar (MIT, menu-bar mgr): https://github.com/sane-apps/SaneBar
+- Pika (MIT, color picker): https://github.com/superhighfives/pika
+- Maccy (MIT, clipboard): https://github.com/p0deje/Maccy
+- Sol (MIT, launcher): https://github.com/ospfranco/Sol
+- AVOID for paid: jordanbaird/Ice (GPL), alienator88/Pearcleaner (Commons Clause),
+  macshot/Flameshot/ksnip (GPL), MrKai77/Loop (GPL).
+- Swish (closed, gesture UX to emulate): https://highlyopinionated.co/swish/
+- burrow-public (closed competitor, no code): https://github.com/rmonst3r/burrow-public
