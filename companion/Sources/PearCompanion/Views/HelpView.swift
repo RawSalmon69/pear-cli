@@ -119,6 +119,13 @@ private struct HelpRow: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard(cornerRadius: 10)
+        // A flat fill, not `.glassCard`: a translucent material per row samples
+        // whatever sits behind the popover (desktop, windows), so stacked rows
+        // rendered at visibly different "blackness". A solid fill is identical
+        // for every row and matches the app's list-row idiom (ZoneButton, ClipRow).
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.secondary.opacity(0.08))
+        )
     }
 }
