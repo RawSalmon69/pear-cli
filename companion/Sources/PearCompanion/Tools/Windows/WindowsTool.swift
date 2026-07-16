@@ -33,6 +33,10 @@ final class WindowsTool: Tool {
     ]
 
     private var tokens: [HotKeyManager.Token] = []
+    /// Loop-style hold-trigger ring. Lives for the process lifetime: it owns
+    /// the always-on flagsChanged monitor plus the ring/preview panels, and
+    /// installs its mouse/key monitors only while the trigger is held.
+    private var radialTrigger: RadialTrigger?
 
     var entry: ToolEntry {
         .popover { AnyView(WindowsView()) }
@@ -50,5 +54,9 @@ final class WindowsTool: Tool {
             }
             tokens.append(token)
         }
+
+        let trigger = RadialTrigger()
+        trigger.start()
+        radialTrigger = trigger
     }
 }

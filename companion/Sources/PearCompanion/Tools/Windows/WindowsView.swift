@@ -8,6 +8,8 @@ struct WindowsView: View {
     // `AXIsProcessTrusted()` is a plain, non-isolated C call — safe to read
     // straight into `@State` and re-poll on appear.
     @State private var trusted = AXIsProcessTrusted()
+    @AppStorage(RadialTriggerKey.defaultsKey)
+    private var radialTriggerKey = RadialTriggerKey.fnGlobe.rawValue
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.sectionGap) {
@@ -27,8 +29,6 @@ struct WindowsView: View {
     // MARK: - Zone grid (a mini window map)
 
     private var grid: some View {
-        // ponytail: the radial ring UI (out of scope for v1) would replace this
-        // grid with a cursor-anchored menu driving the same WindowEngine.apply.
         VStack(alignment: .leading, spacing: Theme.sectionGap) {
             zoneSection("Halves", [.leftHalf, .rightHalf])
             VStack(alignment: .leading, spacing: Theme.itemGap) {
@@ -45,6 +45,30 @@ struct WindowsView: View {
             zoneSection("Thirds", [.leftThird, .centerThird, .rightThird])
             zoneSection("Two-thirds", [.leftTwoThirds, .rightTwoThirds])
             zoneSection("Size", [.maximize, .center])
+            radialSection
+        }
+    }
+
+    /// The Loop-style ring: pick which held key summons it. Takes effect
+    /// immediately (the trigger re-reads the key on every modifier event).
+    private var radialSection: some View {
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Radial ring")
+            Text(
+                "Hold the trigger key, aim toward a zone, release to snap. "
+                    + "Esc cancels. For Fn / Globe, set \"Press 🌐 key\" to "
+                    + "Do Nothing in System Settings → Keyboard."
+            )
+            .font(Theme.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            Picker("Trigger key", selection: $radialTriggerKey) {
+                ForEach(RadialTriggerKey.allCases) { key in
+                    Text(key.label).tag(key.rawValue)
+                }
+            }
+            .pickerStyle(.menu)
+            .font(Theme.body)
         }
     }
 
@@ -197,6 +221,8 @@ private extension WindowZone {
         switch self {
         case .leftHalf: "Left"
         case .rightHalf: "Right"
+        case .topHalf: "Top"
+        case .bottomHalf: "Bottom"
         case .topLeftQuarter: "Top Left"
         case .topRightQuarter: "Top Right"
         case .bottomLeftQuarter: "Bottom Left"
@@ -226,7 +252,8 @@ private extension WindowZone {
         case .leftThird: "⌃⌥D"
         case .centerThird: "⌃⌥F"
         case .rightThird: "⌃⌥G"
-        case .leftTwoThirds, .rightTwoThirds: nil
+        // Top/bottom halves are radial-ring-only; two-thirds are grid-only.
+        case .leftTwoThirds, .rightTwoThirds, .topHalf, .bottomHalf: nil
         }
     }
 }

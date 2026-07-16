@@ -17,6 +17,10 @@ import Foundation
 enum WindowZone: String, CaseIterable {
     case leftHalf
     case rightHalf
+    // Top/bottom halves exist only as radial-ring cardinal targets (the grid
+    // and ⌃⌥ chords don't use them); the ring needs all four halves.
+    case topHalf
+    case bottomHalf
     case topLeftQuarter
     case topRightQuarter
     case bottomLeftQuarter
@@ -41,6 +45,9 @@ enum WindowZone: String, CaseIterable {
         switch self {
         case .leftHalf: NSRect(x: 0, y: 0, width: 1.0 / 2.0, height: 1.0)
         case .rightHalf: NSRect(x: 1.0 / 2.0, y: 0, width: 1.0 / 2.0, height: 1.0)
+        // Top/bottom halves (y-up: "top" sits at y = 1/2).
+        case .topHalf: NSRect(x: 0, y: 1.0 / 2.0, width: 1.0, height: 1.0 / 2.0)
+        case .bottomHalf: NSRect(x: 0, y: 0, width: 1.0, height: 1.0 / 2.0)
         // Quarters (y-up: "top" rows sit at y = 1/2).
         case .topLeftQuarter: NSRect(x: 0, y: 1.0 / 2.0, width: 1.0 / 2.0, height: 1.0 / 2.0)
         case .topRightQuarter: NSRect(x: 1.0 / 2.0, y: 1.0 / 2.0, width: 1.0 / 2.0, height: 1.0 / 2.0)

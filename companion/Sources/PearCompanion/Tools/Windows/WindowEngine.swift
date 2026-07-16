@@ -1,7 +1,10 @@
 // Adapted from Loop (GPL-3.0), https://github.com/MrKai77/Loop
 //
-// The AX move/resize path mirrors Loop's `Window.setFrame` and
-// `WindowEngine.performResize`:
+// The animated snap adapts Loop's `WindowTransformAnimation` (an eased
+// interpolation of the AX frame from source to target); see
+// `setFrameAnimated` for how we trade Loop's display link for a short
+// fixed-step loop. The AX move/resize path mirrors Loop's `Window.setFrame`
+// and `WindowEngine.performResize`:
 //   • read the frontmost app's focused window via
 //     AXUIElementCreateApplication + kAXFocusedWindowAttribute,
 //   • temporarily disable the app's AXEnhancedUserInterface while resizing
@@ -62,10 +65,36 @@ enum WindowEngine {
             : WindowZone.centered(current.size, in: visible)
         let targetAX = targetAppKit.flippedY(maxY: pivot)
 
-        setFrame(window, to: targetAX, resize: zone.resizes, app: appElement)
+        setFrameAnimated(window, from: current, to: targetAX, resize: zone.resizes, app: appElement)
 
         // ponytail: a "cycle" (repeated ⌃⌥← walks half → left-third → …) would
         // hook in here by remembering the last zone applied per window.
+    }
+
+    // MARK: - Snap target (read-only context for the radial ring's preview)
+
+    /// The focused window's frame and screen, both in AppKit space. The
+    /// radial trigger reads this once at activation so the zone preview lands
+    /// on the same screen (and, for `.center`, at the same size) that
+    /// `apply(_:)` will resolve on release. `nil` whenever `apply` would beep.
+    struct SnapTarget {
+        let windowFrame: NSRect
+        let screen: NSScreen
+    }
+
+    static func snapTarget() -> SnapTarget? {
+        guard isTrusted, let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(appElement, 0.5)
+
+        guard let window = focusedWindow(of: appElement),
+              let current = frame(of: window)
+        else {
+            return nil
+        }
+        let windowInAppKit = current.flippedY(maxY: primaryMaxY())
+        guard let screen = screenContaining(windowInAppKit) else { return nil }
+        return SnapTarget(windowFrame: windowInAppKit, screen: screen)
     }
 
     // MARK: - AX reads
@@ -88,6 +117,77 @@ enum WindowEngine {
             return nil
         }
         return NSRect(origin: position, size: size)
+    }
+
+    // MARK: - Animated write (adapted from Loop's WindowTransformAnimation)
+
+    /// The in-flight snap animation. One at a time: a new snap cancels the
+    /// old task, and the new task awaits the old one so the enhanced-UI
+    /// disable/restore pairs can never interleave.
+    private static var animationTask: Task<Void, Never>?
+
+    /// Steps the window from `current` to `rect` (both AX space) over ~0.2 s
+    /// with a cubic ease-out, then lands exactly on `rect` via the same
+    /// size → position → size ordering as the direct path. Loop drives its
+    /// version off a display link; every AX set here is synchronous IPC with
+    /// a 0.5 s messaging timeout, so we keep the step count low — ~9 sets
+    /// over 0.2 s reads as the same motion without risking seconds of blocked
+    /// main thread on a hung target app. Any failed set aborts the animation
+    /// (the app is rejecting or timing out; don't stack up timeouts).
+    private static func setFrameAnimated(
+        _ window: AXUIElement,
+        from current: NSRect,
+        to rect: NSRect,
+        resize: Bool,
+        app: AXUIElement
+    ) {
+        // ponytail: Reduce Motion short-circuits to the direct set. A
+        // user-facing "animate snaps" toggle was not requested; add one here
+        // if it ever is.
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            setFrame(window, to: rect, resize: resize, app: app)
+            return
+        }
+
+        let previous = animationTask
+        previous?.cancel()
+        animationTask = Task { @MainActor in
+            // Let the previous animation unwind (its deferred enhanced-UI
+            // restore included) before this one touches the same flags.
+            await previous?.value
+            guard !Task.isCancelled else { return }
+
+            let willResize = resize && isSettable(window, kAXSizeAttribute)
+            let enhanced = boolAttribute(app, kAXEnhancedUserInterface)
+            if enhanced { setBool(app, kAXEnhancedUserInterface, false) }
+            defer { if enhanced { setBool(app, kAXEnhancedUserInterface, true) } }
+
+            let steps = 9
+            let duration = 0.2
+            for step in 1 ..< steps {
+                let t = Double(step) / Double(steps)
+                let eased = 1 - pow(1 - t, 3) // cubic ease-out
+                let frame = NSRect(
+                    x: current.minX + (rect.minX - current.minX) * eased,
+                    y: current.minY + (rect.minY - current.minY) * eased,
+                    width: current.width + (rect.width - current.width) * eased,
+                    height: current.height + (rect.height - current.height) * eased
+                )
+                if willResize {
+                    guard setSize(window, frame.size) else { return }
+                }
+                guard setPosition(window, frame.origin) else { return }
+                try? await Task.sleep(nanoseconds: UInt64(duration / Double(steps) * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+            }
+
+            // Exact final placement (size → position → size; see setFrame).
+            if willResize {
+                guard setSize(window, rect.size) else { return }
+            }
+            guard setPosition(window, rect.origin) else { return }
+            if willResize { _ = setSize(window, rect.size) }
+        }
     }
 
     // MARK: - AX write (Loop's disable-enhanced-UI + size/position/size order)
@@ -113,16 +213,20 @@ enum WindowEngine {
         if willResize { setSize(window, rect.size) }
     }
 
-    private static func setPosition(_ window: AXUIElement, _ point: CGPoint) {
+    @discardableResult
+    private static func setPosition(_ window: AXUIElement, _ point: CGPoint) -> Bool {
         var value = point
-        guard let axValue = AXValueCreate(.cgPoint, &value) else { return }
-        AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, axValue)
+        guard let axValue = AXValueCreate(.cgPoint, &value) else { return false }
+        return AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, axValue)
+            == .success
     }
 
-    private static func setSize(_ window: AXUIElement, _ size: CGSize) {
+    @discardableResult
+    private static func setSize(_ window: AXUIElement, _ size: CGSize) -> Bool {
         var value = size
-        guard let axValue = AXValueCreate(.cgSize, &value) else { return }
-        AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, axValue)
+        guard let axValue = AXValueCreate(.cgSize, &value) else { return false }
+        return AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, axValue)
+            == .success
     }
 
     private static func setBool(_ element: AXUIElement, _ attribute: String, _ value: Bool) {
