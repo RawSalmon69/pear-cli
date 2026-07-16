@@ -18,6 +18,14 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp .build/release/PearCompanion "$APP/Contents/MacOS/PearCompanion"
 
+# SPM emits the executable's resources as PearCompanion_PearCompanion.bundle next
+# to the binary. Bundle.module resolves it via Bundle.main.resourceURL, so copy
+# it into Contents/Resources (this is what ships the RunCat runner frames).
+RESOURCE_BUNDLE="$(find .build -maxdepth 3 -type d -name 'PearCompanion_PearCompanion.bundle' -path '*release*' | head -1)"
+if [[ -n "$RESOURCE_BUNDLE" ]]; then
+    cp -R "$RESOURCE_BUNDLE" "$APP/Contents/Resources/"
+fi
+
 # Sparkle ships as a framework; bundle it and point the binary at it.
 SPARKLE_FRAMEWORK="$(find .build -maxdepth 3 -type d -name Sparkle.framework -path '*release*' | head -1)"
 if [[ -n "$SPARKLE_FRAMEWORK" ]]; then

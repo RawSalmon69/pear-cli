@@ -1,17 +1,28 @@
 import XCTest
 @testable import PearCompanion
 
-/// Coverage for the runner customization: every style renders the shared frame
-/// count, and the persisted style / CPU-readout preferences round-trip through
-/// an injectable `UserDefaults` domain.
+/// Coverage for the runner customization: every style loads its real frame set
+/// from the bundled RunCat365 artwork, and the persisted style / CPU-readout
+/// preferences round-trip through an injectable `UserDefaults` domain.
 @MainActor
 final class RunnerStyleTests: XCTestCase {
 
-    /// Each style must render exactly `count` frames so the menu-bar item never
-    /// jumps when the user switches runners.
-    func testFramesCountPerStyle() {
+    /// Every style loads a non-empty frame set from the resource bundle. If the
+    /// assets failed to ship, `frames()` degrades to a single blank frame — so
+    /// this guards against a crash but not a missing bundle (see the count test).
+    func testEachStyleLoadsNonEmptyFramesFromBundle() {
         for style in RunnerStyle.allCases {
-            XCTAssertEqual(style.frames().count, RunnerStyle.count, "\(style.rawValue)")
+            XCTAssertFalse(style.frames().isEmpty, "\(style.rawValue) loaded no frames")
+        }
+    }
+
+    /// Each style loads exactly the frame count shipped in the bundle. A missing
+    /// asset folder degrades to the single blank fallback, which fails here — so
+    /// this asserts the real artwork actually shipped, in numeric order.
+    func testFramesCountPerStyle() {
+        let expected: [RunnerStyle: Int] = [.cat: 5, .parrot: 10, .horse: 5]
+        for style in RunnerStyle.allCases {
+            XCTAssertEqual(style.frames().count, expected[style], "\(style.rawValue)")
         }
     }
 
