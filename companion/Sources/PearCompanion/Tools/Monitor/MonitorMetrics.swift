@@ -87,6 +87,87 @@ struct MonitorSnapshot: Sendable {
     }
 }
 
+// MARK: - Customization
+
+/// The window's five sections. The raw value is both the persistence suffix
+/// (`monitor.section.<raw>`) and the `Identifiable` id, so the toggle list and
+/// the sampler gate agree without a second lookup table.
+enum MonitorSection: String, CaseIterable, Identifiable, Sendable {
+    case cpu, memory, network, battery, sensors
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .cpu: return "CPU"
+        case .memory: return "Memory"
+        case .network: return "Network"
+        case .battery: return "Battery"
+        case .sensors: return "Sensors"
+        }
+    }
+}
+
+/// How often the open window re-samples. Deliberately a few coarse steps around
+/// the 2 s default rather than a free slider — the values people actually want.
+enum MonitorRefreshRate: String, CaseIterable, Identifiable, Sendable {
+    case oneSecond = "1"
+    case twoSeconds = "2"
+    case fiveSeconds = "5"
+
+    var id: String { rawValue }
+
+    /// Seconds between samples, fed straight to the loop's sleep.
+    var seconds: Double {
+        switch self {
+        case .oneSecond: return 1
+        case .twoSeconds: return 2
+        case .fiveSeconds: return 5
+        }
+    }
+
+    /// Segmented-picker label.
+    var title: String { "\(rawValue)s" }
+}
+
+/// The user's Monitor customization: which sections show and how often the
+/// window samples. A plain `Sendable` value type with UserDefaults load/save so
+/// the round-trip is unit-testable against an injected suite — the model owns a
+/// live copy and hands `visibleSections` to the actor each tick.
+struct MonitorPrefs: Sendable, Equatable {
+    var visibleSections: Set<MonitorSection>
+    var refreshRate: MonitorRefreshRate
+
+    /// Everything on, 2 s — the behavior the window had before it was
+    /// customizable.
+    static let `default` = MonitorPrefs(
+        visibleSections: Set(MonitorSection.allCases), refreshRate: .twoSeconds)
+
+    private static func sectionKey(_ section: MonitorSection) -> String {
+        "monitor.section.\(section.rawValue)"
+    }
+    private static let refreshRateKey = "monitor.refreshRate"
+
+    /// Sections default *on* (opt-out), so a first run — or any key never
+    /// written — shows the full window. An unrecognized stored rate falls back
+    /// to the default rather than throwing the loop off.
+    static func load(from defaults: UserDefaults) -> MonitorPrefs {
+        let visible = MonitorSection.allCases.filter {
+            defaults.object(forKey: sectionKey($0)) as? Bool ?? true
+        }
+        let rate = defaults.string(forKey: refreshRateKey)
+            .flatMap(MonitorRefreshRate.init(rawValue:)) ?? .twoSeconds
+        return MonitorPrefs(visibleSections: Set(visible), refreshRate: rate)
+    }
+
+    func save(to defaults: UserDefaults) {
+        for section in MonitorSection.allCases {
+            defaults.set(visibleSections.contains(section), forKey: Self.sectionKey(section))
+        }
+        defaults.set(refreshRate.rawValue, forKey: Self.refreshRateKey)
+    }
+}
+
 // MARK: - Pure CPU delta math
 
 /// Turns two consecutive `PROCESSOR_CPU_LOAD_INFO` tick arrays into per-core

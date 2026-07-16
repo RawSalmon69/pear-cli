@@ -95,4 +95,88 @@ final class MonitorMetricsTests: XCTestCase {
         XCTAssertTrue(CPUUsage.coreUsages(previous: [1, 2, 3], current: [1, 2, 3]).isEmpty)
         XCTAssertTrue(CPUUsage.coreUsages(previous: [], current: []).isEmpty)
     }
+
+    // MARK: - Refresh-rate mapping
+
+    func testRefreshRateSecondsMapping() {
+        XCTAssertEqual(MonitorRefreshRate.oneSecond.seconds, 1)
+        XCTAssertEqual(MonitorRefreshRate.twoSeconds.seconds, 2)
+        XCTAssertEqual(MonitorRefreshRate.fiveSeconds.seconds, 5)
+    }
+
+    func testRefreshRateRawValueRoundTrip() {
+        for rate in MonitorRefreshRate.allCases {
+            XCTAssertEqual(MonitorRefreshRate(rawValue: rate.rawValue), rate)
+        }
+        XCTAssertNil(MonitorRefreshRate(rawValue: "3"))
+    }
+
+    // MARK: - Prefs round-trip
+
+    func testPrefsDefaultShowsEverythingAt2s() {
+        XCTAssertEqual(MonitorPrefs.default.visibleSections, Set(MonitorSection.allCases))
+        XCTAssertEqual(MonitorPrefs.default.refreshRate, .twoSeconds)
+    }
+
+    func testPrefsLoadFromEmptyDefaultsMatchesDefault() throws {
+        let suite = "MonitorMetricsTests-empty"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        // No keys written yet: sections default on, rate defaults to 2 s.
+        XCTAssertEqual(MonitorPrefs.load(from: defaults), .default)
+    }
+
+    func testPrefsRoundTrip() throws {
+        let suite = "MonitorMetricsTests-roundtrip"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let prefs = MonitorPrefs(
+            visibleSections: [.cpu, .memory],  // network/battery/sensors hidden
+            refreshRate: .fiveSeconds)
+        prefs.save(to: defaults)
+
+        let loaded = MonitorPrefs.load(from: defaults)
+        XCTAssertEqual(loaded, prefs)
+        XCTAssertEqual(loaded.visibleSections, [.cpu, .memory])
+        XCTAssertFalse(loaded.visibleSections.contains(.network))
+        XCTAssertEqual(loaded.refreshRate, .fiveSeconds)
+    }
+
+    func testPrefsLoadRejectsUnknownRefreshRate() throws {
+        let suite = "MonitorMetricsTests-badrate"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        defaults.set("42", forKey: "monitor.refreshRate")
+        XCTAssertEqual(MonitorPrefs.load(from: defaults).refreshRate, .twoSeconds)
+    }
+
+    // MARK: - Section filtering (hidden section ⇒ not sampled)
+
+    /// An empty visible set does no hardware work at all — every branch is
+    /// gated off — so the snapshot comes back empty.
+    func testEmptySectionSetSamplesNothing() async {
+        let sampler = MonitorSampler()
+        let snap = await sampler.sample(sections: [])
+        XCTAssertTrue(snap.isEmpty)
+    }
+
+    /// Sections left out of the set are never handed to their sampler, so they
+    /// stay nil regardless of hardware; memory is absolute and present on every
+    /// Mac, proving the requested section still runs.
+    func testHiddenSectionsAreNeverPopulated() async {
+        let sampler = MonitorSampler()
+        _ = await sampler.sample(sections: [.memory])  // seed
+        let snap = await sampler.sample(sections: [.memory])
+        XCTAssertNil(snap.cpu)
+        XCTAssertNil(snap.network)
+        XCTAssertNil(snap.battery)
+        XCTAssertNil(snap.sensors)
+        XCTAssertNotNil(snap.memory)
+    }
 }

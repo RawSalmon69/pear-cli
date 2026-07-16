@@ -16,15 +16,18 @@ actor MonitorSampler {
     private var smc: SMCConnection?
     private var sensorKeys: ResolvedSensorKeys?
 
-    /// One full pass. Each section fails independently — a nil from any
-    /// sampler just leaves that field nil in the snapshot.
-    func sample() -> MonitorSnapshot {
+    /// One pass over the requested sections. A hidden section's sampler is
+    /// never called — the guard is the "zero cost when hidden" guarantee, not
+    /// just a render filter — so an empty set does no hardware work at all.
+    /// Each sampled section still fails independently: a nil from any sampler
+    /// just leaves that field nil in the snapshot.
+    func sample(sections: Set<MonitorSection>) -> MonitorSnapshot {
         var snapshot = MonitorSnapshot()
-        snapshot.cpu = sampleCPU()
-        snapshot.memory = MemorySampler.sample()
-        snapshot.network = sampleNetwork()
-        snapshot.battery = BatterySampler.sample()
-        snapshot.sensors = sampleSensors()
+        if sections.contains(.cpu) { snapshot.cpu = sampleCPU() }
+        if sections.contains(.memory) { snapshot.memory = MemorySampler.sample() }
+        if sections.contains(.network) { snapshot.network = sampleNetwork() }
+        if sections.contains(.battery) { snapshot.battery = BatterySampler.sample() }
+        if sections.contains(.sensors) { snapshot.sensors = sampleSensors() }
         return snapshot
     }
 

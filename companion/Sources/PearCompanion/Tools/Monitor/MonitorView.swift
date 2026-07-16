@@ -6,25 +6,17 @@ import SwiftUI
 /// the sensors card, with no error surfaced.
 struct MonitorView: View {
     @State private var model = MonitorModel()
+    @State private var showSettings = false
 
     private var snap: MonitorSnapshot { model.snapshot }
+    private var visible: Set<MonitorSection> { model.prefs.visibleSections }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.itemGap) {
-                if snap.isEmpty {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.small)
-                        Text("Sampling…").font(Theme.body).foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 24)
-                }
-                if let cpu = snap.cpu { CPUCard(sample: cpu) }
-                if let memory = snap.memory { MemoryCard(sample: memory) }
-                if let network = snap.network { NetworkCard(sample: network) }
-                if let battery = snap.battery { BatteryCard(sample: battery) }
-                if let sensors = snap.sensors { SensorsCard(sample: sensors) }
+                header
+                if showSettings { MonitorSettingsStrip(model: model) }
+                content
             }
             .padding(14)
         }
@@ -33,6 +25,100 @@ struct MonitorView: View {
         .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { model.start() }
         .onDisappear { model.stop() }
+    }
+
+    /// A single right-aligned gear that reveals the inline settings strip —
+    /// no separate window, matching the panel's own settings affordance.
+    private var header: some View {
+        HStack {
+            Spacer()
+            GlyphButton(
+                symbol: "slider.horizontal.3",
+                help: "Customize",
+                tint: showSettings ? Theme.accent : .secondary
+            ) {
+                showSettings.toggle()
+            }
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+        if visible.isEmpty {
+            // Every section is off — a quiet nudge instead of a blank window.
+            VStack(spacing: 6) {
+                Image(systemName: "eye.slash")
+                    .font(.title3)
+                    .foregroundStyle(.tertiary)
+                Text("Everything's hidden — turn a section on")
+                    .font(Theme.body)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 24)
+        } else {
+            if snap.isEmpty {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Sampling…").font(Theme.body).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 24)
+            }
+            // Gate on the live visible set as well as the sampled value, so
+            // toggling a section off hides it instantly rather than at the
+            // next tick.
+            if visible.contains(.cpu), let cpu = snap.cpu { CPUCard(sample: cpu) }
+            if visible.contains(.memory), let memory = snap.memory { MemoryCard(sample: memory) }
+            if visible.contains(.network), let network = snap.network { NetworkCard(sample: network) }
+            if visible.contains(.battery), let battery = snap.battery { BatteryCard(sample: battery) }
+            if visible.contains(.sensors), let sensors = snap.sensors { SensorsCard(sample: sensors) }
+        }
+    }
+}
+
+/// The inline customization strip: one switch per section plus the refresh-rate
+/// steps. Bound straight to the live `MonitorModel`, so every change persists
+/// and applies immediately through the model's `prefs` setter.
+private struct MonitorSettingsStrip: View {
+    @Bindable var model: MonitorModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Sections")
+            ForEach(MonitorSection.allCases) { section in
+                Toggle(section.title, isOn: binding(for: section))
+                    .font(Theme.body)
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .tint(Theme.accent)
+            }
+
+            Divider().padding(.vertical, 2)
+
+            SectionLabel(text: "Refresh")
+            Picker("Refresh", selection: $model.prefs.refreshRate) {
+                ForEach(MonitorRefreshRate.allCases) { rate in
+                    Text(rate.title).tag(rate)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
+        .padding(Theme.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard(cornerRadius: 12)
+    }
+
+    private func binding(for section: MonitorSection) -> Binding<Bool> {
+        Binding(
+            get: { model.prefs.visibleSections.contains(section) },
+            set: { on in
+                if on {
+                    model.prefs.visibleSections.insert(section)
+                } else {
+                    model.prefs.visibleSections.remove(section)
+                }
+            })
     }
 }
 
