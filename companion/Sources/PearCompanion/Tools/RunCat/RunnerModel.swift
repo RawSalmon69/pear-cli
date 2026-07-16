@@ -3,26 +3,25 @@ import Foundation
 import Observation
 
 // A RunCat-style animated runner for the menu bar: a little cat that ambles
-// when the Mac is idle and sprints when the CPU is pegged. The animation logic
-// (frame cadence as a function of CPU load) is adapted from RunCat365
-// (Apache-2.0) — https://github.com/runcat-dev/RunCat365 — specifically its
-// `Program.CalculateInterval`. We draw our own frames (see RunnerStyle) and
-// take no dependency on RunCat.
+// when the Mac is idle and sprints when the CPU is pegged. The frame cadence as
+// a function of CPU load is adopted, endpoints and all, from the original macOS
+// RunCat (Kyome22/menubar_runcat, Apache-2.0) —
+// https://github.com/Kyome22/menubar_runcat. We draw our own frames (see
+// RunnerStyle) and take no dependency on RunCat.
 
 /// Pure CPU-load → frame-interval mapping. Kept free of any state or actor so
 /// it is trivially unit-testable without hardware.
 ///
-/// Adapted from RunCat365 (Apache-2.0): RunCat computes
-/// `speed = max(1, load% / 5)` then `interval = 500ms / speed`, so the interval
-/// starts flat at idle and shrinks hyperbolically as load rises. We keep that
-/// shape — interval is `base / speed`, `speed` linear in load — but retune the
-/// endpoints to a menu-bar-friendly range instead of RunCat's 500…25 ms.
+/// Adopted verbatim from menubar_runcat (Apache-2.0), whose `AppDelegate`
+/// computes `interval = 0.2 / max(1, min(20, usage% / 5))`: the interval is flat
+/// at the idle amble for the first 5% of load, then shrinks hyperbolically as the
+/// clamped `speed` rises, bottoming out at 10 ms once the machine is pegged.
 enum RunnerCadence {
-    /// Seconds per frame at 0% CPU — a slow amble.
+    /// Seconds per frame at 0% CPU — a slow amble. `speed` clamps to 1 here.
     static let idleInterval: Double = 0.200
-    /// Seconds per frame at 100% CPU — a fast run. Also the hard floor: the
-    /// timer can never tick faster than this.
-    static let peggedInterval: Double = 0.040
+    /// Seconds per frame at 100% CPU — a fast sprint and the hard floor: `speed`
+    /// clamps to 20, so the timer can never tick faster than `0.2 / 20`.
+    static let peggedInterval: Double = 0.010
 
     /// Maps a whole-machine CPU busy fraction (0…1) to a per-frame interval in
     /// seconds. The input is clamped, so a bogus or out-of-range sample can
@@ -30,8 +29,8 @@ enum RunnerCadence {
     /// `[peggedInterval, idleInterval]`. Monotonically non-increasing in load.
     static func frameInterval(cpuFraction: Double) -> Double {
         let load = min(1, max(0, cpuFraction))
-        // speed = 1 at idle, rising linearly to idle/pegged (= 5) when pegged.
-        let speed = 1 + load * (idleInterval / peggedInterval - 1)
+        // speed = clamp(usage% / 5, 1, 20), exactly as menubar_runcat does it.
+        let speed = min(20, max(1, load * 100 / 5))
         return idleInterval / speed
     }
 }
@@ -84,7 +83,7 @@ final class RunnerModel {
     var style: RunnerStyle {
         didSet {
             guard style != oldValue else { return }
-            defaults.set(style.rawValue, forKey: styleKey)
+            defaults.set(style.id, forKey: styleKey)
             rebuildFrames()
         }
     }
@@ -137,11 +136,11 @@ final class RunnerModel {
         self.showsCPUKey = showsCPUKey
         self.isEnabled = defaults.bool(forKey: defaultsKey)
         self.showsCPU = defaults.bool(forKey: showsCPUKey)
-        let storedStyle = defaults.string(forKey: styleKey).flatMap(RunnerStyle.init(rawValue:)) ?? .cat
+        let storedStyle = defaults.string(forKey: styleKey).flatMap(RunnerStyle.style(id:)) ?? .defaultStyle
         self.style = storedStyle
         let built = storedStyle.frames()
         self.frames = built
-        self.currentFrame = built.first ?? NSImage(size: RunnerStyle.size)
+        self.currentFrame = built.first ?? NSImage(size: RunnerStyle.placeholderSize)
     }
 
     /// Starts sampling + animating if enabled. Idempotent — a second call while

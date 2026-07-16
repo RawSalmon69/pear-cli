@@ -2,10 +2,16 @@ import XCTest
 @testable import PearCompanion
 
 /// Pure-logic coverage for the menu-bar runner's CPU-load → frame-interval
-/// mapping (adapted from RunCat365). The animation timer and CPU sampler touch
-/// time and hardware and are not unit-tested; this is the part that must be
-/// exactly right on every machine.
+/// mapping (adopted from menubar_runcat: `0.2 / clamp(usage% / 5, 1, 20)`). The
+/// animation timer and CPU sampler touch time and hardware and are not
+/// unit-tested; this is the part that must be exactly right on every machine.
 final class RunnerCadenceTests: XCTestCase {
+
+    /// The advertised endpoints match upstream: 200 ms at idle, 10 ms pegged.
+    func testEndpointValues() {
+        XCTAssertEqual(RunnerCadence.idleInterval, 0.200, accuracy: 1e-9)
+        XCTAssertEqual(RunnerCadence.peggedInterval, 0.010, accuracy: 1e-9)
+    }
 
     /// Idle (0% CPU) ambles at exactly the idle interval.
     func testIdleFloor() {
@@ -15,11 +21,20 @@ final class RunnerCadenceTests: XCTestCase {
             accuracy: 1e-9)
     }
 
-    /// Pegged (100% CPU) sprints at exactly the pegged interval.
+    /// Pegged (100% CPU) sprints at exactly the pegged interval (0.2 / 20).
     func testPeggedCeiling() {
         XCTAssertEqual(
             RunnerCadence.frameInterval(cpuFraction: 1),
             RunnerCadence.peggedInterval,
+            accuracy: 1e-9)
+    }
+
+    /// Upstream clamps `speed` to 1 for the first 5% of load, so the runner
+    /// stays at the flat idle amble there rather than creeping faster.
+    func testFlatBelowFivePercent() {
+        XCTAssertEqual(
+            RunnerCadence.frameInterval(cpuFraction: 0.03),
+            RunnerCadence.idleInterval,
             accuracy: 1e-9)
     }
 
@@ -54,12 +69,12 @@ final class RunnerCadenceTests: XCTestCase {
     }
 
     /// A midpoint load lands strictly between the endpoints (the mapping isn't
-    /// degenerate) and matches the RunCat-shaped `base / speed` curve.
+    /// degenerate) and matches the upstream `0.2 / clamp(usage%/5, 1, 20)` curve.
     func testMidpointBetweenEndpoints() {
         let mid = RunnerCadence.frameInterval(cpuFraction: 0.5)
         XCTAssertGreaterThan(mid, RunnerCadence.peggedInterval)
         XCTAssertLessThan(mid, RunnerCadence.idleInterval)
-        // speed = 1 + 0.5*(0.200/0.040 - 1) = 3 -> 0.200 / 3.
-        XCTAssertEqual(mid, RunnerCadence.idleInterval / 3, accuracy: 1e-9)
+        // usage% = 50 -> speed = clamp(50/5, 1, 20) = 10 -> 0.200 / 10.
+        XCTAssertEqual(mid, RunnerCadence.idleInterval / 10, accuracy: 1e-9)
     }
 }
