@@ -34,6 +34,11 @@ struct ShelfEntry: Identifiable {
 final class ShelfStore {
     private(set) var items: [ShelfEntry] = []
 
+    /// The row the pointer is over. Drives the hover highlight and is the
+    /// target for ⌘C / the copy button. Kept on the store (not the view) so
+    /// the window controller's key monitor can resolve the copy target.
+    var hoveredID: UUID?
+
     @ObservationIgnored private let root: URL
     @ObservationIgnored private var indexURL: URL { root.appendingPathComponent("index.json") }
 
@@ -80,6 +85,97 @@ final class ShelfStore {
         items.removeAll { $0.id == entry.id }
         try? FileManager.default.trashItem(at: entry.url, resultingItemURL: nil)
         save()
+    }
+
+    // MARK: - Paste in / copy out
+
+    /// A file to feed to `add`, plus whether it is a throwaway temp we created
+    /// (and should delete once it has been copied into the shelf).
+    struct IngestSource: Equatable {
+        let url: URL
+        let isTemporary: Bool
+    }
+
+    /// Adds whatever is on `pasteboard` to the shelf, reusing the same
+    /// copy-into-shelf path as a drag-in. File URLs are copied directly; image
+    /// data and plain text are written to a temp file first so they flow
+    /// through `add` exactly like a dropped file. Returns the count added.
+    @discardableResult
+    func ingest(from pasteboard: NSPasteboard = .general) -> Int {
+        let sources = Self.ingestSources(from: pasteboard)
+        for source in sources {
+            add(source.url)
+            // `add` copies, so the temp original can go once it is in.
+            if source.isTemporary {
+                try? FileManager.default.removeItem(at: source.url.deletingLastPathComponent())
+            }
+        }
+        return sources.count
+    }
+
+    /// Puts `entry` on the pasteboard the way Finder copies a file: the file
+    /// URL (so paste into Finder/apps drops the file) plus, for image entries,
+    /// the image itself so image editors receive pixels. Mirrors the drag-out,
+    /// which also vends `url as NSURL`.
+    func copy(_ entry: ShelfEntry, to pasteboard: NSPasteboard = .general) {
+        pasteboard.clearContents()
+        var objects: [NSPasteboardWriting] = [entry.url as NSURL]
+        if let type = UTType(filenameExtension: entry.url.pathExtension),
+           type.conforms(to: .image), let image = NSImage(contentsOf: entry.url) {
+            objects.append(image)
+        }
+        pasteboard.writeObjects(objects)
+        SoundEffects.play(.copy)
+    }
+
+    /// Copies the hovered row out, falling back to the top item — the ⌘C path.
+    @discardableResult
+    func copyHovered(to pasteboard: NSPasteboard = .general) -> Bool {
+        guard let target = items.first(where: { $0.id == hoveredID }) ?? items.first
+        else { return false }
+        copy(target, to: pasteboard)
+        return true
+    }
+
+    /// Maps a pasteboard's contents to files ready for `add`, materializing a
+    /// temp file for image / text payloads. File URLs win when present, then
+    /// image data, then plain text. Static and pasteboard-injectable so the
+    /// mapping is unit-testable without the general pasteboard.
+    static func ingestSources(from pasteboard: NSPasteboard) -> [IngestSource] {
+        if let objects = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL] {
+            let files = objects.filter(\.isFileURL)
+            if !files.isEmpty { return files.map { IngestSource(url: $0, isTemporary: false) } }
+        }
+        if let png = pasteboard.data(forType: .png),
+           let url = writeTemp(png, filename: "Pasted Image.png") {
+            return [IngestSource(url: url, isTemporary: true)]
+        }
+        if let tiff = pasteboard.data(forType: .tiff),
+           let url = writeTemp(tiff, filename: "Pasted Image.tiff") {
+            return [IngestSource(url: url, isTemporary: true)]
+        }
+        if let text = pasteboard.string(forType: .string),
+           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let url = writeTemp(Data(text.utf8), filename: "Pasted Text.txt") {
+            return [IngestSource(url: url, isTemporary: true)]
+        }
+        return []
+    }
+
+    /// Writes pasted bytes to a uniquely-named temp directory so the display
+    /// name stays clean; the caller feeds it to `add` and then deletes it.
+    private static func writeTemp(_ data: Data, filename: String) -> URL? {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ShelfPaste-\(UUID().uuidString)", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let url = dir.appendingPathComponent(filename)
+            try data.write(to: url)
+            return url
+        } catch {
+            NSLog("Shelf: temp write failed for \(filename) — \(error)")
+            return nil
+        }
     }
 
     // MARK: - Persistence

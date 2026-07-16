@@ -13,7 +13,6 @@ struct ShelfView: View {
 
     @State private var isTargeted = false
     @State private var previewURL: URL?
-    @State private var hoveredID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
@@ -47,6 +46,9 @@ struct ShelfView: View {
                     .foregroundStyle(.tertiary)
             }
             Spacer()
+            GlyphButton(symbol: "doc.on.clipboard", help: "Paste from clipboard") {
+                store.ingest(from: .general)
+            }
             GlyphButton(symbol: "xmark", help: "Close", action: onClose)
         }
     }
@@ -73,15 +75,16 @@ struct ShelfView: View {
                 ForEach(store.items) { entry in
                     ShelfRow(
                         entry: entry,
-                        hovering: hoveredID == entry.id,
+                        hovering: store.hoveredID == entry.id,
                         onReveal: { reveal(entry) },
                         onPreview: { previewURL = entry.url },
+                        onCopy: { store.copy(entry) },
                         onRemove: {
                             SoundEffects.play(.discard)
                             withAnimation { store.remove(entry) }
                         }
                     )
-                    .onHover { hoveredID = $0 ? entry.id : (hoveredID == entry.id ? nil : hoveredID) }
+                    .onHover { store.hoveredID = $0 ? entry.id : (store.hoveredID == entry.id ? nil : store.hoveredID) }
                 }
             }
         }
@@ -91,7 +94,7 @@ struct ShelfView: View {
         .focusable()
         .focusEffectDisabled()
         .onKeyPress(.space) {
-            let target = store.items.first { $0.id == hoveredID } ?? store.items.first
+            let target = store.items.first { $0.id == store.hoveredID } ?? store.items.first
             guard let target else { return .ignored }
             previewURL = target.url
             return .handled
@@ -123,6 +126,7 @@ private struct ShelfRow: View {
     let hovering: Bool
     let onReveal: () -> Void
     let onPreview: () -> Void
+    let onCopy: () -> Void
     let onRemove: () -> Void
 
     var body: some View {
@@ -139,6 +143,7 @@ private struct ShelfRow: View {
             .overlay { ShelfDragOverlay(provider: { entry.url }, onClick: onReveal) }
 
             if hovering {
+                GlyphButton(symbol: "doc.on.doc", help: "Copy", action: onCopy)
                 GlyphButton(symbol: "eye", help: "Quick Look", action: onPreview)
                 GlyphButton(symbol: "xmark", help: "Remove", action: onRemove)
             }

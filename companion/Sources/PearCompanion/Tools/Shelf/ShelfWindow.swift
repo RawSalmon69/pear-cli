@@ -8,6 +8,7 @@ import SwiftUI
 @MainActor
 final class ShelfWindowController {
     private var panel: NSPanel?
+    private var keyMonitor: Any?
     private let store: ShelfStore
 
     private static let panelSize = NSSize(width: 300, height: 380)
@@ -25,6 +26,8 @@ final class ShelfWindowController {
     }
 
     func hide() {
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
         panel?.orderOut(nil)
         panel = nil
     }
@@ -65,6 +68,28 @@ final class ShelfWindowController {
 
         panel.makeKeyAndOrderFront(nil)
         self.panel = panel
+        installKeyMonitor(for: panel)
+    }
+
+    /// ⌘V pastes the clipboard into the shelf; ⌘C copies the hovered row out.
+    /// A local key monitor scoped to the panel's visibility — installed on
+    /// show, torn down in `hide()` — mirroring the session-scoped monitors in
+    /// RadialTrigger / DockSwitcher. The non-activating panel means a SwiftUI
+    /// `.onPasteCommand` would not fire reliably, so the shortcuts live here.
+    private func installKeyMonitor(for panel: NSPanel) {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak panel] event in
+            guard let self, let panel, event.window === panel,
+                  event.modifierFlags.contains(.command) else { return event }
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case "v":
+                self.store.ingest(from: .general)
+                return nil
+            case "c":
+                return self.store.copyHovered(to: .general) ? nil : event
+            default:
+                return event
+            }
+        }
     }
 }
 
