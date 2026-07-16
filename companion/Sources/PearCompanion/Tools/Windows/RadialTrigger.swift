@@ -100,6 +100,10 @@ final class RadialTrigger {
     private var flagsMonitors: [Any] = []
     /// Mouse/key monitors that exist only while the trigger is held.
     private var trackingMonitors: [Any] = []
+    /// Consumes ring-handled keys while the session is open, so arrows and
+    /// Escape don't leak into the frontmost app. nil = tap unavailable,
+    /// running on the read-only fallback monitors.
+    private var keyTap: KeySwallowTap?
     private var holdTask: Task<Void, Never>?
     private var watchdogTask: Task<Void, Never>?
     private var lastFlags: NSEvent.ModifierFlags = []
@@ -203,6 +207,8 @@ final class RadialTrigger {
     private func teardown() {
         for monitor in trackingMonitors { NSEvent.removeMonitor(monitor) }
         trackingMonitors = []
+        keyTap?.invalidate()
+        keyTap = nil
         watchdogTask?.cancel()
         watchdogTask = nil
         ring.hide()
@@ -256,17 +262,24 @@ final class RadialTrigger {
             trackingMonitors.append(monitor)
         }
 
-        if let monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
-            _ = self?.handleKeyDown(event)
-        }) {
-            trackingMonitors.append(monitor)
+        // Keys: a session-scoped event tap consumes the ring's keys system-wide
+        // (arrows/Escape must not leak into the frontmost app). If the tap
+        // can't be created, degrade to the read-only monitors — the ring still
+        // works, handled keys just pass through underneath.
+        keyTap = KeySwallowTap { [weak self] event in
+            self?.handleKeyDown(event) ?? false
         }
-        if let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
-            // Swallow handled keys locally; global events can't be consumed
-            // by a read-only monitor (documented limitation of no-tap design).
-            (self?.handleKeyDown(event) ?? false) ? nil : event
-        }) {
-            trackingMonitors.append(monitor)
+        if keyTap == nil {
+            if let monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
+                _ = self?.handleKeyDown(event)
+            }) {
+                trackingMonitors.append(monitor)
+            }
+            if let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
+                (self?.handleKeyDown(event) ?? false) ? nil : event
+            }) {
+                trackingMonitors.append(monitor)
+            }
         }
     }
 
