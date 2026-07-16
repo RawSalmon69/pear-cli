@@ -115,7 +115,13 @@ final class DockPreviewPanel {
             defer: false
         )
         panel.isFloatingPanel = true
-        panel.level = .floating
+        // The Dock sits at CGWindowLevelForKey(.dockWindow) (== 20), ABOVE
+        // NSWindow.Level.floating (== 3), so a .floating panel is drawn behind
+        // the Dock — the preview appeared clipped under it. DockDoor's
+        // SharedPreviewWindowCoordinator.setupWindow raises the level for exactly
+        // this reason (`level = Defaults[.raisedWindowLevel] ? .statusBar : .floating`,
+        // raisedWindowLevel default true); .statusBar (== 25) clears the Dock.
+        panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
         panel.isOpaque = false
         panel.backgroundColor = .clear
