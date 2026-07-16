@@ -70,6 +70,8 @@ struct SettingsPopover: View {
                 }
             }
 
+            RunnerSettingsView(runner: env.runner)
+
             VStack(alignment: .leading, spacing: Theme.itemGap) {
                 SectionLabel(text: "Feedback")
                 Toggle("Sound effects", isOn: $soundsEnabled)

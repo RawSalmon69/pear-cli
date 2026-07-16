@@ -12,7 +12,11 @@ struct PearApp: App {
             PanelView()
                 .environment(environment)
         } label: {
-            Image(nsImage: MenuBarIcon.image(unread: environment.hasUnseenIncoming))
+            if environment.runner.isEnabled {
+                Image(nsImage: environment.runner.currentFrame)
+            } else {
+                Image(nsImage: MenuBarIcon.image(unread: environment.hasUnseenIncoming))
+            }
         }
         .menuBarExtraStyle(.window)
     }

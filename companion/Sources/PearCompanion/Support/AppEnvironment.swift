@@ -19,6 +19,9 @@ final class AppEnvironment {
     let tools: ToolRegistry
     /// Native clean/optimize progress panel (no Terminal window).
     @ObservationIgnored let cleaner = CleanerWindowController()
+    /// Menu-bar runner (RunCat-style). The menu-bar label observes
+    /// `runner.currentFrame` directly; off by default, 0% cost when off.
+    let runner = RunnerModel()
 
     init(messaging: MessagingService, stats: PearStatsService, updater: UpdaterService?) {
         self.messaging = messaging
@@ -38,6 +41,8 @@ final class AppEnvironment {
         tools.offer(WindowsTool())
         tools.offer(MenuBarTool())
         self.tools = tools
+
+        runner.start() // no-op unless the user enabled it
 
         if FeatureFlags.coupleNote {
             NotificationCenter.default
