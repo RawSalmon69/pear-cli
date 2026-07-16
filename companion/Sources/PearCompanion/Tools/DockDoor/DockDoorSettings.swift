@@ -9,12 +9,18 @@ enum DockDoorSettings {
         static let hoverDelay = "dockdoor.hoverDelay"
         static let previewSize = "dockdoor.previewSize"
         static let showTitles = "dockdoor.showTitles"
+        static let switcherEnabled = "dockdoor.switcher.enabled"
+        static let switcherScope = "dockdoor.switcher.scope"
     }
 
     // Defaults.
     static let defaultHoverDelay: Double = 200 // ms
     static let defaultPreviewSize = DockPreviewSize.medium
     static let defaultShowTitles = true
+    /// The ⌥-tab switcher is on by default — it only acts on ⌥-tab and is
+    /// silent otherwise, so an on default costs nothing until summoned.
+    static let defaultSwitcherEnabled = true
+    static let defaultSwitcherScope = DockSwitcherScope.allWindows
 
     // Hover delay slider range, in milliseconds.
     static let hoverDelayRange: ClosedRange<Double> = 0 ... 500
@@ -37,6 +43,33 @@ enum DockDoorSettings {
         store.object(forKey: Key.showTitles) == nil
             ? defaultShowTitles
             : store.bool(forKey: Key.showTitles)
+    }
+
+    static func switcherEnabled(_ store: UserDefaults = .standard) -> Bool {
+        store.object(forKey: Key.switcherEnabled) == nil
+            ? defaultSwitcherEnabled
+            : store.bool(forKey: Key.switcherEnabled)
+    }
+
+    static func switcherScope(_ store: UserDefaults = .standard) -> DockSwitcherScope {
+        store.string(forKey: Key.switcherScope).flatMap(DockSwitcherScope.init) ?? defaultSwitcherScope
+    }
+}
+
+/// Which windows the ⌥-tab switcher cycles through. Mirrors DockDoor's
+/// `SwitcherInvocationMode` (`.allWindows` / `.activeAppOnly`), trimmed to the
+/// two scopes that matter without a live Dock: everything, or just the
+/// frontmost app's windows.
+enum DockSwitcherScope: String, CaseIterable, Identifiable {
+    case allWindows, activeApp
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .allWindows: "All Windows"
+        case .activeApp: "Active App"
+        }
     }
 }
 

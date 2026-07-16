@@ -10,6 +10,9 @@ struct DockDoorSettingsView: View {
     /// its Dock observer live — the tool is enabled by default, and on a fresh
     /// install Accessibility is usually granted after launch.
     var onTrusted: () -> Void = {}
+    /// Fired when the ⌥-tab switcher toggle flips, so the tool can register or
+    /// tear down its hotkeys without a relaunch.
+    var onSwitcherChanged: (Bool) -> Void = { _ in }
 
     // A plain, non-isolated C read — safe to seed @State and re-poll on appear.
     @State private var trusted = AXIsProcessTrusted()
@@ -20,6 +23,10 @@ struct DockDoorSettingsView: View {
     private var previewSize = DockDoorSettings.defaultPreviewSize.rawValue
     @AppStorage(DockDoorSettings.Key.showTitles)
     private var showTitles = DockDoorSettings.defaultShowTitles
+    @AppStorage(DockDoorSettings.Key.switcherEnabled)
+    private var switcherEnabled = DockDoorSettings.defaultSwitcherEnabled
+    @AppStorage(DockDoorSettings.Key.switcherScope)
+    private var switcherScope = DockDoorSettings.defaultSwitcherScope.rawValue
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.sectionGap) {
@@ -65,6 +72,22 @@ struct DockDoorSettingsView: View {
                 .font(Theme.body)
                 Toggle("Show window titles", isOn: $showTitles)
                     .font(Theme.body)
+            }
+
+            VStack(alignment: .leading, spacing: Theme.itemGap) {
+                SectionLabel(text: "Switcher")
+                Toggle("⌥-tab window switcher", isOn: $switcherEnabled)
+                    .font(Theme.body)
+                    .onChange(of: switcherEnabled) { _, enabled in onSwitcherChanged(enabled) }
+                if switcherEnabled {
+                    Picker("Scope", selection: $switcherScope) {
+                        ForEach(DockSwitcherScope.allCases) { scope in
+                            Text(scope.label).tag(scope.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .font(Theme.body)
+                }
             }
         }
     }

@@ -232,6 +232,52 @@ final class DockDoorTests: XCTestCase {
         XCTAssertEqual(parsed.first?.title, "")
     }
 
+    // MARK: - Switcher cycle order
+
+    func testSwitcherOpenIndexForwardPicksNext() {
+        XCTAssertEqual(DockSwitcherCycle.openIndex(count: 5, backward: false), 1)
+        XCTAssertEqual(DockSwitcherCycle.openIndex(count: 1, backward: false), 0)
+        XCTAssertEqual(DockSwitcherCycle.openIndex(count: 0, backward: false), -1)
+    }
+
+    func testSwitcherOpenIndexBackwardPicksLast() {
+        XCTAssertEqual(DockSwitcherCycle.openIndex(count: 5, backward: true), 4)
+        XCTAssertEqual(DockSwitcherCycle.openIndex(count: 1, backward: true), 0)
+        XCTAssertEqual(DockSwitcherCycle.openIndex(count: 0, backward: true), -1)
+    }
+
+    func testSwitcherAdvanceForwardWraps() {
+        XCTAssertEqual(DockSwitcherCycle.advance(from: 0, count: 5, backward: false), 1)
+        XCTAssertEqual(DockSwitcherCycle.advance(from: 4, count: 5, backward: false), 0) // wrap
+    }
+
+    func testSwitcherAdvanceBackwardWraps() {
+        XCTAssertEqual(DockSwitcherCycle.advance(from: 4, count: 5, backward: true), 3)
+        XCTAssertEqual(DockSwitcherCycle.advance(from: 0, count: 5, backward: true), 4) // wrap
+    }
+
+    func testSwitcherAdvanceDegenerateCounts() {
+        XCTAssertEqual(DockSwitcherCycle.advance(from: 0, count: 1, backward: false), 0)
+        XCTAssertEqual(DockSwitcherCycle.advance(from: 0, count: 1, backward: true), 0)
+        XCTAssertEqual(DockSwitcherCycle.advance(from: 3, count: 0, backward: false), -1)
+    }
+
+    func testSwitcherScopeSettingsRoundTrip() {
+        let defaults = suite("dockdoor-switcher")
+        defer { defaults.removePersistentDomain(forName: "dockdoor-switcher") }
+
+        XCTAssertTrue(DockDoorSettings.switcherEnabled(defaults)) // default on
+        XCTAssertEqual(DockDoorSettings.switcherScope(defaults), .allWindows)
+
+        defaults.set(false, forKey: DockDoorSettings.Key.switcherEnabled)
+        defaults.set(DockSwitcherScope.activeApp.rawValue, forKey: DockDoorSettings.Key.switcherScope)
+        XCTAssertFalse(DockDoorSettings.switcherEnabled(defaults))
+        XCTAssertEqual(DockDoorSettings.switcherScope(defaults), .activeApp)
+
+        defaults.set("nonsense", forKey: DockDoorSettings.Key.switcherScope)
+        XCTAssertEqual(DockDoorSettings.switcherScope(defaults), .allWindows) // fallback
+    }
+
     // MARK: - Helpers
 
     private func suite(_ name: String) -> UserDefaults {

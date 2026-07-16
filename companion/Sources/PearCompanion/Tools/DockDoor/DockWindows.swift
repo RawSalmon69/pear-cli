@@ -82,6 +82,15 @@ struct DockWindow: Identifiable {
     }
 }
 
+/// One row of the ⌥-tab switcher: a window plus the app it belongs to (needed
+/// for the tile's icon and to activate the app when the window is chosen).
+@MainActor
+struct DockSwitcherEntry: Identifiable {
+    let id: Int
+    let app: DockApp
+    let window: DockWindow
+}
+
 /// Cache-free AX window enumeration for one app, on the main actor.
 @MainActor
 enum DockWindows {
@@ -111,6 +120,45 @@ enum DockWindows {
         }
 
         return result
+    }
+
+    // MARK: - Switcher enumeration (all / active-app windows)
+
+    /// The window list the ⌥-tab switcher cycles through, in a stable order:
+    /// the frontmost app's windows first, then the other regular apps'. Reuses
+    /// the same widened `enumerate(app:)`, so multi-instance and zero-AX apps
+    /// are covered here too.
+    static func switcherEntries(scope: DockSwitcherScope) -> [DockSwitcherEntry] {
+        var entries: [DockSwitcherEntry] = []
+        for app in switcherApps(scope: scope) {
+            for window in enumerate(app: app) {
+                entries.append(DockSwitcherEntry(id: entries.count, app: app, window: window))
+            }
+        }
+        return entries
+    }
+
+    /// Apps to enumerate for the switcher, frontmost first, deduped by bundle id
+    /// (a multi-instance app's sibling pids are already unioned by `enumerate`).
+    private static func switcherApps(scope: DockSwitcherScope) -> [DockApp] {
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        switch scope {
+        case .activeApp:
+            return frontmost.map { [DockApp($0)] } ?? []
+        case .allWindows:
+            let regular = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
+            let front = regular.filter { $0.processIdentifier == frontmost?.processIdentifier }
+            let rest = regular.filter { $0.processIdentifier != frontmost?.processIdentifier }
+
+            var seen = Set<String>()
+            var apps: [DockApp] = []
+            for app in front + rest {
+                let key = app.bundleIdentifier ?? "pid:\(app.processIdentifier)"
+                guard seen.insert(key).inserted else { continue }
+                apps.append(DockApp(app))
+            }
+            return apps
+        }
     }
 
     /// Every pid that shares the hovered app's Dock icon: the resolved pid plus
