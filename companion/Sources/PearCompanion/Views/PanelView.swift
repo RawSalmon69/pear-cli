@@ -21,6 +21,9 @@ struct PanelView: View {
         .padding(16)
         .frame(width: 360)
         .fixedSize(horizontal: false, vertical: true)
+        // The panel is a mouse surface; no control should ever wear a focus
+        // ring just because the window became key.
+        .focusEffectDisabled()
         .task {
             if FeatureFlags.coupleNote {
                 await env.messaging.refresh()
@@ -297,11 +300,48 @@ struct Composer: View {
 
 // MARK: - Tools
 
+/// Presentation state for the tool-tile popovers, kept as a plain value type
+/// so the two failure modes that made tiles read as dead stay pinned by
+/// tests: a stale ID surviving the panel closing with a popover up (every
+/// same-tile click became a no-op because the ID never changed), and popover
+/// A's late dismissal callback wiping out a just-requested popover B.
+struct TilePopoverState: Equatable {
+    private(set) var activeID: String?
+
+    /// A tile was clicked. Returns true when the caller must re-present on
+    /// the next runloop turn: SwiftUI already believes this popover is up,
+    /// so the ID has to publish nil once before the same ID reads true again.
+    mutating func request(_ id: String) -> Bool {
+        if activeID == id {
+            activeID = nil
+            return true
+        }
+        activeID = id
+        return false
+    }
+
+    /// The deferred half of a `request` that returned true.
+    mutating func present(_ id: String) {
+        activeID = id
+    }
+
+    /// SwiftUI reported a popover dismissed. A late callback from an old
+    /// popover must not clear a newer request, so only the owner clears.
+    mutating func dismissed(_ id: String) {
+        if activeID == id { activeID = nil }
+    }
+
+    /// The panel went away; nothing is presented anymore.
+    mutating func panelClosed() {
+        activeID = nil
+    }
+}
+
 /// Data-driven from the tool registry, grouped by category so a dozen tools
 /// read as a few labeled rows instead of one wall of tiles.
 struct ToolsSection: View {
     @Environment(AppEnvironment.self) private var env
-    @State private var activePopoverID: String?
+    @State private var popovers = TilePopoverState()
 
     private let columns = Array(
         repeating: GridItem(.flexible(), spacing: Theme.itemGap), count: 4)
@@ -318,6 +358,10 @@ struct ToolsSection: View {
                 }
             }
         }
+        // MenuBarExtra can tear the panel down with a popover still up,
+        // skipping the popover's dismissal handshake; without this reset the
+        // stale ID left that tile dead on every reopen.
+        .onDisappear { popovers.panelClosed() }
     }
 
     @ViewBuilder
@@ -330,12 +374,14 @@ struct ToolsSection: View {
             ToolTile(symbol: tool.icon, label: tool.title, hint: hint, action: run)
         case .popover(let content):
             ToolTile(symbol: tool.icon, label: tool.title, hint: hint) {
-                activePopoverID = tool.id
+                if popovers.request(tool.id) {
+                    Task { @MainActor in popovers.present(tool.id) }
+                }
             }
             .popover(
                 isPresented: Binding(
-                    get: { activePopoverID == tool.id },
-                    set: { if !$0 { activePopoverID = nil } }
+                    get: { popovers.activeID == tool.id },
+                    set: { if !$0 { popovers.dismissed(tool.id) } }
                 ),
                 arrowEdge: .bottom
             ) { content() }
@@ -419,6 +465,9 @@ struct StatsSection: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // First focusable control in the panel: without this it grabbed
+        // first-responder on open and drew a grey focus box around the row.
+        .focusable(false)
         .help("Open the full Monitor")
         .onHover { hovering = $0 }
         .task { await env.stats.refresh() }
