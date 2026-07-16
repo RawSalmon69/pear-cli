@@ -294,6 +294,10 @@ struct SunburstHitTestIndex: Sendable {
 
 /// Theme-skinned sunburst. Hover highlights a wedge and reports it upward; a
 /// click on a directory wedge drills in; a click in the center hole goes up.
+/// Pinch or ⌘/⌥-scroll zooms the ring (1×–4×); scroll or drag pans once zoomed.
+/// All pointer input is routed through `SunburstInteractionOverlay` so the
+/// scroll-wheel and pinch gestures AppKit provides are available; the vendored
+/// `SunburstViewportTransform` maps container points into the scaled canvas.
 struct SunburstChartView: View {
     let root: DiskNode
     let depthLimit: Int
@@ -302,10 +306,13 @@ struct SunburstChartView: View {
     let onGoUp: () -> Void
 
     @State private var hoveredID: String?
+    @State private var viewport = SunburstViewportTransform.identity
 
     var body: some View {
         GeometryReader { geo in
             let size = geo.size
+            let baseFrame = CGRect(origin: .zero, size: size)
+            let frame = viewport.frame(for: baseFrame)
             let segments = SunburstLayout.segments(root: root, depthLimit: depthLimit)
             let index = SunburstHitTestIndex(segments: segments)
 
@@ -327,33 +334,65 @@ struct SunburstChartView: View {
                     }
                 }
             }
+            .frame(width: frame.width, height: frame.height)
             .overlay { centerLabel }
+            .position(x: frame.midX, y: frame.midY)
+            .clipped()
             .contentShape(Rectangle())
-            .onContinuousHover(coordinateSpace: .local) { phase in
-                switch phase {
-                case .active(let point):
-                    let hit = index.segment(at: point, in: size)
-                    hoveredID = hit?.id
-                    onHover(hit.map { DiskChartHover(name: $0.label, size: $0.size, path: $0.path) })
-                case .ended:
-                    hoveredID = nil
-                    onHover(nil)
-                }
+            .overlay {
+                SunburstInteractionOverlay(
+                    onHover: { updateHover($0, index: index, baseFrame: baseFrame) },
+                    onClick: { handleClick($0, index: index, baseFrame: baseFrame) },
+                    onPan: { viewport = viewport.panned(by: $0, in: baseFrame) },
+                    onMagnify: { location, factor in
+                        viewport = viewport.zoomed(by: factor, anchor: location, in: baseFrame)
+                    },
+                    canStartPan: { canStartPan($0, index: index, baseFrame: baseFrame) },
+                    isPanEnabled: viewport.isZoomed
+                )
             }
-            .gesture(
-                SpatialTapGesture(coordinateSpace: .local).onEnded { value in
-                    if SunburstHitTestIndex.isCenter(value.location, in: size) {
-                        onGoUp()
-                        return
-                    }
-                    guard let hit = index.segment(at: value.location, in: size),
-                          hit.isDrillable,
-                          let node = root.firstDescendant(id: hit.path ?? "") else { return }
-                    onDrill(node)
-                }
-            )
+            .onChange(of: size) { _, newSize in
+                viewport = viewport.constrained(to: CGRect(origin: .zero, size: newSize))
+            }
+            .onChange(of: root.id) { _, _ in
+                // A new subtree is a new chart — drop any zoom and stale hover.
+                viewport = .identity
+                hoveredID = nil
+            }
         }
         .aspectRatio(1, contentMode: .fit)
+    }
+
+    private func updateHover(_ location: CGPoint?, index: SunburstHitTestIndex, baseFrame: CGRect) {
+        guard let location,
+              let chart = viewport.localChartPoint(for: location, in: baseFrame) else {
+            hoveredID = nil
+            onHover(nil)
+            return
+        }
+        let hit = index.segment(at: chart.point, in: chart.size)
+        hoveredID = hit?.id
+        onHover(hit.map { DiskChartHover(name: $0.label, size: $0.size, path: $0.path) })
+    }
+
+    private func handleClick(_ location: CGPoint, index: SunburstHitTestIndex, baseFrame: CGRect) {
+        guard let chart = viewport.localChartPoint(for: location, in: baseFrame) else { return }
+        if SunburstHitTestIndex.isCenter(chart.point, in: chart.size) {
+            onGoUp()
+            return
+        }
+        guard let hit = index.segment(at: chart.point, in: chart.size),
+              hit.isDrillable,
+              let node = root.firstDescendant(id: hit.path ?? "") else { return }
+        onDrill(node)
+    }
+
+    /// Pan starts only on empty space (outside any wedge and off-center), so a
+    /// drag over a wedge still reads as hover/click rather than a pan.
+    private func canStartPan(_ location: CGPoint, index: SunburstHitTestIndex, baseFrame: CGRect) -> Bool {
+        guard let chart = viewport.localChartPoint(for: location, in: baseFrame) else { return true }
+        if SunburstHitTestIndex.isCenter(chart.point, in: chart.size) { return false }
+        return index.segment(at: chart.point, in: chart.size) == nil
     }
 
     private var centerLabel: some View {

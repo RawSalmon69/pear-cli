@@ -372,8 +372,11 @@ struct TreemapHitTestIndex: Sendable {
 
 // MARK: - View
 
-/// Theme-skinned treemap. Hover highlights a tile and reports it upward; a
-/// click on a directory tile drills in.
+/// Theme-skinned treemap. Hover highlights a tile and reports it upward and
+/// into a floating tooltip that follows the pointer; a click on a directory
+/// tile drills in. Small tiles hide their inline label, so the tooltip is often
+/// the only way to read them — its placement is edge-avoiding (vendored
+/// `TreemapTooltipPlacement`) so it never clips off the chart.
 struct TreemapChartView: View {
     let root: DiskNode
     let depthLimit: Int
@@ -381,6 +384,18 @@ struct TreemapChartView: View {
     let onDrill: (DiskNode) -> Void
 
     @State private var hoveredID: String?
+    @State private var tooltip: Tooltip?
+
+    /// Upper bound the placement math reserves so a long name wrapping onto a
+    /// second line still can't push the tooltip off the chart.
+    private static let tooltipSize = CGSize(width: 208, height: 48)
+
+    /// A hovered tile's readout plus where the pointer was, for the tooltip.
+    private struct Tooltip: Equatable {
+        let name: String
+        let size: Int64
+        let location: CGPoint
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -401,9 +416,19 @@ struct TreemapChartView: View {
                     let hit = index.segment(at: point, in: size)
                     hoveredID = hit?.id
                     onHover(hit.map { DiskChartHover(name: $0.label, size: $0.size, path: $0.path) })
+                    tooltip = hit.map { Tooltip(name: $0.label, size: $0.size, location: point) }
                 case .ended:
                     hoveredID = nil
                     onHover(nil)
+                    tooltip = nil
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if let tooltip {
+                    TreemapTooltipView(name: tooltip.name, size: tooltip.size)
+                        .frame(width: Self.tooltipSize.width, alignment: .leading)
+                        .offset(tooltipOffset(for: tooltip.location, in: size))
+                        .allowsHitTesting(false)
                 }
             }
             .gesture(
@@ -415,6 +440,15 @@ struct TreemapChartView: View {
                 }
             )
         }
+    }
+
+    private func tooltipOffset(for location: CGPoint, in size: CGSize) -> CGSize {
+        let origin = TreemapTooltipPlacement.origin(
+            for: location,
+            tooltipSize: Self.tooltipSize,
+            in: CGRect(origin: .zero, size: size)
+        )
+        return CGSize(width: origin.x, height: origin.y)
     }
 
     private func draw(_ segment: TreemapSegment, in context: inout GraphicsContext, size: CGSize) {
@@ -472,5 +506,29 @@ struct TreemapChartView: View {
             )
             context.draw(sizeText, at: CGPoint(x: rect.minX + 4, y: rect.minY + 15), anchor: .topLeading)
         }
+    }
+}
+
+/// Compact at-cursor readout for the treemap: the hovered tile's name and size.
+/// Positioned by `TreemapTooltipPlacement` so it stays inside the chart.
+private struct TreemapTooltipView: View {
+    let name: String
+    let size: Int64
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(name)
+                .font(Theme.body)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Text(ByteFormat.si(size))
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .glassCard(cornerRadius: 10)
+        .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
     }
 }
