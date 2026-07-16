@@ -1,66 +1,107 @@
 import AppKit
 
-/// The one moving part of the menu-bar hider, behind a protocol so the
-/// manager's state logic can be tested without a live status bar.
+/// The menu-bar hider's live surface, behind a protocol so the manager's state
+/// logic can be tested without a real status bar.
 ///
-/// Adapted from SaneBar (MIT, https://github.com/sane-apps/SaneBar), whose
-/// `HidingService.StatusItemProtocol` abstracts `NSStatusItem` down to its
-/// `length` for exactly this reason. Extended here with the chevron glyph and
-/// a click callback so the whole separator is one injectable seam.
+/// Multi-item model ported from Hidden Bar (MIT,
+/// https://github.com/dwarvesf/hidden) `StatusBarController`: an always-visible
+/// chevron, a stretch separator to its left that does the length-hide trick,
+/// and an optional always-hidden separator further left. The length trick
+/// itself (grow a status item huge to shove everything to its left off-screen)
+/// is the mechanism every hider uses — SaneBar (MIT), Hidden Bar, Dozer — since
+/// there is no public API to enumerate or move other apps' items.
 @MainActor
-protocol MenuBarSeparating: AnyObject {
-    /// Slot width. Grown huge to push everything to its left off-screen,
-    /// shrunk back to reveal them again.
-    var length: CGFloat { get set }
-    /// Fired when the user clicks the separator in the menu bar.
-    var onClick: (() -> Void)? { get set }
-    /// Flip the chevron to reflect collapsed (hidden) vs expanded (shown).
+protocol MenuBarSurface: AnyObject {
+    /// Chevron left-click — expand/collapse the hideable zone.
+    var onToggle: (() -> Void)? { get set }
+    /// Chevron ⌥-click — reveal everything, including the always-hidden zone.
+    var onOptionToggle: (() -> Void)? { get set }
+    /// Width of the stretch separator: huge to hide everything to its left,
+    /// small to reveal it. (Hidden Bar's `btnSeparate`.)
+    var separatorLength: CGFloat { get set }
+    /// Width of the always-hidden separator when it exists (no-op otherwise):
+    /// huge keeps the always-hidden zone hidden, small reveals it.
+    /// (Hidden Bar's `btnAlwaysHidden`.)
+    var alwaysHiddenLength: CGFloat { get set }
+    /// Flip the chevron glyph to reflect collapsed (hidden) vs expanded (shown).
     func setChevron(collapsed: Bool)
-    /// Drop the underlying status item from the menu bar. Called when the tool
-    /// is disabled live; the manager releases the separator afterward.
-    func removeFromStatusBar()
+    /// True when the chevron sits to the right of the stretch separator, so a
+    /// collapse can't push the only always-visible control off-screen. Port of
+    /// Hidden Bar's `isBtnSeparateValidPosition`.
+    var isChevronRightOfSeparator: Bool { get }
+    /// Create or drop the always-hidden separator (live Rule-B toggle).
+    func setAlwaysHiddenEnabled(_ enabled: Bool)
+    /// Drop every status item this surface owns. Called on teardown; the manager
+    /// reveals both zones first so nothing lingers hidden.
+    func removeAll()
 }
 
-/// Concrete separator backed by a single `NSStatusItem` — the tool's only
-/// always-on cost. Owns the status item's lifetime: it is removed from the
-/// system status bar when this wrapper deinits.
+/// Concrete surface backed by three `NSStatusItem`s. Owns their lifetime: they
+/// are removed from the system status bar on `removeAll()` and on deinit.
 ///
-/// Adapted from SaneBar (MIT). SaneBar toggles `NSStatusItem.length` between a
-/// small visual width and 10 000 pt; macOS draws status items from the right,
-/// so a 10 000 pt slot shoves every item to the separator's left past the
-/// screen edge. There is no public API to enumerate or move other apps'
-/// items, which is why every hider (SaneBar, Hidden Bar, Dozer) uses this
-/// length trick.
+/// Ported from Hidden Bar (MIT, https://github.com/dwarvesf/hidden). The chevron
+/// is created first and the separator second so macOS — which inserts each new
+/// status item to the left of the previous — lands the separator left of the
+/// chevron. That is the arrangement the collapse relies on: the chevron stays
+/// right of the separator, so inflating the separator never hides the chevron.
 @MainActor
-final class StatusBarSeparator: MenuBarSeparating {
-    private let item: NSStatusItem
-    private let trampoline = ClickTrampoline()
+final class StatusBarSurface: MenuBarSurface {
+    private let chevron: NSStatusItem
+    private let separator: NSStatusItem
+    private var alwaysHidden: NSStatusItem?
+    private let autosavePrefix: String
+    private let trampoline = ChevronTrampoline()
 
-    var onClick: (() -> Void)? {
-        get { trampoline.handler }
-        set { trampoline.handler = newValue }
+    var onToggle: (() -> Void)? {
+        get { trampoline.onToggle }
+        set { trampoline.onToggle = newValue }
     }
 
-    var length: CGFloat {
-        get { item.length }
-        set { item.length = newValue }
+    var onOptionToggle: (() -> Void)? {
+        get { trampoline.onOptionToggle }
+        set { trampoline.onOptionToggle = newValue }
     }
 
-    init(autosaveName: String) {
-        item = NSStatusBar.system.statusItem(withLength: MenuBarManager.expandedLength)
-        // Keeps the separator's menu-bar position across launches so the user's
+    var separatorLength: CGFloat {
+        get { separator.length }
+        set { separator.length = newValue }
+    }
+
+    var alwaysHiddenLength: CGFloat = MenuBarManager.collapsedLength {
+        didSet { alwaysHidden?.length = alwaysHiddenLength }
+    }
+
+    init(autosavePrefix: String) {
+        self.autosavePrefix = autosavePrefix
+        chevron = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        separator = NSStatusBar.system.statusItem(withLength: MenuBarManager.expandedLength)
+
+        // Keep each item's menu-bar position across launches so the user's
         // ⌘-drag arrangement of hidden/visible icons stays put.
-        item.autosaveName = autosaveName
-        if let button = item.button {
+        chevron.autosaveName = "\(autosavePrefix).chevron"
+        separator.autosaveName = "\(autosavePrefix).separator"
+
+        // A ⌘-drag off the bar is persisted by macOS via autosaveName and would
+        // leave the app's controls unreachable; force our items back on every
+        // launch. (Hidden Bar's `restoreRemovedStatusItems`.)
+        chevron.isVisible = true
+        separator.isVisible = true
+
+        if let button = separator.button {
+            button.image = Self.dividerImage()
+            button.imageScaling = .scaleProportionallyDown
+        }
+        if let button = chevron.button {
             button.target = trampoline
-            button.action = #selector(ClickTrampoline.fire)
+            button.action = #selector(ChevronTrampoline.fire)
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.imageScaling = .scaleProportionallyDown
         }
         setChevron(collapsed: true)
     }
 
     func setChevron(collapsed: Bool) {
-        guard let button = item.button else { return }
+        guard let button = chevron.button else { return }
         let symbol = MenuBarManager.chevronSymbol(collapsed: collapsed)
         let image = NSImage(
             systemSymbolName: symbol,
@@ -69,25 +110,76 @@ final class StatusBarSeparator: MenuBarSeparating {
         button.image = image
     }
 
-    func removeFromStatusBar() {
-        NSStatusBar.system.removeStatusItem(item)
+    var isChevronRightOfSeparator: Bool {
+        // Compare the status-item backing-window origins (Hidden Bar's
+        // `getOrigin`). If geometry isn't readable yet, refuse to treat the
+        // arrangement as valid — the manager stays expanded until layout settles.
+        guard let chevronX = chevron.button?.window?.frame.origin.x,
+              let separatorX = separator.button?.window?.frame.origin.x else { return false }
+        return chevronX >= separatorX
     }
 
-    // Defensive teardown: if the manager (and thus this wrapper) is ever
-    // released, drop the status item so it never lingers in the menu bar.
-    // These wrappers are only ever retained on the main actor, so the final
-    // release — and this deinit — runs there.
-    deinit {
-        MainActor.assumeIsolated {
+    func setAlwaysHiddenEnabled(_ enabled: Bool) {
+        if enabled {
+            guard alwaysHidden == nil else { return }
+            let item = NSStatusBar.system.statusItem(withLength: alwaysHiddenLength)
+            item.autosaveName = "\(autosavePrefix).alwaysHidden"
+            item.isVisible = true
+            if let button = item.button {
+                button.image = Self.dividerImage()
+                button.appearsDisabled = true
+                button.imageScaling = .scaleProportionallyDown
+            }
+            alwaysHidden = item
+        } else if let item = alwaysHidden {
+            NSStatusBar.system.removeStatusItem(item)
+            alwaysHidden = nil
+        }
+    }
+
+    func removeAll() {
+        for item in [chevron, separator, alwaysHidden].compactMap({ $0 }) {
             NSStatusBar.system.removeStatusItem(item)
         }
+        alwaysHidden = nil
+    }
+
+    // Defensive teardown: if this wrapper is ever released without an explicit
+    // removeAll(), drop the status items so none linger in the menu bar. These
+    // wrappers live only on the main actor, so the final release runs there.
+    deinit {
+        MainActor.assumeIsolated {
+            removeAll()
+        }
+    }
+
+    /// A thin vertical line the user can see and ⌘-drag icons across, template
+    /// so macOS tints it for light/dark/active states. (Hidden Bar's
+    /// `imgIconLine`, drawn programmatically like `MenuBarIcon`.)
+    private static func dividerImage() -> NSImage {
+        let size = NSSize(width: 6, height: 16)
+        let image = NSImage(size: size, flipped: false) { rect in
+            let line = NSBezierPath(rect: NSRect(x: rect.midX - 0.5, y: 2, width: 1, height: rect.height - 4))
+            NSColor.black.setFill()
+            line.fill()
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 }
 
-/// Bridges the status-item button's Objective-C target/action to a Swift
-/// closure without forcing the `@Observable` manager to be an `NSObject`.
+/// Bridges the chevron button's Objective-C target/action to Swift closures
+/// without forcing the `@Observable` manager to be an `NSObject`. Reads the
+/// current event's ⌥ modifier to split left-click (toggle) from ⌥-click (reveal
+/// all), the same split Hidden Bar makes in `btnExpandCollapsePressed`.
 @MainActor
-private final class ClickTrampoline: NSObject {
-    var handler: (() -> Void)?
-    @objc func fire() { handler?() }
+private final class ChevronTrampoline: NSObject {
+    var onToggle: (() -> Void)?
+    var onOptionToggle: (() -> Void)?
+
+    @objc func fire() {
+        let optionDown = NSApp.currentEvent?.modifierFlags.contains(.option) ?? false
+        if optionDown { onOptionToggle?() } else { onToggle?() }
+    }
 }
