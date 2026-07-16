@@ -67,6 +67,15 @@ final class MenuBarManagerTests: XCTestCase {
         XCTAssertFalse(MenuBarManager.shouldScheduleRehide(collapsed: true, autoRehideSeconds: 0))
     }
 
+    func testDisplaysIncludeNotchFromTopSafeAreaInset() {
+        // A positive top inset on any display means a notch is present.
+        XCTAssertTrue(MenuBarManager.displaysIncludeNotch(topSafeAreaInsets: [32]))
+        XCTAssertTrue(MenuBarManager.displaysIncludeNotch(topSafeAreaInsets: [0, 32]))
+        // No inset (external-only or pre-notch Macs) and the empty case are false.
+        XCTAssertFalse(MenuBarManager.displaysIncludeNotch(topSafeAreaInsets: [0, 0]))
+        XCTAssertFalse(MenuBarManager.displaysIncludeNotch(topSafeAreaInsets: []))
+    }
+
     // MARK: - State applied to the surface
 
     func testAttachAppliesCollapsedLengthAndChevron() throws {

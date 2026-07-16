@@ -48,6 +48,17 @@ final class MenuBarManager {
     /// Picker choices, seconds; 0 == Never.
     static let autoRehideOptions: [Int] = [0, 5, 10, 30]
 
+    /// True when any attached display has a notch, detected from a positive top
+    /// safe-area inset (macOS 12+). Pure over the raw insets so the notch-tip
+    /// gating is unit-tested without a live `NSScreen`. Any notched display
+    /// counts — the notch-reflow workaround is worth surfacing whenever the user
+    /// has a notched Mac at all. The tool cannot move another app's icon out of
+    /// the notch (no public API reaches other apps' status items); this only
+    /// decides whether to show the manual workaround guidance.
+    static func displaysIncludeNotch(topSafeAreaInsets: [CGFloat]) -> Bool {
+        topSafeAreaInsets.contains { $0 > 0 }
+    }
+
     // MARK: - Observable state
 
     /// True == the hideable zone is collapsed off-screen. Defaults collapsed so

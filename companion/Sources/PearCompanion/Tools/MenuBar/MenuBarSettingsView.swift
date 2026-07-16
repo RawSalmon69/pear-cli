@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Menu-bar hider popover: reveal/hide toggle, the auto-rehide interval, the
@@ -5,6 +6,13 @@ import SwiftUI
 /// ⌘-drag arrangement the tool can't do for you.
 struct MenuBarSettingsView: View {
     let manager: MenuBarManager
+
+    /// Only surface the notch workaround on a notched Mac. macOS exposes the
+    /// notch as a positive top safe-area inset; the pure decision lives on the
+    /// manager so it can be tested without a live screen.
+    private var hasNotch: Bool {
+        MenuBarManager.displaysIncludeNotch(topSafeAreaInsets: NSScreen.screens.map(\.safeAreaInsets.top))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.sectionGap) {
@@ -35,10 +43,28 @@ struct MenuBarSettingsView: View {
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 2)
+            if hasNotch { notchTip }
         }
         .padding(Theme.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard()
+    }
+
+    /// An icon overflowing behind the notch can't be grabbed to drag it across
+    /// the chevron. Pear can't reach it — no public API moves another app's
+    /// status item — but macOS reflows the bar when the frontmost app's menu
+    /// titles shrink, which frees the icon. Spell out that manual reflow.
+    private var notchTip: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Label("Stuck under the notch?", systemImage: "lightbulb")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+            Text("Pear can't reach an icon hidden by the notch. Click the desktop or an app with fewer menus (like Finder) so the bar reflows and the icon clears the notch, then ⌘-drag it across the chevron.")
+                .font(Theme.caption)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 4)
     }
 
     private func step(_ n: String, _ text: String) -> some View {
