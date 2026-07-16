@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import PearCompanion
 
@@ -8,6 +9,18 @@ final class ColorStoreTests: XCTestCase {
     func testHexRoundTrip() throws {
         let color = try XCTUnwrap(PickedColor(hex: "#3A7BD5"))
         XCTAssertEqual(color.hexString, "#3A7BD5")
+    }
+
+    /// The custom-accent picker persists a SwiftUI `Color` as `PickedColor`
+    /// hex and rebuilds it on launch; that bridge must preserve sRGB
+    /// components so the accent survives a relaunch unchanged.
+    func testCustomAccentColorRoundTripsThroughHex() throws {
+        let chosen = Color(red: 0.24, green: 0.62, blue: 0.31)
+        let hex = try XCTUnwrap(PickedColor(sampled: NSColor(chosen))?.hexString)
+        XCTAssertEqual(hex, "#3D9E4F")
+
+        let restored = try XCTUnwrap(PickedColor(hex: hex)).swiftUIColor
+        XCTAssertEqual(PickedColor(sampled: NSColor(restored))?.hexString, hex)
     }
 
     func testHexAcceptsBareStringWithoutHash() throws {

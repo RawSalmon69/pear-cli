@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import Observation
 
@@ -35,20 +36,38 @@ enum AccentPreset: String, CaseIterable, Identifiable {
 
 /// Holds the live accent choice. `@Observable`, so any view that reads
 /// `Theme.accent` in its body re-renders the moment the user picks a new
-/// preset — no relaunch.
+/// preset or custom color — no relaunch.
 @MainActor
 @Observable
 final class ThemeStore {
     static let shared = ThemeStore()
-    private static let defaultsKey = "accentPreset"
+    private static let presetKey = "accentPreset"
+    private static let customKey = "accentCustom"
 
     var preset: AccentPreset {
-        didSet { UserDefaults.standard.set(preset.rawValue, forKey: Self.defaultsKey) }
+        didSet { UserDefaults.standard.set(preset.rawValue, forKey: Self.presetKey) }
     }
 
+    /// A freely chosen accent that overrides the preset while set. Persisted
+    /// as a "#RRGGBB" hex string via `PickedColor`; `nil` means a preset is live.
+    var custom: Color? {
+        didSet {
+            if let hex = custom.flatMap({ PickedColor(sampled: NSColor($0))?.hexString }) {
+                UserDefaults.standard.set(hex, forKey: Self.customKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.customKey)
+            }
+        }
+    }
+
+    /// The live accent: the custom color when set, otherwise the preset.
+    var color: Color { custom ?? preset.color }
+
     private init() {
-        let stored = UserDefaults.standard.string(forKey: Self.defaultsKey)
+        let stored = UserDefaults.standard.string(forKey: Self.presetKey)
         preset = stored.flatMap(AccentPreset.init(rawValue:)) ?? .pear
+        custom = UserDefaults.standard.string(forKey: Self.customKey)
+            .flatMap(PickedColor.init(hex:))?.swiftUIColor
     }
 }
 
@@ -56,8 +75,8 @@ final class ThemeStore {
 /// 4-based scale where section gaps (20) dominate intra-section gaps (8) so
 /// whitespace, not rules, carries the hierarchy.
 enum Theme {
-    @MainActor static var accent: Color { ThemeStore.shared.preset.color }
-    @MainActor static var accentSoft: Color { ThemeStore.shared.preset.color.opacity(0.16) }
+    @MainActor static var accent: Color { ThemeStore.shared.color }
+    @MainActor static var accentSoft: Color { ThemeStore.shared.color.opacity(0.16) }
     static let warn = Color(red: 0.86, green: 0.62, blue: 0.22)
 
     static let sectionGap: CGFloat = 20

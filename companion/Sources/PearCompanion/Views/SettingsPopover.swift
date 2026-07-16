@@ -60,11 +60,22 @@ struct SettingsPopover: View {
                 ForEach(AccentPreset.allCases) { preset in
                     AccentSwatch(
                         preset: preset,
-                        selected: ThemeStore.shared.preset == preset
+                        selected: ThemeStore.shared.custom == nil && ThemeStore.shared.preset == preset
                     ) {
+                        ThemeStore.shared.custom = nil
                         ThemeStore.shared.preset = preset
                     }
                 }
+                ColorPicker(
+                    "Custom accent",
+                    selection: Binding(
+                        get: { ThemeStore.shared.color },
+                        set: { ThemeStore.shared.custom = $0 }
+                    ),
+                    supportsOpacity: false
+                )
+                .labelsHidden()
+                .help("Custom color")
             }
         }
 
