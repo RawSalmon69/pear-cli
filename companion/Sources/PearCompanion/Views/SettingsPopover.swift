@@ -16,6 +16,9 @@ struct SettingsPopover: View {
     ).path
     @AppStorage(Prefs.soundsKey) private var soundsEnabled = true
     @AppStorage(Prefs.autoSaveKey) private var autoSave = true
+    @AppStorage(Prefs.previewAutoDismissKey) private var previewAutoDismiss = false
+    @AppStorage(Prefs.previewAutoDismissSecondsKey) private var previewAutoDismissSeconds = 6.0
+    @AppStorage(Prefs.previewMaxStackKey) private var previewMaxStack = 5
 
     private enum Tab: String, CaseIterable, Identifiable {
         case general = "General", tools = "Tools", menuBar = "Menu Bar"
@@ -85,6 +88,27 @@ struct SettingsPopover: View {
                     .font(Theme.caption)
                     .disabled(!autoSave)
             }
+        }
+
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Preview stack")
+            Text("Previews stack in the corner and stay until you swipe them away.")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+            Stepper(value: $previewMaxStack, in: 1...10) {
+                Text("Keep up to \(previewMaxStack) previews")
+                    .font(Theme.body)
+            }
+            Toggle("Auto-dismiss after a delay", isOn: $previewAutoDismiss)
+                .font(Theme.body)
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+            Stepper(value: $previewAutoDismissSeconds, in: 2...60, step: 1) {
+                Text("Dismiss after \(Int(previewAutoDismissSeconds))s")
+                    .font(Theme.caption)
+                    .foregroundStyle(previewAutoDismiss ? .secondary : .quaternary)
+            }
+            .disabled(!previewAutoDismiss)
         }
 
         VStack(alignment: .leading, spacing: Theme.itemGap) {

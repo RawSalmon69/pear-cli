@@ -103,7 +103,8 @@ final class ScreenshotService {
     /// clipboard with the edited image and re-shows the preview.
     private func markup(data: Data, at fileURL: URL) {
         guard let onMarkupRequest, let image = NSImage(data: data) else { return }
-        preview.dismiss()
+        // The tapped preview card dismisses itself; on completion we show a
+        // fresh preview for the edited image.
         onMarkupRequest(image) { [weak self] edited in
             guard let self, let edited, let png = edited.pngData() else { return }
             self.copyToPasteboard(png)

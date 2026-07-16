@@ -5,6 +5,9 @@ enum Prefs {
     static let soundsKey = "soundEffectsEnabled"
     static let autoSaveKey = "screenshotAutoSave"
     static let colorFormatKey = "colorCopyFormat"
+    static let previewAutoDismissKey = "screenshotPreviewAutoDismiss"
+    static let previewAutoDismissSecondsKey = "screenshotPreviewAutoDismissSeconds"
+    static let previewMaxStackKey = "screenshotPreviewMaxStack"
 
     /// Default on for both — opt-out, not opt-in.
     static var soundsEnabled: Bool {
@@ -20,6 +23,24 @@ enum Prefs {
     static var colorFormat: ColorFormat {
         UserDefaults.standard.string(forKey: colorFormatKey)
             .flatMap(ColorFormat.init(rawValue:)) ?? .hex
+    }
+
+    // MARK: - Screenshot preview stack
+
+    /// Previews persist until swiped away unless the user opts into a timeout.
+    static var previewAutoDismiss: Bool {
+        UserDefaults.standard.bool(forKey: previewAutoDismissKey)
+    }
+
+    static var previewAutoDismissSeconds: Double {
+        let stored = UserDefaults.standard.object(forKey: previewAutoDismissSecondsKey) as? Double
+        return stored ?? 6
+    }
+
+    /// How many previews may stack before the oldest is evicted.
+    static var previewMaxStack: Int {
+        let stored = UserDefaults.standard.object(forKey: previewMaxStackKey) as? Int
+        return max(1, stored ?? 5)
     }
 
     // MARK: - Per-tool toggles
