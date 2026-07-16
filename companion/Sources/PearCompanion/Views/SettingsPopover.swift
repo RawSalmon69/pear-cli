@@ -44,6 +44,20 @@ struct SettingsPopover: View {
             }
 
             VStack(alignment: .leading, spacing: Theme.itemGap) {
+                SectionLabel(text: "Accent")
+                HStack(spacing: 8) {
+                    ForEach(AccentPreset.allCases) { preset in
+                        AccentSwatch(
+                            preset: preset,
+                            selected: ThemeStore.shared.preset == preset
+                        ) {
+                            ThemeStore.shared.preset = preset
+                        }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: Theme.itemGap) {
                 SectionLabel(text: "Tools")
                 Text("Disabled tools never load. Takes effect after relaunch.")
                     .font(Theme.caption)
@@ -116,6 +130,30 @@ struct SettingsPopover: View {
                 .pickerStyle(.segmented)
                 .onChange(of: role) { _, newRole in CoupleKey.store(role: newRole) }
             }
+    }
+
+    private struct AccentSwatch: View {
+        let preset: AccentPreset
+        let selected: Bool
+        let action: () -> Void
+
+        var body: some View {
+            Button(action: action) {
+                Circle()
+                    .fill(preset.color)
+                    .frame(width: 20, height: 20)
+                    .overlay {
+                        if selected {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+            .help(preset.name)
+        }
     }
 
     private func pickFolder() {

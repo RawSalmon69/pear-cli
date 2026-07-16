@@ -16,8 +16,11 @@ final class ClipboardWindowController {
     }
 
     private func show(clipboard: ClipboardHistoryService) {
+        // The popover version rides on popover chrome; standalone the view
+        // needs its own glass, or it renders transparent over the desktop.
         let view = ClipboardHistoryView(clipboard: clipboard)
             .frame(width: 300)
+            .glassCard(cornerRadius: 16)
 
         let panel = KeyablePanel(
             contentRect: NSRect(x: 0, y: 0, width: 300, height: 380),
@@ -32,7 +35,11 @@ final class ClipboardWindowController {
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.isReleasedWhenClosed = false
-        panel.contentView = NSHostingView(rootView: view)
+        // When the panel auto-hides on focus loss the controller must drop
+        // its reference too, or the next hotkey press toggles a panel that is
+        // already invisible and appears to do nothing.
+        panel.onDidResign = { [weak self] in self?.panel = nil }
+        panel.contentView = FirstMouseHostingView(rootView: view)
 
         // Near the mouse, clamped on-screen.
         let mouse = NSEvent.mouseLocation
@@ -53,15 +60,24 @@ final class ClipboardWindowController {
         panel?.orderOut(nil)
         panel = nil
     }
+
+    /// First click lands on the row/button instead of only focusing the
+    /// panel. Same trick as the shelf (adapted from Dropshit, MIT).
+    private final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    }
 }
 
 /// Borderless panel that can take key focus (so buttons/clicks work) and
 /// closes itself when it loses focus.
 private final class KeyablePanel: NSPanel {
+    var onDidResign: (() -> Void)?
+
     override var canBecomeKey: Bool { true }
 
     override func resignKey() {
         super.resignKey()
         orderOut(nil)
+        onDidResign?()
     }
 }
