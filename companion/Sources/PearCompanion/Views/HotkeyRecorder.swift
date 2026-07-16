@@ -140,6 +140,7 @@ struct HotkeyRecorderRow: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .tint(Theme.accent)
+                .focusable(false)
 
                 if env.tools.hasHotkeyOverride(id), env.tools.hasDefaultHotkey(id) {
                     Button {

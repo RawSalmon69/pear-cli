@@ -21,6 +21,7 @@ struct RunnerSettingsView: View {
                 .font(Theme.body)
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
+                .focusable(false)
 
             RunnerGrid(selection: runner.style) { runner.style = $0 }
                 .disabled(!runner.isEnabled)
@@ -30,6 +31,7 @@ struct RunnerSettingsView: View {
                 .font(Theme.body)
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
+                .focusable(false)
                 .disabled(!runner.isEnabled)
         }
     }

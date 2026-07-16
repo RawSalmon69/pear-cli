@@ -24,6 +24,7 @@ struct DiskAnalyzeView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .focusable(false)
 
             switch mode {
             case .bars:
@@ -230,6 +231,7 @@ private struct DiskBarsView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
+            .focusable(false)
             .tint(Theme.accent)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

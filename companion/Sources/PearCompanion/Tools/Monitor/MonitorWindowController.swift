@@ -16,7 +16,7 @@ final class MonitorWindowController {
             return
         }
 
-        let window = NSWindow(
+        let window = KeyableWindow(
             contentRect: NSRect(x: 0, y: 0, width: 420, height: 560),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
@@ -30,5 +30,14 @@ final class MonitorWindowController {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = window
+    }
+}
+
+/// Titled window that also closes on Esc, so the dismissal grammar matches the
+/// floating panels (clipboard, shelf, scratchpad, windows grid). The close
+/// button and ⌘W still work; this just adds Esc.
+private final class KeyableWindow: NSWindow {
+    override func cancelOperation(_ sender: Any?) {
+        close()
     }
 }

@@ -136,6 +136,7 @@ struct DiskChartView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .tint(Theme.accent)
+                .focusable(false)
         }
         .frame(maxWidth: .infinity, minHeight: Self.chartHeight, alignment: .topLeading)
         .padding(Theme.heroPadding)

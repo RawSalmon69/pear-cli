@@ -100,6 +100,7 @@ private struct MonitorSettingsStrip: View {
                     .toggleStyle(.switch)
                     .controlSize(.mini)
                     .tint(Theme.accent)
+                    .focusable(false)
             }
 
             Divider().padding(.vertical, 2)
@@ -112,6 +113,7 @@ private struct MonitorSettingsStrip: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .focusable(false)
         }
         .padding(Theme.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)

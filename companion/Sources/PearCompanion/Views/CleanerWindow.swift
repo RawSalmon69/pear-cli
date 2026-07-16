@@ -29,12 +29,13 @@ final class CleanerWindowController {
             onClose: { [weak self] in self?.hide() }
         )
 
-        let panel = NSPanel(
+        let panel = CleanerPanel(
             contentRect: NSRect(x: 0, y: 0, width: 460, height: 340),
             styleMask: [.titled, .closable, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
+        panel.onCancel = { [weak self] in self?.hide() }
         panel.isFloatingPanel = true
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -50,6 +51,18 @@ final class CleanerWindowController {
 
     private func hide() {
         panel?.orderOut(nil)
+    }
+}
+
+/// Titled progress panel that also closes on Esc, matching the dismissal
+/// grammar of the other floating surfaces. The close button still works too;
+/// hiding while a run is live leaves it running (a new run brings it forward).
+private final class CleanerPanel: NSPanel {
+    var onCancel: (() -> Void)?
+
+    // One dismissal grammar across every floating surface: Esc closes.
+    override func cancelOperation(_ sender: Any?) {
+        onCancel?()
     }
 }
 

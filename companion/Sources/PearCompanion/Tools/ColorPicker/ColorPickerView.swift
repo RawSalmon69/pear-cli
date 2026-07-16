@@ -19,7 +19,7 @@ struct ColorPickerView: View {
                 contrastCard(for: current)
             } else {
                 Text("Pick a color to see its formats and contrast.")
-                    .font(Theme.caption)
+                    .font(Theme.body)
                     .foregroundStyle(.secondary)
             }
 
