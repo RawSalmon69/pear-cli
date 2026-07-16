@@ -12,6 +12,9 @@ struct DiskChartView: View {
     /// Directories drilled into, deepest last. Empty == the scan root.
     @State private var stack: [DiskNode] = []
     @State private var hover: DiskChartHover?
+    /// The last real item the pointer touched, kept after hover ends so its
+    /// Reveal / Trash buttons stay reachable when the pointer leaves the chart.
+    @State private var focused: DiskChartHover?
 
     private static let homePath = FileManager.default.homeDirectoryForCurrentUser.path
     private static let sunburstDepth = 5
@@ -24,10 +27,14 @@ struct DiskChartView: View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             header
             chartArea
+            if let focused, focused.path != nil {
+                actionRow(for: focused)
+            }
         }
         .task { model.scanIfNeeded(path: Self.homePath) }
         .onDisappear { model.cancel() }
         .animation(.easeOut(duration: 0.18), value: stack)
+        .animation(.easeOut(duration: 0.15), value: focused)
     }
 
     // MARK: Header
@@ -89,7 +96,7 @@ struct DiskChartView: View {
             SunburstChartView(
                 root: root,
                 depthLimit: Self.sunburstDepth,
-                onHover: { hover = $0 },
+                onHover: { handleHover($0) },
                 onDrill: { drill(into: $0) },
                 onGoUp: { goUp() }
             )
@@ -98,7 +105,7 @@ struct DiskChartView: View {
             TreemapChartView(
                 root: root,
                 depthLimit: Self.treemapDepth,
-                onHover: { hover = $0 },
+                onHover: { handleHover($0) },
                 onDrill: { drill(into: $0) }
             )
             .glassCard(cornerRadius: 12)
@@ -135,22 +142,82 @@ struct DiskChartView: View {
         .glassCard(cornerRadius: 16)
     }
 
+    // MARK: Selected-item actions
+
+    /// Reveal (always) plus Move to Trash (only for a home-local path). An item
+    /// outside home shows a note instead of a Trash button — delete is home-only.
+    @ViewBuilder
+    private func actionRow(for item: DiskChartHover) -> some View {
+        if let path = item.path {
+            HStack(spacing: Theme.itemGap) {
+                Image(systemName: "scope")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.accent)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(item.name)
+                        .font(Theme.body)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(ByteFormat.si(item.size))
+                        .font(Theme.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Spacer(minLength: 4)
+                GlyphButton(symbol: "magnifyingglass", help: "Reveal in Finder", tint: .secondary) {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                }
+                if DiskDeletion.canTrash(path: path) {
+                    GlyphButton(symbol: "trash", help: "Move to Trash", tint: Theme.warn) {
+                        Task { await trash(item) }
+                    }
+                } else {
+                    Text("outside Home")
+                        .font(Theme.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(Theme.cardPadding)
+            .glassCard(cornerRadius: 12)
+        }
+    }
+
+    private func handleHover(_ item: DiskChartHover?) {
+        hover = item
+        // Keep the last real (non-aggregate) item as the action target; don't
+        // clear it when the pointer merely leaves the chart to click a button.
+        if let item, item.path != nil { focused = item }
+    }
+
+    private func trash(_ item: DiskChartHover) async {
+        guard let path = item.path else { return }
+        let trashed = await DiskTrashPrompt.confirmAndTrash(name: item.name, path: path, size: item.size)
+        guard trashed else { return }
+        // The tree is immutable and drilled state points at now-stale nodes, so
+        // the correct, simple reflection of reality is a fresh scan from home.
+        focused = nil
+        rescan()
+    }
+
     // MARK: Navigation
 
     private func drill(into node: DiskNode) {
         guard node.isDirectory, node.hasChildren else { return }
         hover = nil
+        focused = nil
         stack.append(node)
     }
 
     private func goUp() {
         guard !stack.isEmpty else { return }
         hover = nil
+        focused = nil
         stack.removeLast()
     }
 
     private func rescan() {
         hover = nil
+        focused = nil
         stack = []
         model.scan(path: Self.homePath)
     }

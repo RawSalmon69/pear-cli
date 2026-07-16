@@ -400,7 +400,7 @@ struct TreemapChartView: View {
                 case .active(let point):
                     let hit = index.segment(at: point, in: size)
                     hoveredID = hit?.id
-                    onHover(hit.map { DiskChartHover(name: $0.label, size: $0.size) })
+                    onHover(hit.map { DiskChartHover(name: $0.label, size: $0.size, path: $0.path) })
                 case .ended:
                     hoveredID = nil
                     onHover(nil)

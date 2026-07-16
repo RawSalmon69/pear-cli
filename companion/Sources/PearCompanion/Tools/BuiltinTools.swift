@@ -91,8 +91,10 @@ final class ClipboardTool: Tool {
     }
 }
 
-/// Disk usage explorer. The view owns its service and scans on first open —
-/// the lazy pattern the other tools generalize.
+/// Disk usage explorer. Opens in a real, reusable window (not an auto-closing
+/// popover) so an in-progress analysis survives focus changes. The view owns
+/// its service and scans on first open — the lazy pattern the other tools
+/// generalize.
 @MainActor
 final class DiskTool: Tool {
     let id = "disk"
@@ -102,7 +104,9 @@ final class DiskTool: Tool {
     let summary = "See what's using space — sunburst, treemap, or bars."
     let hotkey: HotKeyChord? = nil
 
+    private let window = DiskWindowController()
+
     var entry: ToolEntry {
-        .popover { AnyView(DiskAnalyzeView()) }
+        .action { [window] in window.show() }
     }
 }

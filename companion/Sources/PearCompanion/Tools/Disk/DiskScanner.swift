@@ -63,19 +63,103 @@ enum DiskScanner {
 
     /// Scans `path` off the main actor and returns its measured tree.
     ///
+    /// The root's immediate children are walked concurrently (bounded to about
+    /// the CPU count); each child's subtree is still a single-threaded recursive
+    /// walk. This is where the win is — a home folder's big branches (Library,
+    /// Documents, …) measure in parallel instead of one after another.
+    ///
     /// Cancellation flows through: cancelling the awaiting task cancels the
-    /// detached worker, and the walk checks `Task.checkCancellation()` on every
-    /// directory and every 128 entries, so a cancel stops it promptly and
-    /// surfaces as `CancellationError`.
+    /// detached worker, whose task group propagates cancellation to every child
+    /// walk; the walk checks `Task.checkCancellation()` on every directory and
+    /// every 128 entries, so a cancel stops it promptly and surfaces as
+    /// `CancellationError`.
     static func scan(path: String, limits: Limits = .default) async throws -> DiskNode {
         let worker = Task.detached(priority: .utility) {
-            try scanSubtree(at: URL(fileURLWithPath: path), depth: 0, limits: limits)
+            try await scanRoot(at: URL(fileURLWithPath: path), limits: limits)
         }
         return try await withTaskCancellationHandler {
             try await worker.value
         } onCancel: {
             worker.cancel()
         }
+    }
+
+    // MARK: - Parallel root
+
+    /// Walks the root, fanning its immediate children out across a bounded task
+    /// group. Falls back to the plain leaf handling for a file/package/symlink
+    /// root. Children below the depth cap are summed, not materialized, exactly
+    /// as the serial walk does.
+    private static func scanRoot(at url: URL, limits: Limits) async throws -> DiskNode {
+        try Task.checkCancellation()
+
+        let values = try? url.resourceValues(forKeys: Set(keys))
+        let name = values?.name ?? url.lastPathComponent
+        let isSymlink = values?.isSymbolicLink ?? false
+        let isDirectory = (values?.isDirectory ?? false) && !isSymlink
+        let isPackage = values?.isPackage ?? false
+        let ownSize = allocatedSize(values)
+
+        guard isDirectory, !isPackage else {
+            let size = (isDirectory && isPackage) ? try subtreeSize(at: url) : ownSize
+            return DiskNode(id: url.path, name: name, size: max(size, 0),
+                            isDirectory: isDirectory, children: [])
+        }
+
+        let entries = (try? FileManager.default.contentsOfDirectory(
+            at: url, includingPropertiesForKeys: keys, options: [])) ?? []
+        let materializeChildren = 1 <= limits.maxDepth
+        var aggregate = ownSize
+        var children: [DiskNode] = []
+
+        if materializeChildren, !entries.isEmpty {
+            // Bounded fan-out: keep at most `workerCap` child walks in flight.
+            // Results come back unordered, which is fine — we sort by size next.
+            let workerCap = max(2, min(ProcessInfo.processInfo.activeProcessorCount, 8))
+            children = try await withThrowingTaskGroup(of: DiskNode.self) { group in
+                var collected: [DiskNode] = []
+                collected.reserveCapacity(entries.count)
+                var next = 0
+                var active = 0
+
+                while next < entries.count, active < workerCap {
+                    let entry = entries[next]
+                    group.addTask(priority: .utility) {
+                        try scanSubtree(at: entry, depth: 1, limits: limits)
+                    }
+                    next += 1
+                    active += 1
+                }
+                while active > 0 {
+                    guard let node = try await group.next() else { break }
+                    collected.append(node)
+                    active -= 1
+                    if next < entries.count {
+                        let entry = entries[next]
+                        group.addTask(priority: .utility) {
+                            try scanSubtree(at: entry, depth: 1, limits: limits)
+                        }
+                        next += 1
+                        active += 1
+                    }
+                }
+                return collected
+            }
+            for node in children { aggregate += node.size }
+        } else {
+            for (index, entry) in entries.enumerated() {
+                if index % 128 == 0 { try Task.checkCancellation() }
+                aggregate += try subtreeSize(at: entry)
+            }
+        }
+
+        if !children.isEmpty {
+            children.sort { $0.size > $1.size }
+            children = capped(children, parentPath: url.path, limit: limits.maxChildrenPerDir)
+        }
+
+        return DiskNode(id: url.path, name: name, size: max(aggregate, 0),
+                        isDirectory: true, children: children)
     }
 
     // MARK: - Walk

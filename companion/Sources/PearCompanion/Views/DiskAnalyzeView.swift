@@ -31,9 +31,13 @@ struct DiskAnalyzeView: View {
             case .sunburst, .treemap:
                 DiskChartView(style: mode == .treemap ? .treemap : .sunburst)
             }
+
+            Spacer(minLength: 0)
         }
         .padding(16)
-        .frame(width: 380)
+        // Hosted in a resizable window: fill it, with a floor so the dense
+        // layout never collapses.
+        .frame(minWidth: 380, maxWidth: .infinity, minHeight: 360, maxHeight: .infinity, alignment: .top)
     }
 }
 
@@ -148,7 +152,8 @@ private struct DiskBarsView: View {
                                 maxSize: maxEntrySize,
                                 totalSize: service.totalSize,
                                 canDrill: entry.isDir && !service.isLoading,
-                                onDrill: { drill(into: entry) }
+                                onDrill: { drill(into: entry) },
+                                onTrashed: { Task { await service.scan(path: pathStack.last) } }
                             )
                         }
                     }
@@ -169,7 +174,10 @@ private struct DiskBarsView: View {
             SectionLabel(text: "Largest files")
             VStack(spacing: 4) {
                 ForEach(service.largeFiles) { file in
-                    LargeFileRow(file: file)
+                    LargeFileRow(
+                        file: file,
+                        onTrashed: { Task { await service.scan(path: pathStack.last) } }
+                    )
                 }
             }
         }
@@ -263,6 +271,7 @@ private struct EntryBar: View {
     let totalSize: Int64
     let canDrill: Bool
     let onDrill: () -> Void
+    let onTrashed: () -> Void
 
     @State private var hovering = false
 
@@ -329,6 +338,16 @@ private struct EntryBar: View {
                         [URL(fileURLWithPath: entry.path)]
                     )
                 }
+                if DiskDeletion.canTrash(path: entry.path) {
+                    GlyphButton(symbol: "trash", help: "Move to Trash", tint: Theme.warn) {
+                        Task {
+                            if await DiskTrashPrompt.confirmAndTrash(
+                                name: entry.name, path: entry.path, size: entry.size) {
+                                onTrashed()
+                            }
+                        }
+                    }
+                }
                 if canDrill {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10, weight: .semibold))
@@ -366,6 +385,7 @@ private struct CleanableBadge: View {
 
 private struct LargeFileRow: View {
     let file: DiskFile
+    let onTrashed: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -385,6 +405,16 @@ private struct LargeFileRow: View {
                 NSWorkspace.shared.activateFileViewerSelecting(
                     [URL(fileURLWithPath: file.path)]
                 )
+            }
+            if DiskDeletion.canTrash(path: file.path) {
+                GlyphButton(symbol: "trash", help: "Move to Trash", tint: Theme.warn) {
+                    Task {
+                        if await DiskTrashPrompt.confirmAndTrash(
+                            name: file.name, path: file.path, size: file.size) {
+                            onTrashed()
+                        }
+                    }
+                }
             }
         }
         .padding(.horizontal, Theme.cardPadding)

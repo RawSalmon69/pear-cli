@@ -12,10 +12,13 @@ enum DiskChartStyle: Sendable {
     case treemap
 }
 
-/// A segment the pointer is over, surfaced to the host for the hover readout.
+/// A segment the pointer is over, surfaced to the host for the hover readout
+/// and per-item actions (Reveal / Move to Trash). `path` is nil for a folded
+/// "smaller items" wedge, which has no single file to act on.
 struct DiskChartHover: Equatable, Sendable {
     let name: String
     let size: Int64
+    let path: String?
 }
 
 /// Owns one native scan and publishes its result. `@MainActor` so view state
