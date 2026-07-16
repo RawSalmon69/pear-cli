@@ -19,6 +19,14 @@
 //     resolved (DockDoor's WindowOwnerResolver display-app grouping),
 //   • minimized windows: kept even when AX reports no usable frame (they have
 //     no live SCK frame — the tile falls back to icon + minimized badge),
+//   • fullscreen windows: a native-fullscreen window sits on its own Space, so
+//     a cross-Space AX geometry read can come back empty; it is kept anyway
+//     (via the "AXFullScreen" window attribute) instead of being dropped by the
+//     usable-size gate. Public-API limits, documented not worked around: SCK
+//     capture and the CGWindowList fallback below both see the CURRENT Space
+//     only, so a fullscreen window on an UNFOCUSED Space shows as an icon tile
+//     with no thumbnail, and if AX itself returns no window for an off-Space
+//     app there is no public way to recover it,
 //   • zero-AX apps: when the AX union is empty, fall back to the public
 //     `CGWindowListCopyWindowInfo` (DockDoor's "AX + CGS fallback" idea, public
 //     APIs only). CG-only windows have no AX handle, so clicking one activates
@@ -100,6 +108,13 @@ enum DockWindows {
         kAXStandardWindowSubrole as String,
         kAXDialogSubrole as String,
     ]
+
+    /// AX window attribute for the native-fullscreen state. There is no public
+    /// SDK constant for it (only `kAXFullScreenButtonAttribute`, the green
+    /// button element), so the stable literal is read through the fully public
+    /// `AXUIElementCopyAttributeValue` — the same pattern this codebase already
+    /// uses for `"AXTrustedCheckOptionPrompt"`. No private AX functions involved.
+    private static let axFullScreenAttribute = "AXFullScreen"
 
     /// The hovered app's windows, newest AX order. Returns `[]` on any failure
     /// (app not answering, no windows, AX denied) so the caller degrades to
@@ -187,14 +202,12 @@ enum DockWindows {
             DockAX.capTimeout(axWindow) // per-element
 
             let subrole = DockAX.string(axWindow, kAXSubroleAttribute)
-            if let subrole, !shownSubroles.contains(subrole) { continue }
-
             let minimized = DockAX.bool(axWindow, kAXMinimizedAttribute) ?? false
+            let fullScreen = DockAX.bool(axWindow, axFullScreenAttribute) ?? false
             let size = DockAX.size(axWindow, kAXSizeAttribute)
-            // A visible window must report a real size; a minimized one often
-            // reports none and still earns a placeholder tile.
-            let hasUsableSize = (size.map { $0.width > 1 && $0.height > 1 }) ?? false
-            if !minimized, !hasUsableSize { continue }
+            guard shouldShow(subrole: subrole, minimized: minimized, fullScreen: fullScreen, size: size) else {
+                continue
+            }
 
             let position = DockAX.point(axWindow, kAXPositionAttribute) ?? .zero
             let title = DockAX.string(axWindow, kAXTitleAttribute) ?? appName
@@ -207,6 +220,23 @@ enum DockWindows {
                 isMinimized: minimized
             ))
         }
+    }
+
+    /// Whether an enumerated AX window earns a preview tile. Pure, so the
+    /// subrole / size / minimized / fullscreen policy is unit-testable without a
+    /// live app.
+    ///
+    /// A normal on-desktop window must report a real size. Minimized and
+    /// native-fullscreen windows are kept even when the size read comes back
+    /// empty: a fullscreen window lives on its own Space, where a cross-Space AX
+    /// geometry read can return nothing, yet it is still a real window worth a
+    /// tile (falling back to icon + title, like a minimized one). Fullscreen
+    /// bypasses the size gate, never the subrole allow-list.
+    static func shouldShow(subrole: String?, minimized: Bool, fullScreen: Bool, size: CGSize?) -> Bool {
+        if let subrole, !shownSubroles.contains(subrole) { return false }
+        if minimized || fullScreen { return true }
+        guard let size, size.width > 1, size.height > 1 else { return false }
+        return true
     }
 
     // MARK: - CGWindowList fallback (public API)

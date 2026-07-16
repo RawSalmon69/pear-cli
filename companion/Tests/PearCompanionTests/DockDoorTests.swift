@@ -1,3 +1,4 @@
+import ApplicationServices
 import XCTest
 
 @testable import PearCompanion
@@ -230,6 +231,59 @@ final class DockDoorTests: XCTestCase {
         let list = [cgEntry(pid: 501, layer: 0, x: 0, y: 0, w: 500, h: 400, name: nil)]
         let parsed = DockWindows.parseFallback(list, pids: [501])
         XCTAssertEqual(parsed.first?.title, "")
+    }
+
+    // MARK: - Window filter policy (shouldShow)
+
+    private let standardSubrole = kAXStandardWindowSubrole as String
+
+    func testShouldShowKeepsStandardWindowWithSize() {
+        XCTAssertTrue(DockWindows.shouldShow(
+            subrole: standardSubrole, minimized: false, fullScreen: false,
+            size: CGSize(width: 800, height: 600)
+        ))
+    }
+
+    func testShouldShowDropsForeignSubrole() {
+        // A sheet subrole ("AXSheet") is never a previewable top-level window.
+        XCTAssertFalse(DockWindows.shouldShow(
+            subrole: "AXSheet", minimized: false, fullScreen: false,
+            size: CGSize(width: 800, height: 600)
+        ))
+    }
+
+    func testShouldShowDropsSizelessNonMinimizedWindow() {
+        XCTAssertFalse(DockWindows.shouldShow(
+            subrole: standardSubrole, minimized: false, fullScreen: false, size: nil
+        ))
+    }
+
+    func testShouldShowKeepsMinimizedWithoutSize() {
+        XCTAssertTrue(DockWindows.shouldShow(
+            subrole: standardSubrole, minimized: true, fullScreen: false, size: nil
+        ))
+    }
+
+    func testShouldShowKeepsFullScreenWithoutSize() {
+        // The fix: a fullscreen window whose cross-Space size read came back
+        // empty is still kept instead of being dropped by the size gate.
+        XCTAssertTrue(DockWindows.shouldShow(
+            subrole: standardSubrole, minimized: false, fullScreen: true, size: nil
+        ))
+    }
+
+    func testShouldShowKeepsWindowWithUnreadableSubrole() {
+        // A nil subrole (read failed) is tolerated, not filtered.
+        XCTAssertTrue(DockWindows.shouldShow(
+            subrole: nil, minimized: false, fullScreen: false, size: CGSize(width: 400, height: 300)
+        ))
+    }
+
+    func testShouldShowFullScreenStillHonorsSubroleGate() {
+        // Fullscreen bypasses the SIZE gate, never the subrole allow-list.
+        XCTAssertFalse(DockWindows.shouldShow(
+            subrole: "AXSheet", minimized: false, fullScreen: true, size: nil
+        ))
     }
 
     // MARK: - Switcher cycle order
