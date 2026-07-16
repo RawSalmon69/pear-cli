@@ -19,9 +19,16 @@ import Observation
 enum RunnerCadence {
     /// Seconds per frame at 0% CPU — a slow amble. `speed` clamps to 1 here.
     static let idleInterval: Double = 0.200
-    /// Seconds per frame at 100% CPU — a fast sprint and the hard floor: `speed`
-    /// clamps to 20, so the timer can never tick faster than `0.2 / 20`.
-    static let peggedInterval: Double = 0.010
+    /// Seconds per frame at 100% CPU — a fast sprint and the hard floor.
+    ///
+    /// menubar_runcat clamps speed at 20 (a 10 ms frame), but it swaps
+    /// `button.image` on a bare NSStatusItem; our frame swap re-renders the
+    /// SwiftUI MenuBarExtra label, which is far heavier per tick. At 10 ms the
+    /// redraw churn alone held the app at ~28% CPU on a loaded machine — and
+    /// that burn feeds the very load signal that sets the cadence, so the
+    /// sprint sustained itself. A 50 ms floor (speed 4) keeps the sprint
+    /// readable at a few percent CPU and breaks the feedback loop.
+    static let peggedInterval: Double = 0.050
 
     /// Maps a whole-machine CPU busy fraction (0…1) to a per-frame interval in
     /// seconds. The input is clamped, so a bogus or out-of-range sample can
@@ -29,8 +36,9 @@ enum RunnerCadence {
     /// `[peggedInterval, idleInterval]`. Monotonically non-increasing in load.
     static func frameInterval(cpuFraction: Double) -> Double {
         let load = min(1, max(0, cpuFraction))
-        // speed = clamp(usage% / 5, 1, 20), exactly as menubar_runcat does it.
-        let speed = min(20, max(1, load * 100 / 5))
+        // menubar_runcat's curve (speed = clamp(usage% / 5, 1, 20)) with the
+        // ceiling lowered to 4 — see peggedInterval.
+        let speed = min(4, max(1, load * 100 / 5))
         return idleInterval / speed
     }
 }

@@ -7,10 +7,13 @@ import XCTest
 /// unit-tested; this is the part that must be exactly right on every machine.
 final class RunnerCadenceTests: XCTestCase {
 
-    /// The advertised endpoints match upstream: 200 ms at idle, 10 ms pegged.
+    /// The advertised endpoints: 200 ms at idle (upstream's), 50 ms pegged —
+    /// deliberately above upstream's 10 ms, because our frame swap re-renders
+    /// the SwiftUI MenuBarExtra label and a 10 ms tick burned ~28% CPU while
+    /// feeding the load signal that set its own cadence.
     func testEndpointValues() {
         XCTAssertEqual(RunnerCadence.idleInterval, 0.200, accuracy: 1e-9)
-        XCTAssertEqual(RunnerCadence.peggedInterval, 0.010, accuracy: 1e-9)
+        XCTAssertEqual(RunnerCadence.peggedInterval, 0.050, accuracy: 1e-9)
     }
 
     /// Idle (0% CPU) ambles at exactly the idle interval.
@@ -21,7 +24,7 @@ final class RunnerCadenceTests: XCTestCase {
             accuracy: 1e-9)
     }
 
-    /// Pegged (100% CPU) sprints at exactly the pegged interval (0.2 / 20).
+    /// Pegged (100% CPU) sprints at exactly the pegged interval (0.2 / 4).
     func testPeggedCeiling() {
         XCTAssertEqual(
             RunnerCadence.frameInterval(cpuFraction: 1),
@@ -68,13 +71,18 @@ final class RunnerCadenceTests: XCTestCase {
         }
     }
 
-    /// A midpoint load lands strictly between the endpoints (the mapping isn't
-    /// degenerate) and matches the upstream `0.2 / clamp(usage%/5, 1, 20)` curve.
+    /// A mid-range load lands strictly between the endpoints (the mapping isn't
+    /// degenerate) and matches upstream's curve below the lowered ceiling.
     func testMidpointBetweenEndpoints() {
-        let mid = RunnerCadence.frameInterval(cpuFraction: 0.5)
+        let mid = RunnerCadence.frameInterval(cpuFraction: 0.15)
         XCTAssertGreaterThan(mid, RunnerCadence.peggedInterval)
         XCTAssertLessThan(mid, RunnerCadence.idleInterval)
-        // usage% = 50 -> speed = clamp(50/5, 1, 20) = 10 -> 0.200 / 10.
-        XCTAssertEqual(mid, RunnerCadence.idleInterval / 10, accuracy: 1e-9)
+        // usage% = 15 -> speed = clamp(15/5, 1, 4) = 3 -> 0.200 / 3.
+        XCTAssertEqual(mid, RunnerCadence.idleInterval / 3, accuracy: 1e-9)
+        // Anything at or past 20% load is already at the ceiling.
+        XCTAssertEqual(
+            RunnerCadence.frameInterval(cpuFraction: 0.5),
+            RunnerCadence.peggedInterval,
+            accuracy: 1e-9)
     }
 }
