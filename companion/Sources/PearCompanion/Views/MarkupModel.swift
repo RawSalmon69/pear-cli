@@ -4,9 +4,9 @@ import CoreImage
 
 // MARK: - Tools
 
-/// The six markup tools. Exactly one is active at a time.
+/// The markup tools. Exactly one is active at a time.
 enum MarkupTool: String, CaseIterable, Identifiable {
-    case arrow, rectangle, text, highlighter, freehand, blur
+    case arrow, rectangle, text, highlighter, freehand, blur, crop
 
     var id: String { rawValue }
 
@@ -18,6 +18,7 @@ enum MarkupTool: String, CaseIterable, Identifiable {
         case .highlighter: return "highlighter"
         case .freehand: return "pencil.line"
         case .blur: return "square.grid.3x3.fill"
+        case .crop: return "crop"
         }
     }
 
@@ -29,11 +30,62 @@ enum MarkupTool: String, CaseIterable, Identifiable {
         case .highlighter: return "Highlighter"
         case .freehand: return "Freehand"
         case .blur: return "Pixelate region"
+        case .crop: return "Crop"
         }
     }
 
-    /// Blur has no colour; every other tool draws with the current colour.
-    var usesColor: Bool { self != .blur }
+    /// Blur and crop have no colour; every other tool draws with the current colour.
+    var usesColor: Bool {
+        switch self {
+        case .blur, .crop: return false
+        default: return true
+        }
+    }
+}
+
+// MARK: - Crop geometry
+
+/// The eight resize grips on a crop rectangle. Each moves one or two edges,
+/// leaving the opposite edges fixed.
+enum CropHandle: CaseIterable {
+    case topLeft, top, topRight, left, right, bottomLeft, bottom, bottomRight
+
+    /// Position on the rect as a unit fraction (0 = min edge, 1 = max edge),
+    /// y-down to match image space.
+    var unit: CGPoint {
+        switch self {
+        case .topLeft: return CGPoint(x: 0, y: 0)
+        case .top: return CGPoint(x: 0.5, y: 0)
+        case .topRight: return CGPoint(x: 1, y: 0)
+        case .left: return CGPoint(x: 0, y: 0.5)
+        case .right: return CGPoint(x: 1, y: 0.5)
+        case .bottomLeft: return CGPoint(x: 0, y: 1)
+        case .bottom: return CGPoint(x: 0.5, y: 1)
+        case .bottomRight: return CGPoint(x: 1, y: 1)
+        }
+    }
+
+    private var movesLeft: Bool { unit.x == 0 }
+    private var movesRight: Bool { unit.x == 1 }
+    private var movesTop: Bool { unit.y == 0 }
+    private var movesBottom: Bool { unit.y == 1 }
+
+    /// The rect after dragging this handle to `p` (image coords), keeping the
+    /// opposite edges fixed, clamped to `bounds` and a minimum edge of `minSize`.
+    func resize(_ rect: CGRect, to p: CGPoint, in bounds: CGRect, minSize: CGFloat) -> CGRect {
+        var minX = rect.minX, minY = rect.minY, maxX = rect.maxX, maxY = rect.maxY
+        if movesLeft { minX = min(max(p.x, bounds.minX), maxX - minSize) }
+        if movesRight { maxX = max(min(p.x, bounds.maxX), minX + minSize) }
+        if movesTop { minY = min(max(p.y, bounds.minY), maxY - minSize) }
+        if movesBottom { maxY = max(min(p.y, bounds.maxY), minY + minSize) }
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+}
+
+/// Intersects a crop rect with the image bounds and rounds to whole pixels.
+func clampCropRect(_ rect: CGRect, to imageSize: CGSize) -> CGRect {
+    let bounds = CGRect(origin: .zero, size: imageSize)
+    return rect.integral.intersection(bounds)
 }
 
 /// Stroke weight in *display* points. Committed geometry is stored in image
@@ -90,6 +142,38 @@ struct Annotation: Identifiable {
     }
 }
 
+private extension CGPoint {
+    func shifted(by o: CGSize) -> CGPoint { CGPoint(x: x + o.width, y: y + o.height) }
+}
+
+extension Annotation {
+    /// Shifts all geometry by `offset` (image points), preserving identity.
+    /// Used after a crop so annotations stay pinned to the same image content.
+    func translated(by offset: CGSize) -> Annotation {
+        var moved = self
+        switch kind {
+        case let .arrow(start, end, color, width):
+            moved.kind = .arrow(start: start.shifted(by: offset), end: end.shifted(by: offset),
+                                color: color, width: width)
+        case let .rectangle(rect, color, width):
+            moved.kind = .rectangle(rect: rect.offsetBy(dx: offset.width, dy: offset.height),
+                                    color: color, width: width)
+        case let .highlighter(start, end, color, width):
+            moved.kind = .highlighter(start: start.shifted(by: offset), end: end.shifted(by: offset),
+                                      color: color, width: width)
+        case let .text(origin, string, color, fontSize):
+            moved.kind = .text(origin: origin.shifted(by: offset), string: string,
+                               color: color, fontSize: fontSize)
+        case let .freehand(points, color, width):
+            moved.kind = .freehand(points: points.map { $0.shifted(by: offset) },
+                                   color: color, width: width)
+        case let .blur(rect):
+            moved.kind = .blur(rect: rect.offsetBy(dx: offset.width, dy: offset.height))
+        }
+        return moved
+    }
+}
+
 // MARK: - Image helpers
 
 extension NSImage {
@@ -129,6 +213,20 @@ enum Pixelation {
         let context = CIContext()
         guard let result = context.createCGImage(output, from: extent) else { return nil }
         return NSImage(cgImage: result, size: NSSize(width: extent.width, height: extent.height))
+    }
+}
+
+/// Crops the base image to a pixel rect in top-left-origin image space — the
+/// same space annotations use, so a crop plus an annotation translation keep
+/// everything aligned. `CGImage.cropping` measures rows from the top, which
+/// matches that convention.
+enum ImageCrop {
+    static func crop(_ image: NSImage, to rect: CGRect) -> NSImage? {
+        guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let bounds = CGRect(x: 0, y: 0, width: cg.width, height: cg.height)
+        let r = rect.integral.intersection(bounds)
+        guard r.width >= 1, r.height >= 1, let cropped = cg.cropping(to: r) else { return nil }
+        return NSImage(cgImage: cropped, size: NSSize(width: cropped.width, height: cropped.height))
     }
 }
 

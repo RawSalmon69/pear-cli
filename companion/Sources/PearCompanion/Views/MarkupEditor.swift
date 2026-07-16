@@ -96,16 +96,25 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
 // MARK: - Editor view
 
 struct MarkupEditorView: View {
-    let image: NSImage
     let onFinish: (NSImage?) -> Void
 
-    private let pixelSize: CGSize
-    private let pixelated: NSImage?
+    /// Base image, its pixel size, and its pixelated copy are mutable so a
+    /// committed crop can replace them in place.
+    @State private var image: NSImage
+    @State private var pixelSize: CGSize
+    @State private var pixelated: NSImage?
 
     @State private var annotations: [Annotation] = []
     @State private var tool: MarkupTool = .arrow
     @State private var color: Color = Theme.accent
     @State private var strokeWidth: StrokeWidth = .medium
+
+    /// Pending crop region in image coordinates while the crop tool is active.
+    @State private var cropRect: CGRect?
+
+    /// Full editor snapshots for undo, so a single stack covers both
+    /// annotation edits and crops (which change the base image too).
+    @State private var undoStack: [Snapshot] = []
 
     /// In-progress drag in canvas (view) coordinates.
     @State private var dragStart: CGPoint?
@@ -124,11 +133,21 @@ struct MarkupEditorView: View {
     @FocusState private var textFieldFocused: Bool
 
     init(image: NSImage, onFinish: @escaping (NSImage?) -> Void) {
-        self.image = image
         self.onFinish = onFinish
-        self.pixelSize = image.pixelSize
-        self.pixelated = Pixelation.pixelated(image)
+        _image = State(initialValue: image)
+        _pixelSize = State(initialValue: image.pixelSize)
+        _pixelated = State(initialValue: Pixelation.pixelated(image))
     }
+
+    /// Undoable editor state. Base image is a reference, so a snapshot is cheap.
+    private struct Snapshot {
+        let image: NSImage
+        let pixelSize: CGSize
+        let pixelated: NSImage?
+        let annotations: [Annotation]
+    }
+
+    private var isCropping: Bool { tool == .crop && cropRect != nil }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -137,6 +156,10 @@ struct MarkupEditorView: View {
             canvasArea
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        // One Esc owner: cancel the pending crop first, otherwise the editor.
+        .onExitCommand {
+            if isCropping { cancelCrop() } else { onFinish(nil) }
+        }
     }
 
     // MARK: Toolbar
@@ -150,8 +173,7 @@ struct MarkupEditorView: View {
                         help: candidate.help,
                         isActive: tool == candidate
                     ) {
-                        commitDraft()
-                        tool = candidate
+                        selectTool(candidate)
                     }
                 }
             }
@@ -179,13 +201,14 @@ struct MarkupEditorView: View {
             GlyphButton(symbol: "arrow.uturn.backward", help: "Undo") {
                 undo()
             }
-            .disabled(annotations.isEmpty)
+            .disabled(undoStack.isEmpty)
             .keyboardShortcut("z", modifiers: .command)
 
             Spacer()
 
+            // Esc is handled by the view's onExitCommand so it can cancel a
+            // pending crop first; the button stays for mouse users.
             Button("Cancel") { onFinish(nil) }
-                .keyboardShortcut(.cancelAction)
 
             Button("Done") {
                 commitDraft()
@@ -234,13 +257,53 @@ struct MarkupEditorView: View {
                         .offset(x: draftOrigin.x * scale, y: draftOrigin.y * scale)
                         .onSubmit { commitDraft() }
                 }
+
+                if isCropping, let cropRect {
+                    CropOverlay(
+                        rect: cropRect,
+                        scale: scale,
+                        imageSize: pixelSize,
+                        onChange: { self.cropRect = $0 }
+                    )
+                }
             }
             .frame(width: displaySize.width, height: displaySize.height)
             .contentShape(Rectangle())
             .gesture(canvasGesture(scale: scale))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .bottom) {
+                if isCropping { cropConfirmBar.padding(.bottom, Theme.sectionGap) }
+            }
         }
         .padding(Theme.sectionGap)
+    }
+
+    private var cropConfirmBar: some View {
+        HStack(spacing: 10) {
+            if let cropRect {
+                Text("\(Int(cropRect.width.rounded())) × \(Int(cropRect.height.rounded()))")
+                    .font(Theme.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Button { cancelCrop() } label: {
+                Image(systemName: "xmark").font(.system(size: 12, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .help("Cancel crop (Esc)")
+
+            Button { commitCrop() } label: {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Theme.accent)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.return, modifiers: [])
+            .help("Apply crop (Return)")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .glassCard(cornerRadius: 12)
+        .shadow(color: .black.opacity(0.2), radius: 8, y: 3)
     }
 
     // MARK: Layout math
@@ -262,7 +325,7 @@ struct MarkupEditorView: View {
     private func canvasGesture(scale: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
-                guard tool != .text else { return }
+                guard tool != .text, tool != .crop else { return }
                 dragStart = value.startLocation
                 dragCurrent = value.location
                 if tool == .freehand {
@@ -273,6 +336,7 @@ struct MarkupEditorView: View {
                 }
             }
             .onEnded { value in
+                guard tool != .crop else { return } // crop is driven by the overlay
                 defer { dragStart = nil; dragCurrent = nil; freehandPoints = [] }
                 let start = imagePoint(value.startLocation, scale: scale)
                 let end = imagePoint(value.location, scale: scale)
@@ -286,6 +350,7 @@ struct MarkupEditorView: View {
                 if tool == .freehand {
                     guard freehandPoints.count > 2 else { return } // ignore stray clicks
                     let width = strokeWidth.imageWidth(scale: scale)
+                    pushUndo()
                     annotations.append(
                         Annotation(kind: .freehand(points: freehandPoints, color: color, width: width))
                     )
@@ -298,7 +363,7 @@ struct MarkupEditorView: View {
     }
 
     private func previewAnnotation(scale: CGFloat) -> Annotation? {
-        guard tool != .text else { return nil }
+        guard tool != .text, tool != .crop else { return nil }
         if tool == .freehand {
             guard freehandPoints.count > 2 else { return nil }
             let width = strokeWidth.imageWidth(scale: scale)
@@ -321,13 +386,14 @@ struct MarkupEditorView: View {
             return Annotation(kind: .highlighter(start: start, end: end, color: color, width: width))
         case .blur:
             return Annotation(kind: .blur(rect: markupRect(start, end)))
-        case .freehand, .text:
+        case .freehand, .text, .crop:
             return nil
         }
     }
 
     private func addShape(from start: CGPoint, to end: CGPoint, scale: CGFloat) {
         if let annotation = shape(from: start, to: end, scale: scale) {
+            pushUndo()
             annotations.append(annotation)
         }
     }
@@ -349,6 +415,7 @@ struct MarkupEditorView: View {
         guard let origin = draftOrigin else { return }
         let trimmed = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        pushUndo()
         annotations.append(
             Annotation(kind: .text(
                 origin: origin,
@@ -359,9 +426,55 @@ struct MarkupEditorView: View {
         )
     }
 
+    // MARK: Crop
+
+    private func selectTool(_ candidate: MarkupTool) {
+        commitDraft()
+        if candidate == .crop {
+            cropRect = clampCropRect(CGRect(origin: .zero, size: pixelSize), to: pixelSize)
+        } else {
+            cropRect = nil
+        }
+        tool = candidate
+    }
+
+    private func commitCrop() {
+        guard tool == .crop, let rect = cropRect else { return }
+        let clamped = clampCropRect(rect, to: pixelSize)
+        guard clamped.width >= 1, clamped.height >= 1,
+              let cropped = ImageCrop.crop(image, to: clamped) else {
+            cancelCrop()
+            return
+        }
+        pushUndo()
+        image = cropped
+        pixelSize = cropped.pixelSize
+        pixelated = Pixelation.pixelated(cropped)
+        let offset = CGSize(width: -clamped.minX, height: -clamped.minY)
+        annotations = annotations.map { $0.translated(by: offset) }
+        cropRect = nil
+        tool = .arrow
+    }
+
+    private func cancelCrop() {
+        cropRect = nil
+        tool = .arrow
+    }
+
+    // MARK: Undo
+
+    private func pushUndo() {
+        undoStack.append(Snapshot(image: image, pixelSize: pixelSize,
+                                  pixelated: pixelated, annotations: annotations))
+    }
+
     private func undo() {
         commitDraft()
-        if !annotations.isEmpty { annotations.removeLast() }
+        guard let last = undoStack.popLast() else { return }
+        image = last.image
+        pixelSize = last.pixelSize
+        pixelated = last.pixelated
+        annotations = last.annotations
     }
 
     // MARK: Flatten
@@ -411,6 +524,122 @@ private struct ToolButton: View {
         .help(help)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.15), value: hovering)
+    }
+}
+
+// MARK: - Crop overlay
+
+/// Dimmed-outside crop affordance: a bright selection rect with a rule-of-thirds
+/// grid, eight resize handles, a draggable body, and drag-to-draw on the dimmed
+/// area. Geometry is image-space; the view scales it by `scale`.
+private struct CropOverlay: View {
+    let rect: CGRect          // image coordinates
+    let scale: CGFloat
+    let imageSize: CGSize
+    let onChange: (CGRect) -> Void
+
+    @State private var dragStartRect: CGRect?
+
+    private static let minSize: CGFloat = 20 // image px
+    private static let space = "cropOverlay"
+
+    private var bounds: CGRect { CGRect(origin: .zero, size: imageSize) }
+    private var viewRect: CGRect {
+        CGRect(x: rect.minX * scale, y: rect.minY * scale,
+               width: rect.width * scale, height: rect.height * scale)
+    }
+
+    var body: some View {
+        let vr = viewRect
+        ZStack(alignment: .topLeading) {
+            // Dimming with the selection punched out; drag here to draw anew.
+            Canvas { ctx, size in
+                var path = Path(CGRect(origin: .zero, size: size))
+                path.addRect(vr)
+                ctx.fill(path, with: .color(.black.opacity(0.45)), style: FillStyle(eoFill: true))
+            }
+            .contentShape(Rectangle())
+            .gesture(drawGesture)
+
+            // Draggable body (moves the whole rect).
+            Color.white.opacity(0.001)
+                .frame(width: vr.width, height: vr.height)
+                .offset(x: vr.minX, y: vr.minY)
+                .gesture(bodyGesture)
+
+            gridAndBorder(vr)
+                .allowsHitTesting(false)
+
+            ForEach(CropHandle.allCases, id: \.self) { handle in
+                handleView
+                    .position(x: vr.minX + handle.unit.x * vr.width,
+                              y: vr.minY + handle.unit.y * vr.height)
+                    .gesture(handleGesture(handle))
+            }
+        }
+        .coordinateSpace(name: Self.space)
+    }
+
+    private func gridAndBorder(_ vr: CGRect) -> some View {
+        ZStack {
+            Path { p in
+                for i in 1...2 {
+                    let x = vr.minX + vr.width * CGFloat(i) / 3
+                    p.move(to: CGPoint(x: x, y: vr.minY)); p.addLine(to: CGPoint(x: x, y: vr.maxY))
+                    let y = vr.minY + vr.height * CGFloat(i) / 3
+                    p.move(to: CGPoint(x: vr.minX, y: y)); p.addLine(to: CGPoint(x: vr.maxX, y: y))
+                }
+            }
+            .stroke(Color.white.opacity(0.4), lineWidth: 0.75)
+
+            Rectangle()
+                .strokeBorder(Color.white.opacity(0.95), lineWidth: 1.5)
+                .frame(width: vr.width, height: vr.height)
+                .offset(x: vr.minX, y: vr.minY)
+        }
+    }
+
+    private var handleView: some View {
+        ZStack {
+            Color.white.opacity(0.001).frame(width: 30, height: 30) // generous hit area
+            Circle()
+                .fill(.white)
+                .frame(width: 12, height: 12)
+                .overlay(Circle().strokeBorder(Theme.accent, lineWidth: 1.5))
+                .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func handleGesture(_ handle: CropHandle) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.space))
+            .onChanged { value in
+                let p = CGPoint(x: value.location.x / scale, y: value.location.y / scale)
+                onChange(handle.resize(rect, to: p, in: bounds, minSize: Self.minSize))
+            }
+    }
+
+    private var bodyGesture: some Gesture {
+        DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.space))
+            .onChanged { value in
+                let start = dragStartRect ?? rect
+                if dragStartRect == nil { dragStartRect = rect }
+                var moved = start.offsetBy(dx: value.translation.width / scale,
+                                           dy: value.translation.height / scale)
+                moved.origin.x = min(max(moved.minX, bounds.minX), bounds.maxX - moved.width)
+                moved.origin.y = min(max(moved.minY, bounds.minY), bounds.maxY - moved.height)
+                onChange(moved)
+            }
+            .onEnded { _ in dragStartRect = nil }
+    }
+
+    private var drawGesture: some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .named(Self.space))
+            .onChanged { value in
+                let a = CGPoint(x: value.startLocation.x / scale, y: value.startLocation.y / scale)
+                let b = CGPoint(x: value.location.x / scale, y: value.location.y / scale)
+                onChange(clampCropRect(markupRect(a, b), to: imageSize))
+            }
     }
 }
 
