@@ -301,6 +301,9 @@ struct SunburstHitTestIndex: Sendable {
 struct SunburstChartView: View {
     let root: DiskNode
     let depthLimit: Int
+    /// Paths staged for deletion; their wedges render dimmed with a dashed warn
+    /// outline so the pending pile is visible in the chart.
+    let stagedPaths: Set<String>
     let onHover: (DiskChartHover?) -> Void
     let onDrill: (DiskNode) -> Void
     let onGoUp: () -> Void
@@ -327,9 +330,13 @@ struct SunburstChartView: View {
                         isAggregate: segment.isAggregate
                     )
                     let isHovered = segment.id == hoveredID
-                    context.fill(path, with: .color(color.opacity(isHovered ? 1 : 0.9)))
+                    let isStaged = segment.path.map(stagedPaths.contains) ?? false
+                    context.fill(path, with: .color(color.opacity(isStaged ? 0.22 : (isHovered ? 1 : 0.9))))
                     context.stroke(path, with: .color(.black.opacity(0.18)), lineWidth: 0.5)
-                    if isHovered {
+                    if isStaged {
+                        context.stroke(path, with: .color(Theme.warn.opacity(0.9)),
+                                       style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                    } else if isHovered {
                         context.stroke(path, with: .color(.white.opacity(0.85)), lineWidth: 1.5)
                     }
                 }

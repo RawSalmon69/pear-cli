@@ -12,6 +12,9 @@ struct DiskAnalyzeView: View {
     // `pear analyze` overview; the native home-folder scan behind sunburst and
     // treemap runs only when the user selects one of those modes.
     @State private var mode: DiskViewMode = .bars
+    /// The two-phase deletion pile, shared across all three modes so the pending
+    /// section and "Delete all" stay consistent as the user switches views.
+    @State private var staging = DiskStagingModel()
 
     init() {}
 
@@ -28,17 +31,22 @@ struct DiskAnalyzeView: View {
 
             switch mode {
             case .bars:
-                DiskBarsView()
+                DiskBarsView(staging: staging)
             case .sunburst, .treemap:
-                DiskChartView(style: mode == .treemap ? .treemap : .sunburst)
+                DiskChartView(style: mode == .treemap ? .treemap : .sunburst, staging: staging)
             }
 
             Spacer(minLength: 0)
+
+            if !staging.isEmpty {
+                PendingDeletionSection(staging: staging)
+            }
         }
         .padding(16)
         // Hosted in a resizable window: fill it, with a floor so the dense
         // layout never collapses.
         .frame(minWidth: 380, maxWidth: .infinity, minHeight: 360, maxHeight: .infinity, alignment: .top)
+        .animation(.easeOut(duration: 0.18), value: staging.isEmpty)
     }
 }
 
@@ -65,6 +73,8 @@ enum DiskViewMode: String, CaseIterable, Identifiable {
 /// Opens on the storage overview and drills into directories one level at a
 /// time, with a Back path stack.
 private struct DiskBarsView: View {
+    let staging: DiskStagingModel
+
     @State private var service = DiskAnalyzeService()
     /// Directories drilled into, deepest last. Empty == the overview.
     @State private var pathStack: [String] = []
@@ -82,6 +92,9 @@ private struct DiskBarsView: View {
             if service.entries.isEmpty && service.errorMessage == nil {
                 await service.scan(path: nil)
             }
+        }
+        .onChange(of: staging.trashGeneration) { _, _ in
+            service.remove(paths: staging.lastTrashed)
         }
         .animation(.easeOut(duration: 0.2), value: service.entries)
     }
@@ -153,8 +166,8 @@ private struct DiskBarsView: View {
                                 maxSize: maxEntrySize,
                                 totalSize: service.totalSize,
                                 canDrill: entry.isDir && !service.isLoading,
-                                onDrill: { drill(into: entry) },
-                                onTrashed: { Task { await service.scan(path: pathStack.last) } }
+                                staging: staging,
+                                onDrill: { drill(into: entry) }
                             )
                         }
                     }
@@ -175,10 +188,7 @@ private struct DiskBarsView: View {
             SectionLabel(text: "Largest files")
             VStack(spacing: 4) {
                 ForEach(service.largeFiles) { file in
-                    LargeFileRow(
-                        file: file,
-                        onTrashed: { Task { await service.scan(path: pathStack.last) } }
-                    )
+                    LargeFileRow(file: file, staging: staging)
                 }
             }
         }
@@ -272,10 +282,12 @@ private struct EntryBar: View {
     let maxSize: Int64
     let totalSize: Int64
     let canDrill: Bool
+    let staging: DiskStagingModel
     let onDrill: () -> Void
-    let onTrashed: () -> Void
 
     @State private var hovering = false
+
+    private var isStaged: Bool { staging.isStaged(entry.path) }
 
     private var fractionOfMax: Double {
         guard maxSize > 0 else { return 0 }
@@ -341,12 +353,13 @@ private struct EntryBar: View {
                     )
                 }
                 if DiskDeletion.canTrash(path: entry.path) {
-                    GlyphButton(symbol: "trash", help: "Move to Trash", tint: Theme.warn) {
-                        Task {
-                            if await DiskTrashPrompt.confirmAndTrash(
-                                name: entry.name, path: entry.path, size: entry.size) {
-                                onTrashed()
-                            }
+                    if isStaged {
+                        GlyphButton(symbol: "arrow.uturn.backward", help: "Restore", tint: .secondary) {
+                            staging.restore(path: entry.path)
+                        }
+                    } else {
+                        GlyphButton(symbol: "trash", help: "Delete", tint: Theme.warn) {
+                            staging.stage(name: entry.name, path: entry.path, size: entry.size)
                         }
                     }
                 }
@@ -363,8 +376,9 @@ private struct EntryBar: View {
                 .fill(hovering && canDrill ? Theme.accentSoft : .clear)
         )
         .glassCard(cornerRadius: 12)
+        .opacity(isStaged ? 0.5 : 1)
         .contentShape(Rectangle())
-        .onTapGesture { if canDrill { onDrill() } }
+        .onTapGesture { if canDrill && !isStaged { onDrill() } }
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.15), value: hovering)
     }
@@ -387,7 +401,9 @@ private struct CleanableBadge: View {
 
 private struct LargeFileRow: View {
     let file: DiskFile
-    let onTrashed: () -> Void
+    let staging: DiskStagingModel
+
+    private var isStaged: Bool { staging.isStaged(file.path) }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -409,12 +425,13 @@ private struct LargeFileRow: View {
                 )
             }
             if DiskDeletion.canTrash(path: file.path) {
-                GlyphButton(symbol: "trash", help: "Move to Trash", tint: Theme.warn) {
-                    Task {
-                        if await DiskTrashPrompt.confirmAndTrash(
-                            name: file.name, path: file.path, size: file.size) {
-                            onTrashed()
-                        }
+                if isStaged {
+                    GlyphButton(symbol: "arrow.uturn.backward", help: "Restore", tint: .secondary) {
+                        staging.restore(path: file.path)
+                    }
+                } else {
+                    GlyphButton(symbol: "trash", help: "Delete", tint: Theme.warn) {
+                        staging.stage(name: file.name, path: file.path, size: file.size)
                     }
                 }
             }
@@ -422,5 +439,105 @@ private struct LargeFileRow: View {
         .padding(.horizontal, Theme.cardPadding)
         .padding(.vertical, 8)
         .glassCard(cornerRadius: 10)
+        .opacity(isStaged ? 0.5 : 1)
+    }
+}
+
+// MARK: - Pending deletion
+
+/// The two-phase pile: everything staged for deletion, its running total, a
+/// per-item restore (button + right-click), and the one "Delete all" button
+/// that actually touches disk — funneling each staged path through
+/// `DiskDeletion`'s single Trash sink.
+private struct PendingDeletionSection: View {
+    let staging: DiskStagingModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            HStack(spacing: 4) {
+                SectionLabel(text: "Pending deletion")
+                Spacer(minLength: 4)
+                Text("\(staging.count) · \(ByteFormat.si(staging.totalSize))")
+                    .font(Theme.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+
+            ScrollView {
+                VStack(spacing: 4) {
+                    ForEach(staging.items) { item in
+                        PendingRow(item: item, staging: staging)
+                    }
+                }
+            }
+            .frame(maxHeight: 160)
+
+            Button(role: .destructive) {
+                Task { await deleteAll() }
+            } label: {
+                Label(deleteAllTitle, systemImage: "trash")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .tint(Theme.warn)
+            .focusable(false)
+        }
+        .padding(Theme.cardPadding)
+        .glassCard(cornerRadius: 12)
+    }
+
+    private var deleteAllTitle: String {
+        let itemWord = staging.count == 1 ? "item" : "items"
+        return "Delete all (\(staging.count) \(itemWord), \(ByteFormat.si(staging.totalSize)))"
+    }
+
+    private func deleteAll() async {
+        let trashed = await DiskTrashPrompt.confirmAndTrashAll(
+            count: staging.count,
+            totalSize: staging.totalSize,
+            paths: staging.orderedPaths
+        )
+        staging.removeTrashed(trashed)
+    }
+}
+
+/// One row of the pending pile: struck-through name, size, reveal, and restore
+/// (button, plus a right-click Restore / Reveal menu).
+private struct PendingRow: View {
+    let item: DiskStagingModel.StagedItem
+    let staging: DiskStagingModel
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "trash")
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.warn)
+            Text(item.name)
+                .font(Theme.body)
+                .strikethrough(true, color: .secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 4)
+            Text(ByteFormat.si(item.size))
+                .font(Theme.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+            GlyphButton(symbol: "magnifyingglass", help: "Reveal in Finder", tint: .secondary) {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
+            }
+            GlyphButton(symbol: "arrow.uturn.backward", help: "Restore", tint: .secondary) {
+                staging.restore(path: item.path)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button("Restore") { staging.restore(path: item.path) }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
+            }
+        }
     }
 }

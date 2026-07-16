@@ -109,6 +109,15 @@ final class DiskAnalyzeService {
         isLoading = false
     }
 
+    /// Drops entries and large files whose path was just moved to Trash, so a
+    /// "Delete all" reflects in place without a rescan. Totals are left as the
+    /// last scan measured them; the next scan refreshes them.
+    func remove(paths: Set<String>) {
+        guard !paths.isEmpty else { return }
+        entries.removeAll { paths.contains($0.path) }
+        largeFiles.removeAll { paths.contains($0.path) }
+    }
+
     private func apply(_ output: AnalyzeJSON) {
         isOverview = output.overview
         currentPath = output.overview ? nil : output.path

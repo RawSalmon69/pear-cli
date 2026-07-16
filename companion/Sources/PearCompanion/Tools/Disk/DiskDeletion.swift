@@ -62,6 +62,29 @@ enum DiskDeletion {
         _ = try await NSWorkspace.shared.recycle([url])
     }
 
+    /// Batch form for the two-phase "Delete all": funnels every staged path
+    /// through the SAME single `moveToTrash` sink, one at a time, so each path
+    /// is re-checked by `canTrash` at trash time (not only when it was staged).
+    /// Returns the paths that reached the Trash and those refused or failed, so
+    /// the caller prunes exactly the trashed ones and leaves failures staged.
+    /// This is the only disk-touching step of staged deletion.
+    @MainActor
+    static func moveAllToTrash(
+        _ paths: [String], home: String = NSHomeDirectory()
+    ) async -> (trashed: [String], failed: [String]) {
+        var trashed: [String] = []
+        var failed: [String] = []
+        for path in paths {
+            do {
+                try await moveToTrash(URL(fileURLWithPath: path), home: home)
+                trashed.append(path)
+            } catch {
+                failed.append(path)
+            }
+        }
+        return (trashed, failed)
+    }
+
     /// Standardizes a path (resolves `..`/`.`, strips trailing slashes) so the
     /// prefix comparisons above can't be fooled by traversal or formatting.
     private static func cleaned(_ path: String) -> String {
@@ -71,33 +94,37 @@ enum DiskDeletion {
     }
 }
 
-/// The mandatory confirmation-and-trash flow shared by every disk view. Shows
-/// a `.critical` alert naming the item, its full path, and human size; only an
-/// explicit "Move to Trash" proceeds. Returns `true` when the item was trashed.
+/// The mandatory confirmation-and-trash flow for the two-phase pile. Shows a
+/// `.critical` alert naming the count and total, then trashes every staged
+/// path; only an explicit "Move to Trash" proceeds.
 @MainActor
 enum DiskTrashPrompt {
-    static func confirmAndTrash(name: String, path: String, size: Int64) async -> Bool {
-        guard DiskDeletion.canTrash(path: path) else { return false }
+    /// The two-phase "Delete all": one `.critical` alert naming the count and
+    /// total, then a single batch trash through `DiskDeletion.moveAllToTrash`.
+    /// Returns the paths that reached the Trash (empty if the user cancels).
+    /// Surfaces a follow-up warning if any staged path couldn't be trashed.
+    static func confirmAndTrashAll(count: Int, totalSize: Int64, paths: [String]) async -> [String] {
+        guard count > 0, !paths.isEmpty else { return [] }
 
         let alert = NSAlert()
         alert.alertStyle = .critical
-        alert.messageText = "Move “\(name)” to Trash?"
-        alert.informativeText = "\(path)\n\(ByteFormat.si(size))\n\nYou can restore it from the Trash."
+        let itemWord = count == 1 ? "item" : "items"
+        alert.messageText = "Move \(count) \(itemWord) to Trash?"
+        alert.informativeText = "\(ByteFormat.si(totalSize)) total\n\nYou can restore them from the Trash."
         alert.addButton(withTitle: "Move to Trash")
         alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return false }
+        guard alert.runModal() == .alertFirstButtonReturn else { return [] }
 
-        do {
-            try await DiskDeletion.moveToTrash(URL(fileURLWithPath: path))
-            return true
-        } catch {
+        let result = await DiskDeletion.moveAllToTrash(paths)
+        if !result.failed.isEmpty {
             let failure = NSAlert()
             failure.alertStyle = .warning
-            failure.messageText = "Couldn’t move “\(name)” to Trash."
-            failure.informativeText = error.localizedDescription
+            failure.messageText = "Some items couldn’t be moved to Trash."
+            failure.informativeText =
+                "\(result.failed.count) of \(count) couldn’t be trashed and stay in the pending list."
             failure.addButton(withTitle: "OK")
             failure.runModal()
-            return false
         }
+        return result.trashed
     }
 }

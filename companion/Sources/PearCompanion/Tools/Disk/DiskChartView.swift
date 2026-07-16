@@ -7,6 +7,9 @@ import AppKit
 /// first appearance and cancels on disappear.
 struct DiskChartView: View {
     let style: DiskChartStyle
+    /// Shared two-phase deletion pile. "Delete" stages here; the chart marks
+    /// staged segments and reconciles after a "Delete all".
+    let staging: DiskStagingModel
 
     @State private var model = DiskScanModel()
     /// Directories drilled into, deepest last. Empty == the scan root.
@@ -33,6 +36,7 @@ struct DiskChartView: View {
         }
         .task { model.scanIfNeeded(path: Self.homePath) }
         .onDisappear { model.cancel() }
+        .onChange(of: staging.trashGeneration) { _, _ in reconcileTrashed() }
         .animation(.easeOut(duration: 0.18), value: stack)
         .animation(.easeOut(duration: 0.15), value: focused)
     }
@@ -96,6 +100,7 @@ struct DiskChartView: View {
             SunburstChartView(
                 root: root,
                 depthLimit: Self.sunburstDepth,
+                stagedPaths: staging.stagedPaths,
                 onHover: { handleHover($0) },
                 onDrill: { drill(into: $0) },
                 onGoUp: { goUp() }
@@ -105,6 +110,7 @@ struct DiskChartView: View {
             TreemapChartView(
                 root: root,
                 depthLimit: Self.treemapDepth,
+                stagedPaths: staging.stagedPaths,
                 onHover: { handleHover($0) },
                 onDrill: { drill(into: $0) }
             )
@@ -169,8 +175,14 @@ struct DiskChartView: View {
                     NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
                 }
                 if DiskDeletion.canTrash(path: path) {
-                    GlyphButton(symbol: "trash", help: "Move to Trash", tint: Theme.warn) {
-                        Task { await trash(item) }
+                    if staging.isStaged(path) {
+                        GlyphButton(symbol: "arrow.uturn.backward", help: "Restore", tint: .secondary) {
+                            staging.restore(path: path)
+                        }
+                    } else {
+                        GlyphButton(symbol: "trash", help: "Delete", tint: Theme.warn) {
+                            staging.stage(name: item.name, path: path, size: item.size)
+                        }
                     }
                 } else {
                     Text("outside Home")
@@ -190,16 +202,13 @@ struct DiskChartView: View {
         if let item, item.path != nil { focused = item }
     }
 
-    private func trash(_ item: DiskChartHover) async {
-        guard let path = item.path else { return }
-        let trashed = await DiskTrashPrompt.confirmAndTrash(name: item.name, path: path, size: item.size)
-        guard trashed else { return }
-        // Reflect the removal in place: prune the trashed node from the tree and
-        // re-resolve the drill stack against it. A full rescan here is what left
-        // the chart dimmed for the whole (untimed) home walk — see resyncStack.
+    /// After a "Delete all", prune the just-trashed paths from the tree in place
+    /// and re-resolve the drill stack. A full rescan here is what left the chart
+    /// dimmed for the whole (untimed) home walk — see resyncStack.
+    private func reconcileTrashed() {
+        for path in staging.lastTrashed { model.remove(pathID: path) }
         hover = nil
         focused = nil
-        model.remove(pathID: path)
         resyncStack()
     }
 

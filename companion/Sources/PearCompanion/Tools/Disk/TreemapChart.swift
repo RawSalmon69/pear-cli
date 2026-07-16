@@ -380,6 +380,9 @@ struct TreemapHitTestIndex: Sendable {
 struct TreemapChartView: View {
     let root: DiskNode
     let depthLimit: Int
+    /// Paths staged for deletion; their tiles render dimmed with a dashed warn
+    /// outline so the pending pile is visible in the chart.
+    let stagedPaths: Set<String>
     let onHover: (DiskChartHover?) -> Void
     let onDrill: (DiskNode) -> Void
 
@@ -463,11 +466,15 @@ struct TreemapChartView: View {
             isAggregate: segment.isAggregate
         )
         let isHovered = segment.id == hoveredID
+        let isStaged = segment.path.map(stagedPaths.contains) ?? false
         let shape = Path(roundedRect: rect, cornerRadius: 3)
 
         // Container tiles get a translucent header band so their children read
-        // as nested; leaf tiles fill solid.
-        if segment.showsContainerHeader {
+        // as nested; leaf tiles fill solid. Staged tiles fade back under a
+        // dashed warn outline regardless of kind.
+        if isStaged {
+            context.fill(shape, with: .color(color.opacity(0.22)))
+        } else if segment.showsContainerHeader {
             context.fill(shape, with: .color(color.opacity(0.28)))
             let header = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: min(16, rect.height))
             context.fill(Path(roundedRect: header, cornerRadius: 3), with: .color(color.opacity(0.85)))
@@ -475,7 +482,10 @@ struct TreemapChartView: View {
             context.fill(shape, with: .color(color.opacity(isHovered ? 1 : 0.9)))
         }
         context.stroke(shape, with: .color(.black.opacity(0.18)), lineWidth: 0.5)
-        if isHovered {
+        if isStaged {
+            context.stroke(shape, with: .color(Theme.warn.opacity(0.9)),
+                           style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+        } else if isHovered {
             context.stroke(shape, with: .color(.white.opacity(0.85)), lineWidth: 1.5)
         }
 
