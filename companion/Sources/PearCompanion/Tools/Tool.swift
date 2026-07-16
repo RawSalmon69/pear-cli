@@ -46,6 +46,9 @@ protocol Tool: AnyObject {
     var category: ToolCategory { get }
     /// One-line description shown in the help sheet. Defaults to empty.
     var summary: String { get }
+    /// Whether the tool is on for a fresh install. Defaults true; a tool that
+    /// alters the system on launch (the menu-bar hider) opts out.
+    var defaultEnabled: Bool { get }
     /// Hotkey behavior; defaults to the tile action for `.action` tools.
     func hotkeyFired()
     /// Launch-time hook for always-on engines. Default no-op.
@@ -55,6 +58,7 @@ protocol Tool: AnyObject {
 extension Tool {
     var category: ToolCategory { .utilities }
     var summary: String { "" }
+    var defaultEnabled: Bool { true }
 
     func start() {}
 
@@ -76,6 +80,7 @@ final class ToolRegistry {
         let hotkeyLabel: String?
         let category: ToolCategory
         let summary: String
+        let defaultEnabled: Bool
     }
 
     /// Enabled tools, in panel order.
@@ -89,8 +94,9 @@ final class ToolRegistry {
     func offer(_ tool: any Tool) {
         known.append(KnownTool(
             id: tool.id, title: tool.title, icon: tool.icon,
-            hotkeyLabel: tool.hotkey?.label, category: tool.category, summary: tool.summary))
-        guard Prefs.isToolEnabled(tool.id) else { return }
+            hotkeyLabel: tool.hotkey?.label, category: tool.category, summary: tool.summary,
+            defaultEnabled: tool.defaultEnabled))
+        guard Prefs.isToolEnabled(tool.id, default: tool.defaultEnabled) else { return }
         register(tool)
     }
 

@@ -102,7 +102,7 @@ struct SettingsPopover: View {
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
             ForEach(env.tools.known, id: \.id) { tool in
-                Toggle(isOn: toolBinding(tool.id)) {
+                Toggle(isOn: toolBinding(tool.id, default: tool.defaultEnabled)) {
                     Label(tool.title, systemImage: tool.icon)
                         .font(Theme.body)
                 }
@@ -112,9 +112,9 @@ struct SettingsPopover: View {
         }
     }
 
-    private func toolBinding(_ id: String) -> Binding<Bool> {
+    private func toolBinding(_ id: String, default defaultEnabled: Bool) -> Binding<Bool> {
         Binding(
-            get: { Prefs.isToolEnabled(id) },
+            get: { Prefs.isToolEnabled(id, default: defaultEnabled) },
             set: { Prefs.setToolEnabled(id, $0) }
         )
     }

@@ -13,6 +13,9 @@ final class MenuBarTool: Tool {
     let icon = "menubar.rectangle"
     let category = ToolCategory.system
     let summary = "Hide menu-bar clutter behind a click."
+    // Off by default: it collapses on launch and the separator hides icons to
+    // its left, which can include Pear's own. Opt in when you want it.
+    let defaultEnabled = false
     let hotkey: HotKeyChord? = nil
 
     let manager = MenuBarManager()
