@@ -58,4 +58,54 @@ final class TilePopoverStateTests: XCTestCase {
         XCTAssertFalse(state.request("colors"))
         XCTAssertEqual(state.activeID, "colors")
     }
+
+    // MARK: - Visibility-driven toggle
+
+    /// The new transition: a genuinely-open popover, re-clicked, closes plainly
+    /// (no re-present) instead of the close-then-reopen flicker that read as a
+    /// misclick.
+    func testVisiblePopoverReclickClosesWithoutRepresent() {
+        var state = TilePopoverState()
+        _ = state.request("colors")
+        state.didPresent("colors") // SwiftUI actually put it up
+        XCTAssertFalse(state.request("colors")) // visible → plain close, no defer
+        XCTAssertNil(state.activeID)
+    }
+
+    /// A stale active ID (content already gone, but SwiftUI still thinks it's
+    /// up) still re-presents on the next runloop turn.
+    func testStaleActiveIDReclickRepresents() {
+        var state = TilePopoverState()
+        _ = state.request("colors")
+        state.didPresent("colors")
+        state.didDismiss("colors") // content left, but activeID lingered
+        XCTAssertTrue(state.request("colors")) // not visible → deferred re-present
+        XCTAssertNil(state.activeID)
+        state.present("colors")
+        XCTAssertEqual(state.activeID, "colors")
+    }
+
+    /// A late onDisappear from an old popover must not clear the newer one's
+    /// visibility, mirroring the `dismissed` owner-only guard.
+    func testLateDidDismissOfOldPopoverKeepsNewVisibility() {
+        var state = TilePopoverState()
+        _ = state.request("colors")
+        state.didPresent("colors")
+        _ = state.request("windows")
+        state.didPresent("windows")
+        state.didDismiss("colors") // stale callback from the old popover
+        XCTAssertEqual(state.visibleID, "windows")
+        // The now-visible windows tile still closes plainly on re-click.
+        XCTAssertFalse(state.request("windows"))
+        XCTAssertNil(state.activeID)
+    }
+
+    func testPanelClosedClearsVisibility() {
+        var state = TilePopoverState()
+        _ = state.request("colors")
+        state.didPresent("colors")
+        state.panelClosed()
+        XCTAssertNil(state.activeID)
+        XCTAssertNil(state.visibleID)
+    }
 }

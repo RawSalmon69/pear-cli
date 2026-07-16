@@ -154,6 +154,69 @@ final class HotkeyOverrideTests: XCTestCase {
         XCTAssertEqual(registry.all.map(\.id), ["fake.a", "fake.b"])
     }
 
+    // MARK: - Remapped default chords (v2.3.x panel round)
+
+    /// The owner-specified defaults: panel toggle claims ⌃⇧P; Screenshot moved
+    /// to ⌃⇧S; Grab Text (OCR) moved to ⌃⇧T.
+    func testRemappedDefaultChords() {
+        XCTAssertEqual(
+            ScreenshotTool(messaging: MockMessagingService()).hotkey,
+            HotKeyChord(keyCode: kVK_ANSI_S, modifiers: controlKey | shiftKey, label: "⌃⇧S"))
+        XCTAssertEqual(
+            OCRTool().hotkey,
+            HotKeyChord(keyCode: kVK_ANSI_T, modifiers: controlKey | shiftKey, label: "⌃⇧T"))
+        XCTAssertEqual(
+            PanelTool().hotkey,
+            HotKeyChord(keyCode: kVK_ANSI_P, modifiers: controlKey | shiftKey, label: "⌃⇧P"))
+    }
+
+    /// Remapping a *default* must never disturb a user override in
+    /// `toolHotkey.*`. The tool is offered disabled so no real Carbon hotkey is
+    /// registered; the effective label still resolves to the override.
+    func testUserOverrideWinsOverRemappedDefault() {
+        let id = "screenshot"
+        let keys = [Prefs.toolEnabledKey(id), Prefs.toolHotkeyKey(id)]
+        keys.forEach { UserDefaults.standard.removeObject(forKey: $0) }
+        defer { keys.forEach { UserDefaults.standard.removeObject(forKey: $0) } }
+
+        let custom = HotKeyChord(keyCode: kVK_ANSI_9, modifiers: cmdKey | shiftKey, label: "⌘⇧9")
+        Prefs.setHotkeyOverride(id, custom)
+        Prefs.setToolEnabled(id, false)
+
+        let registry = ToolRegistry()
+        registry.offer(ScreenshotTool(messaging: MockMessagingService()))
+
+        // The override wins over the new ⌃⇧S default.
+        XCTAssertEqual(registry.hotkeyLabel(for: id), "⌘⇧9")
+        XCTAssertTrue(registry.hasHotkeyOverride(id))
+        XCTAssertTrue(registry.hasDefaultHotkey(id))
+    }
+
+    /// The panel toggle rides the same registry machinery, so conflict
+    /// detection sees its default chord like any other tool's.
+    func testPanelToolConflictsOnItsDefaultChord() {
+        let ids = ["fake.a", "panel"]
+        ids.forEach {
+            UserDefaults.standard.removeObject(forKey: Prefs.toolEnabledKey($0))
+            UserDefaults.standard.removeObject(forKey: Prefs.toolHotkeyKey($0))
+        }
+        defer {
+            ids.forEach {
+                UserDefaults.standard.removeObject(forKey: Prefs.toolEnabledKey($0))
+                UserDefaults.standard.removeObject(forKey: Prefs.toolHotkeyKey($0))
+            }
+        }
+        let registry = ToolRegistry()
+        registry.offer(FakeTool(id: "fake.a", title: "Alpha"))
+        registry.offer(PanelTool()) // default-enabled → registers the real ⌃⇧P
+        defer { registry.setEnabled("panel", false) } // unregister it
+
+        let panelChord = HotKeyChord(keyCode: kVK_ANSI_P, modifiers: controlKey | shiftKey, label: "⌃⇧P")
+        XCTAssertEqual(registry.conflictingTool(for: panelChord, excluding: "fake.a"), "Companion Panel")
+        // Excluding the panel itself is not a self-conflict.
+        XCTAssertNil(registry.conflictingTool(for: panelChord, excluding: "panel"))
+    }
+
     // MARK: - Label formatting
 
     func testLabelFormatting() {

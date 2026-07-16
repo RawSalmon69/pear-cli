@@ -4,7 +4,7 @@ import Carbon.HIToolbox
 // The four launch tools. Each holds its heavy service lazily; only the
 // clipboard collector runs from launch (its history is worthless otherwise).
 
-/// Region screenshot → clipboard + preview + markup + send. ⌃⇧P.
+/// Region screenshot → clipboard + preview + markup + send. ⌃⇧S.
 @MainActor
 final class ScreenshotTool: Tool {
     let id = "screenshot"
@@ -13,7 +13,7 @@ final class ScreenshotTool: Tool {
     let category = ToolCategory.capture
     let summary = "Grab a region — copy it, mark it up, or save it."
     let hotkey: HotKeyChord? = HotKeyChord(
-        keyCode: kVK_ANSI_P, modifiers: controlKey | shiftKey, label: "⌃⇧P")
+        keyCode: kVK_ANSI_S, modifiers: controlKey | shiftKey, label: "⌃⇧S")
 
     private let messaging: MessagingService
     private var service: ScreenshotService?
@@ -40,7 +40,7 @@ final class ScreenshotTool: Tool {
     }
 }
 
-/// Region capture → Vision OCR → clipboard. ⌃⇧O.
+/// Region capture → Vision OCR → clipboard. ⌃⇧T.
 @MainActor
 final class OCRTool: Tool {
     let id = "ocr"
@@ -49,7 +49,7 @@ final class OCRTool: Tool {
     let category = ToolCategory.capture
     let summary = "Pick text out of any region on screen and copy it."
     let hotkey: HotKeyChord? = HotKeyChord(
-        keyCode: kVK_ANSI_O, modifiers: controlKey | shiftKey, label: "⌃⇧O")
+        keyCode: kVK_ANSI_T, modifiers: controlKey | shiftKey, label: "⌃⇧T")
 
     private var service: OCRService?
 
@@ -113,5 +113,28 @@ final class DiskTool: Tool {
 
     var entry: ToolEntry {
         .action { [window] in window.show() }
+    }
+}
+
+/// Toggles the companion panel. It has no tile of its own — you don't open the
+/// panel from inside it — but it registers a rebindable global hotkey (⌃⇧P)
+/// through the same registry machinery as every tool, so conflict detection and
+/// the recorder row work unchanged. Firing posts `.pearTogglePanel`, which the
+/// PanelController turns into open/close; the indirection avoids a launch-order
+/// dependency between the environment (which offers this tool) and the
+/// controller (created afterward by the AppDelegate).
+@MainActor
+final class PanelTool: Tool {
+    let id = "panel"
+    let title = "Companion Panel"
+    let icon = "macwindow"
+    let category = ToolCategory.system
+    let summary = "Open or close the Pear panel from anywhere."
+    let hotkey: HotKeyChord? = HotKeyChord(
+        keyCode: kVK_ANSI_P, modifiers: controlKey | shiftKey, label: "⌃⇧P")
+    var showsTile: Bool { false }
+
+    var entry: ToolEntry {
+        .action { NotificationCenter.default.post(name: .pearTogglePanel, object: nil) }
     }
 }

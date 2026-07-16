@@ -44,6 +44,7 @@ final class AppEnvironment {
         tools.offer(WindowsTool())
         tools.offer(MenuBarTool())
         tools.offer(DockDoorTool())
+        tools.offer(PanelTool())
         self.tools = tools
 
         runner.start() // no-op unless the user enabled it

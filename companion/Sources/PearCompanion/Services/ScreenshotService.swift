@@ -29,7 +29,7 @@ enum ScreenshotNaming {
 
 /// Region screenshot → clipboard + saved PNG + floating preview. The preview
 /// offers re-copy, reveal-in-Finder, and the encrypted send to the other Mac.
-/// Triggered by the global hotkey (⌃⇧P) or the panel's Screenshot button.
+/// Triggered by the global hotkey (⌃⇧S) or the panel's Screenshot button.
 /// A user-cancelled capture (no file written) is a no-op.
 @MainActor
 final class ScreenshotService {

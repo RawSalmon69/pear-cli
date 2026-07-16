@@ -307,14 +307,21 @@ struct Composer: View {
 /// A's late dismissal callback wiping out a just-requested popover B.
 struct TilePopoverState: Equatable {
     private(set) var activeID: String?
+    /// The popover SwiftUI has actually presented, tracked from the content's
+    /// onAppear/onDisappear. Distinguishes a genuinely-open popover (plain close
+    /// on re-click) from a stale `activeID` SwiftUI no longer shows (re-present).
+    private(set) var visibleID: String?
 
-    /// A tile was clicked. Returns true when the caller must re-present on
-    /// the next runloop turn: SwiftUI already believes this popover is up,
-    /// so the ID has to publish nil once before the same ID reads true again.
+    /// A tile was clicked. Returns true when the caller must re-present on the
+    /// next runloop turn. Three cases when the tile is already active:
+    /// its popover is visible → a plain close (return false); its ID is stale —
+    /// SwiftUI believes it's up but it isn't visible → the ID must publish nil
+    /// once before the same ID reads true again (return true).
     mutating func request(_ id: String) -> Bool {
         if activeID == id {
+            let wasVisible = visibleID == id
             activeID = nil
-            return true
+            return !wasVisible
         }
         activeID = id
         return false
@@ -323,6 +330,17 @@ struct TilePopoverState: Equatable {
     /// The deferred half of a `request` that returned true.
     mutating func present(_ id: String) {
         activeID = id
+    }
+
+    /// The popover content appeared on screen.
+    mutating func didPresent(_ id: String) {
+        visibleID = id
+    }
+
+    /// The popover content left the screen. Only the owner clears, so a late
+    /// callback from an old popover can't wipe a newer one's visibility.
+    mutating func didDismiss(_ id: String) {
+        if visibleID == id { visibleID = nil }
     }
 
     /// SwiftUI reported a popover dismissed. A late callback from an old
@@ -334,6 +352,7 @@ struct TilePopoverState: Equatable {
     /// The panel went away; nothing is presented anymore.
     mutating func panelClosed() {
         activeID = nil
+        visibleID = nil
     }
 }
 
@@ -349,7 +368,7 @@ struct ToolsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             ForEach(ToolCategory.allCases, id: \.self) { category in
-                let tools = env.tools.all.filter { $0.category == category }
+                let tools = env.tools.all.filter { $0.category == category && $0.showsTile }
                 if !tools.isEmpty {
                     SectionLabel(text: category.title)
                     LazyVGrid(columns: columns, spacing: Theme.itemGap) {
@@ -384,7 +403,11 @@ struct ToolsSection: View {
                     set: { if !$0 { popovers.dismissed(tool.id) } }
                 ),
                 arrowEdge: .bottom
-            ) { content() }
+            ) {
+                content()
+                    .onAppear { popovers.didPresent(tool.id) }
+                    .onDisappear { popovers.didDismiss(tool.id) }
+            }
         }
     }
 }
@@ -411,6 +434,10 @@ struct ToolTile: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
             .frame(height: 68)
+            // Make the whole card hittable — the glass fill alone leaves the
+            // padding around the glyph/label dead, which read as a hard-to-hit
+            // tile (worst on the wide Windows tile).
+            .contentShape(Rectangle())
             .glassCard(cornerRadius: 12)
             .overlay {
                 if hovering {

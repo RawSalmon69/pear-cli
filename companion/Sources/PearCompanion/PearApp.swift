@@ -5,29 +5,23 @@ import UserNotifications
 @main
 struct PearApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var environment = AppEnvironment.live()
 
     var body: some Scene {
-        MenuBarExtra {
-            PanelView()
-                .environment(environment)
-        } label: {
-            if environment.runner.isEnabled {
-                Image(nsImage: environment.runner.currentFrame)
-                if environment.runner.showsCPU, let pct = environment.runner.cpuPercent {
-                    Text("\(pct)%")
-                }
-            } else {
-                Image(nsImage: MenuBarIcon.image(unread: environment.hasUnseenIncoming))
-            }
-        }
-        .menuBarExtraStyle(.window)
+        // Menu-bar-only (LSUIElement): no visible scene. The status item and the
+        // companion panel are driven imperatively by the AppDelegate's
+        // PanelController — a MenuBarExtra window can't stay open on focus loss.
+        Settings { EmptyView() }
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+    private let environment = AppEnvironment.live()
+    private var panelController: PanelController?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
+        panelController = PanelController(env: environment)
         // Best-effort: unsigned dev builds have no push entitlement and land in
         // didFailToRegister — that's fine, the foreground poll covers delivery.
         if FeatureFlags.coupleNote {
@@ -50,8 +44,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     // Show our local notifications even while the app is foreground.
-    func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                willPresent notification: UNNotification) async
+    // `nonisolated`: unlike NSApplicationDelegate, UNUserNotificationCenterDelegate
+    // isn't main-actor-isolated in the SDK, so a @MainActor impl can't receive its
+    // non-Sendable params. This body touches no isolated state, so it's safe off-actor.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            willPresent notification: UNNotification) async
         -> UNNotificationPresentationOptions {
         [.banner, .sound]
     }

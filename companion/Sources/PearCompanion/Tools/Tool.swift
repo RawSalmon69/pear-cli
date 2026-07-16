@@ -49,6 +49,10 @@ protocol Tool: AnyObject {
     /// Whether the tool is on for a fresh install. Defaults true; a tool that
     /// alters the system on launch (the menu-bar hider) opts out.
     var defaultEnabled: Bool { get }
+    /// Whether the tool shows a tile in the panel's Tools grid. Defaults true;
+    /// the `panel` pseudo-tool opts out — you don't open the panel from inside
+    /// it — while still registering a rebindable hotkey through the registry.
+    var showsTile: Bool { get }
     /// Hotkey behavior; defaults to the tile action for `.action` tools.
     func hotkeyFired()
     /// Launch-time hook for always-on engines. Default no-op.
@@ -63,6 +67,7 @@ extension Tool {
     var category: ToolCategory { .utilities }
     var summary: String { "" }
     var defaultEnabled: Bool { true }
+    var showsTile: Bool { true }
 
     func start() {}
     func stop() {}

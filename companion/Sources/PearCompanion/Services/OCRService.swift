@@ -4,7 +4,7 @@ import Vision
 import os
 
 /// "Grab text from anywhere": region capture → on-device text recognition →
-/// clipboard, with a notification showing what was copied. Global hotkey ⌃⇧O
+/// clipboard, with a notification showing what was copied. Global hotkey ⌃⇧T
 /// or a panel button. A cancelled capture is a no-op.
 @MainActor
 final class OCRService {
