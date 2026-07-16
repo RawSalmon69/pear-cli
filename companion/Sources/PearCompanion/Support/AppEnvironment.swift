@@ -36,6 +36,7 @@ final class AppEnvironment {
         tools.offer(ColorPickerTool())
         tools.offer(MonitorTool())
         tools.offer(WindowsTool())
+        tools.offer(MenuBarTool())
         self.tools = tools
 
         if FeatureFlags.coupleNote {
