@@ -14,6 +14,9 @@ struct PearApp: App {
         } label: {
             if environment.runner.isEnabled {
                 Image(nsImage: environment.runner.currentFrame)
+                if environment.runner.showsCPU, let pct = environment.runner.cpuPercent {
+                    Text("\(pct)%")
+                }
             } else {
                 Image(nsImage: MenuBarIcon.image(unread: environment.hasUnseenIncoming))
             }
