@@ -29,15 +29,27 @@ struct WindowsView: View {
     @AppStorage(WindowSettings.Key.triggerDelay)
     private var triggerDelay = WindowSettings.defaultTriggerDelay
 
+    /// Between the grid's sub-sections. Tighter than the app-wide section gap:
+    /// the grid + radial + settings stack is tall, and the popover has to hold
+    /// it all without clipping.
+    private let sectionSpacing: CGFloat = 14
+
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.sectionGap) {
+        Group {
             if trusted {
-                grid
+                // The zone grid, radial, and Loop-style settings together run
+                // taller than a popover can show, so scroll the whole thing
+                // inside a bounded height rather than let the lower controls
+                // clip off-screen.
+                ScrollView {
+                    grid.padding(14)
+                }
+                .frame(maxHeight: 520)
             } else {
                 PermissionCard { trusted = AXIsProcessTrusted() }
+                    .padding(14)
             }
         }
-        .padding(14)
         .frame(width: 300)
         // Trust can be granted in System Settings while this popover is open;
         // re-check whenever it reappears.
@@ -47,7 +59,7 @@ struct WindowsView: View {
     // MARK: - Zone grid (a mini window map)
 
     private var grid: some View {
-        VStack(alignment: .leading, spacing: Theme.sectionGap) {
+        VStack(alignment: .leading, spacing: sectionSpacing) {
             zoneSection("Halves", [.leftHalf, .rightHalf])
             VStack(alignment: .leading, spacing: Theme.itemGap) {
                 SectionLabel(text: "Quarters")
@@ -71,7 +83,7 @@ struct WindowsView: View {
     /// Loop-mirroring live settings: ring geometry, preview look, snap
     /// animation, and the trigger delay. Persisted under "windows.*".
     private var settingsSection: some View {
-        VStack(alignment: .leading, spacing: Theme.sectionGap) {
+        VStack(alignment: .leading, spacing: sectionSpacing) {
             VStack(alignment: .leading, spacing: Theme.itemGap) {
                 SectionLabel(text: "Ring")
                 slider("Corner radius", $ringCornerRadius, WindowSettings.ringCornerRadiusRange) {
