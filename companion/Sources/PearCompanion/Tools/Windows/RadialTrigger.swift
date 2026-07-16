@@ -84,8 +84,11 @@ enum RadialTriggerKey: String, CaseIterable, Identifiable {
 @MainActor
 final class RadialTrigger {
     /// Hold this long before the ring appears, so taps don't trigger
-    /// (Loop's trigger delay; 100 ms matches its shortest useful setting).
-    private static let holdDelay: Duration = .milliseconds(100)
+    /// (Loop's trigger delay). Reads the live "windows.triggerDelay" pref at
+    /// use time; defaults to 100 ms, the prior fixed value.
+    private static var holdDelay: Duration {
+        .seconds(WindowSettings.triggerDelay())
+    }
     /// Inside this radius the cursor hasn't meaningfully moved: no selection
     /// (Loop's 10 pt no-action distance).
     private static let noSelectionRadius: CGFloat = 10

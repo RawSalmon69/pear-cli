@@ -1,10 +1,14 @@
-// Adapted from Loop (GPL-3.0), https://github.com/MrKai77/Loop
+// Adapted from Loop (GPL-3.0), https://github.com/MrKai77/Loop, commit 3b632db5
+// Original file: Loop/Window Action Indicators/Preview Window/PreviewView.swift
 //
 // Loop previews the would-be frame with a full-screen, click-through panel
 // on the target screen (`PreviewController` + `PreviewView`), animating the
 // highlighted rect between action changes and applying the resize only on
 // release. Same model here: one screen-sized panel, a rounded accent rect
-// that eases between zone frames, nothing interactive.
+// that eases between zone frames, nothing interactive. `ZonePreviewView` now
+// carries Loop's `PreviewView` styling verbatim (blur backing, accent-gradient
+// fill at low opacity, quinary + accent-gradient borders, inset padding); only
+// the plumbing (the screen-sized panel, the rect-offset placement) is Pear's.
 
 import AppKit
 import SwiftUI
@@ -77,27 +81,77 @@ final class ZonePreviewModel: ObservableObject {
     @Published var rect: CGRect?
 }
 
-/// The would-be frame: accent fill at 20% with a 1 pt accent border, easing
-/// between zone frames (Loop's preview look, in Pear's accent).
+/// The would-be frame, carrying Loop's `PreviewView` look (blur backing,
+/// accent-gradient fill, quinary + accent borders, inset padding), in Pear's
+/// accent. Eases between zone frames at the tool's animation speed.
 struct ZonePreviewView: View {
     @ObservedObject var model: ZonePreviewModel
+
+    @AppStorage(WindowSettings.Key.previewPadding)
+    private var paddingStore = WindowSettings.defaultPreviewPadding
+    @AppStorage(WindowSettings.Key.previewBlur)
+    private var blurEnabled = WindowSettings.defaultPreviewBlur
+    @AppStorage(WindowSettings.Key.animationSpeed)
+    private var speedStore = WindowSettings.defaultAnimationSpeed.rawValue
+
+    // Loop's preview constants not exposed as Pear settings.
+    private let previewCornerRadius: CGFloat = 10 // Loop default
+    private let previewBorderThickness: CGFloat = 4 // Loop default
+    private let previewBackgroundAccentOpacity: Double = 0.1 // Loop default
+
+    private var accent: Color { Theme.accent }
+    private var padding: CGFloat {
+        CGFloat(min(max(paddingStore, WindowSettings.previewPaddingRange.lowerBound),
+                    WindowSettings.previewPaddingRange.upperBound))
+    }
+
+    private var glideAnimation: Animation {
+        (WindowAnimationSpeed(rawValue: speedStore) ?? WindowSettings.defaultAnimationSpeed)
+            .previewWindow ?? .linear(duration: 0)
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             if let rect = model.rect {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Theme.accent.opacity(0.2))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Theme.accent, lineWidth: 1)
-                    )
+                windowView
                     .frame(width: rect.width, height: rect.height)
                     .offset(x: rect.minX, y: rect.minY)
                     .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .animation(.easeOut(duration: 0.15), value: model.rect)
+        .animation(glideAnimation, value: model.rect)
         .allowsHitTesting(false)
+    }
+
+    private var windowView: some View {
+        ZStack {
+            ZStack {
+                VisualEffectView(material: .hudWindow, blendingMode: .behindWindow, state: .active)
+                    .opacity(blurEnabled ? 1 : 0)
+
+                LinearGradient(
+                    gradient: Gradient(colors: [accent, accent]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .opacity(previewBackgroundAccentOpacity)
+            }
+            .clipShape(.rect(cornerRadius: previewCornerRadius))
+
+            RoundedRectangle(cornerRadius: previewCornerRadius)
+                .strokeBorder(.quinary, lineWidth: 1)
+
+            RoundedRectangle(cornerRadius: previewCornerRadius)
+                .stroke(
+                    LinearGradient(
+                        gradient: Gradient(colors: [accent, accent]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: previewBorderThickness
+                )
+        }
+        .padding(padding + previewBorderThickness / 2)
     }
 }

@@ -11,6 +11,24 @@ struct WindowsView: View {
     @AppStorage(RadialTriggerKey.defaultsKey)
     private var radialTriggerKey = RadialTriggerKey.fnGlobe.rawValue
 
+    // Live per-tool settings (windows.*). Every control applies at use time —
+    // the ring/preview read via @AppStorage, the engine/trigger read
+    // WindowSettings — so there is no relaunch.
+    @AppStorage(WindowSettings.Key.ringCornerRadius)
+    private var ringCornerRadius = WindowSettings.defaultRingCornerRadius
+    @AppStorage(WindowSettings.Key.ringThickness)
+    private var ringThickness = WindowSettings.defaultRingThickness
+    @AppStorage(WindowSettings.Key.previewPadding)
+    private var previewPadding = WindowSettings.defaultPreviewPadding
+    @AppStorage(WindowSettings.Key.previewBlur)
+    private var previewBlur = WindowSettings.defaultPreviewBlur
+    @AppStorage(WindowSettings.Key.animationEnabled)
+    private var animationEnabled = WindowSettings.defaultAnimationEnabled
+    @AppStorage(WindowSettings.Key.animationSpeed)
+    private var animationSpeed = WindowSettings.defaultAnimationSpeed.rawValue
+    @AppStorage(WindowSettings.Key.triggerDelay)
+    private var triggerDelay = WindowSettings.defaultTriggerDelay
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.sectionGap) {
             if trusted {
@@ -46,6 +64,72 @@ struct WindowsView: View {
             zoneSection("Two-thirds", [.leftTwoThirds, .rightTwoThirds])
             zoneSection("Size", [.maximize, .center])
             radialSection
+            settingsSection
+        }
+    }
+
+    /// Loop-mirroring live settings: ring geometry, preview look, snap
+    /// animation, and the trigger delay. Persisted under "windows.*".
+    private var settingsSection: some View {
+        VStack(alignment: .leading, spacing: Theme.sectionGap) {
+            VStack(alignment: .leading, spacing: Theme.itemGap) {
+                SectionLabel(text: "Ring")
+                slider("Corner radius", $ringCornerRadius, WindowSettings.ringCornerRadiusRange) {
+                    "\(Int($0.rounded()))"
+                }
+                slider("Thickness", $ringThickness, WindowSettings.ringThicknessRange) {
+                    "\(Int($0.rounded()))"
+                }
+            }
+            VStack(alignment: .leading, spacing: Theme.itemGap) {
+                SectionLabel(text: "Preview")
+                slider("Padding", $previewPadding, WindowSettings.previewPaddingRange) {
+                    "\(Int($0.rounded()))"
+                }
+                Toggle("Blur", isOn: $previewBlur)
+                    .font(Theme.body)
+            }
+            VStack(alignment: .leading, spacing: Theme.itemGap) {
+                SectionLabel(text: "Snap animation")
+                Toggle("Animate snaps", isOn: $animationEnabled)
+                    .font(Theme.body)
+                Picker("Speed", selection: $animationSpeed) {
+                    ForEach(WindowAnimationSpeed.allCases) { speed in
+                        Text(speed.label).tag(speed.rawValue)
+                    }
+                }
+                .pickerStyle(.menu)
+                .font(Theme.body)
+                .disabled(!animationEnabled)
+            }
+            VStack(alignment: .leading, spacing: Theme.itemGap) {
+                SectionLabel(text: "Trigger")
+                slider("Delay", $triggerDelay, WindowSettings.triggerDelayRange, step: 0.1) {
+                    String(format: "%.1f s", $0)
+                }
+            }
+        }
+    }
+
+    /// Dense labeled slider with a right-aligned value readout.
+    private func slider(
+        _ title: String,
+        _ value: Binding<Double>,
+        _ range: ClosedRange<Double>,
+        step: Double = 1,
+        format: @escaping (Double) -> String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(title)
+                    .font(Theme.body)
+                Spacer()
+                Text(format(value.wrappedValue))
+                    .font(Theme.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            Slider(value: value, in: range, step: step)
         }
     }
 

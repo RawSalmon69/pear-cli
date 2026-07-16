@@ -1,10 +1,13 @@
-// Adapted from Loop (GPL-3.0), https://github.com/MrKai77/Loop
+// Adapted from Loop (GPL-3.0), https://github.com/MrKai77/Loop, commit 3b632db5
+// Original files: Loop/Window Management/Window/Window.swift,
+//                 Loop/Window Management/Window Manipulation/WindowEngine.swift
 //
-// The animated snap adapts Loop's `WindowTransformAnimation` (an eased
-// interpolation of the AX frame from source to target); see
-// `setFrameAnimated` for how we trade Loop's display link for a short
-// fixed-step loop. The AX move/resize path mirrors Loop's `Window.setFrame`
-// and `WindowEngine.performResize`:
+// The animated snap now uses Loop's own `WindowTransformAnimation` (vendored in
+// Vendor/), an `NSAnimation` subclass ticking at the display refresh rate with a
+// cubic ease-out and mid-flight re-anchoring. `AXWindowHandle` below is the
+// window handle it drives; `shouldAnchorDuringAnimation` / `anchoredFrame` are
+// vendored verbatim from Loop's `WindowEngine` for that re-anchoring. The AX
+// move/resize path mirrors Loop's `Window.setFrame` and `WindowEngine.performResize`:
 //   • read the frontmost app's focused window via
 //     AXUIElementCreateApplication + kAXFocusedWindowAttribute,
 //   • temporarily disable the app's AXEnhancedUserInterface while resizing
@@ -21,6 +24,7 @@
 
 import AppKit
 import ApplicationServices
+import SwiftUI // Edge.Set, used by the re-anchoring helpers
 
 @MainActor
 enum WindowEngine {
@@ -64,8 +68,11 @@ enum WindowEngine {
             ? zone.frame(in: visible)
             : WindowZone.centered(current.size, in: visible)
         let targetAX = targetAppKit.flippedY(maxY: pivot)
+        // The screen's visible bounds in AX space give the animation the frame
+        // to keep the window inside and re-anchor against (Loop's `bounds`).
+        let boundsAX = visible.flippedY(maxY: pivot)
 
-        setFrameAnimated(window, from: current, to: targetAX, resize: zone.resizes, app: appElement)
+        setFrameAnimated(window, to: targetAX, bounds: boundsAX, resize: zone.resizes, app: appElement)
 
         // ponytail: a "cycle" (repeated ⌃⌥← walks half → left-third → …) would
         // hook in here by remembering the last zone applied per window.
@@ -119,75 +126,112 @@ enum WindowEngine {
         return NSRect(origin: position, size: size)
     }
 
-    // MARK: - Animated write (adapted from Loop's WindowTransformAnimation)
+    // MARK: - Animated write (Loop's WindowTransformAnimation, vendored)
 
-    /// The in-flight snap animation. One at a time: a new snap cancels the
-    /// old task, and the new task awaits the old one so the enhanced-UI
-    /// disable/restore pairs can never interleave.
-    private static var animationTask: Task<Void, Never>?
+    /// The most recent snap animation. One at a time: a new snap cancels this
+    /// one first (synchronously, so the enhanced-UI disable/restore pairs can
+    /// never interleave). Not cleared on completion — `cancel()` on an already
+    /// finished animation is a guarded no-op. Replaces Loop's per-`CGWindowID`
+    /// dedup dict (which needed the private `_AXUIElementGetWindow`).
+    private static var currentAnimation: WindowTransformAnimation?
 
-    /// Steps the window from `current` to `rect` (both AX space) over ~0.2 s
-    /// with a cubic ease-out, then lands exactly on `rect` via the same
-    /// size → position → size ordering as the direct path. Loop drives its
-    /// version off a display link; every AX set here is synchronous IPC with
-    /// a 0.5 s messaging timeout, so we keep the step count low — ~9 sets
-    /// over 0.2 s reads as the same motion without risking seconds of blocked
-    /// main thread on a hung target app. Any failed set aborts the animation
-    /// (the app is rejecting or timing out; don't stack up timeouts).
+    /// Animate the window from its current AX frame to `rect` using Loop's
+    /// `WindowTransformAnimation`. Falls back to the direct `setFrame` when
+    /// Reduce Motion is on, the animation toggle is off, or the speed is
+    /// Instant (`WindowSettings.snapDuration` returns nil). Enhanced UI is
+    /// disabled for the duration and restored on completion.
     private static func setFrameAnimated(
         _ window: AXUIElement,
-        from current: NSRect,
         to rect: NSRect,
+        bounds: NSRect,
         resize: Bool,
         app: AXUIElement
     ) {
-        // ponytail: Reduce Motion short-circuits to the direct set. A
-        // user-facing "animate snaps" toggle was not requested; add one here
-        // if it ever is.
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+        // KEEP: Reduce Motion (Loop has no such check) short-circuits to the
+        // direct set. So does the settings toggle / Instant speed.
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+              let duration = WindowSettings.snapDuration()
+        else {
             setFrame(window, to: rect, resize: resize, app: app)
             return
         }
 
-        let previous = animationTask
-        previous?.cancel()
-        animationTask = Task { @MainActor in
-            // Let the previous animation unwind (its deferred enhanced-UI
-            // restore included) before this one touches the same flags.
-            await previous?.value
-            guard !Task.isCancelled else { return }
+        let willResize = resize && isSettable(window, kAXSizeAttribute)
 
-            let willResize = resize && isSettable(window, kAXSizeAttribute)
-            let enhanced = boolAttribute(app, kAXEnhancedUserInterface)
-            if enhanced { setBool(app, kAXEnhancedUserInterface, false) }
-            defer { if enhanced { setBool(app, kAXEnhancedUserInterface, true) } }
+        // New snap cancels the in-flight one first. cancel() restores that
+        // animation's enhanced-UI flag synchronously, before we re-disable it.
+        currentAnimation?.cancel()
 
-            let steps = 9
-            let duration = 0.2
-            for step in 1 ..< steps {
-                let t = Double(step) / Double(steps)
-                let eased = 1 - pow(1 - t, 3) // cubic ease-out
-                let frame = NSRect(
-                    x: current.minX + (rect.minX - current.minX) * eased,
-                    y: current.minY + (rect.minY - current.minY) * eased,
-                    width: current.width + (rect.width - current.width) * eased,
-                    height: current.height + (rect.height - current.height) * eased
-                )
-                if willResize {
-                    guard setSize(window, frame.size) else { return }
-                }
-                guard setPosition(window, frame.origin) else { return }
-                try? await Task.sleep(nanoseconds: UInt64(duration / Double(steps) * 1_000_000_000))
-                guard !Task.isCancelled else { return }
-            }
+        let enhanced = boolAttribute(app, kAXEnhancedUserInterface)
+        if enhanced { setBool(app, kAXEnhancedUserInterface, false) }
 
-            // Exact final placement (size → position → size; see setFrame).
-            if willResize {
-                guard setSize(window, rect.size) else { return }
-            }
-            guard setPosition(window, rect.origin) else { return }
-            if willResize { _ = setSize(window, rect.size) }
+        let handle = AXWindowHandle(window)
+        let animation = WindowTransformAnimation(
+            rect,
+            window: handle,
+            bounds: bounds,
+            shouldSetSize: willResize,
+            duration: duration
+        ) { _ in
+            // Nonisolated completion (called on the main run loop): restore the
+            // app's enhanced-UI flag via the raw AX write, no actor hop.
+            if enhanced { setEnhancedUserInterface(app, true) }
         }
+        currentAnimation = animation
+        animation.start()
+    }
+
+    // MARK: - Re-anchoring (vendored verbatim from Loop's WindowEngine)
+
+    /// The frame to place a window at when the app clamped its size below what
+    /// we requested: pin the accepted size to whichever bounds edges the target
+    /// touched, then push it fully inside `bounds`. Pure math — `nonisolated`
+    /// so the (nonisolated) snap animation can call it each tick.
+    nonisolated static func anchoredFrame(
+        for actualSize: CGSize,
+        within requestedFrame: CGRect,
+        targetEdges: Edge.Set,
+        bounds: CGRect
+    ) -> CGRect {
+        var frame = CGRect(origin: requestedFrame.origin, size: actualSize)
+
+        if targetEdges.contains(.leading), targetEdges.contains(.trailing) {
+            frame.origin.x = requestedFrame.midX - actualSize.width / 2
+        } else if targetEdges.contains(.leading) {
+            frame.origin.x = requestedFrame.minX
+        } else if targetEdges.contains(.trailing) {
+            frame.origin.x = requestedFrame.maxX - actualSize.width
+        } else {
+            frame.origin.x = requestedFrame.midX - actualSize.width / 2
+        }
+
+        if targetEdges.contains(.top), targetEdges.contains(.bottom) {
+            frame.origin.y = requestedFrame.midY - actualSize.height / 2
+        } else if targetEdges.contains(.top) {
+            frame.origin.y = requestedFrame.minY
+        } else if targetEdges.contains(.bottom) {
+            frame.origin.y = requestedFrame.maxY - actualSize.height
+        } else {
+            frame.origin.y = requestedFrame.midY - actualSize.height / 2
+        }
+
+        return frame.pushInside(bounds)
+    }
+
+    /// Whether to re-anchor mid-animation: only when the app ended up *smaller*
+    /// than requested (fixed aspect ratio / fixed axis). If it stayed larger
+    /// (minimum size), preserving the requested motion avoids visible jitter.
+    nonisolated static func shouldAnchorDuringAnimation(
+        actualSize: CGSize,
+        requestedSize: CGSize,
+        tolerance: CGFloat = 2
+    ) -> Bool {
+        guard !actualSize.approximatelyEqual(to: requestedSize, tolerance: tolerance) else {
+            return false
+        }
+
+        return actualSize.width <= requestedSize.width + tolerance &&
+            actualSize.height <= requestedSize.height + tolerance
     }
 
     // MARK: - AX write (Loop's disable-enhanced-UI + size/position/size order)
@@ -206,8 +250,8 @@ enum WindowEngine {
         if enhanced { setBool(app, kAXEnhancedUserInterface, false) }
         defer { if enhanced { setBool(app, kAXEnhancedUserInterface, true) } }
 
-        // ponytail: an animated move (Loop's WindowTransformAnimation, stepping
-        // the frame over a few display links) would replace these direct sets.
+        // The un-animated fallback (Reduce Motion / animation off / Instant):
+        // size → position → size lands a shrink at a screen edge where asked.
         if willResize { setSize(window, rect.size) }
         setPosition(window, rect.origin)
         if willResize { setSize(window, rect.size) }
@@ -304,6 +348,59 @@ enum WindowEngine {
         }
         return best ?? screens.first
     }
+}
+
+/// The AX window handle Loop's `WindowTransformAnimation` drives: reads the
+/// live frame and writes position/size straight through the AX C APIs (which
+/// are nonisolated global functions). `frame` returns `.zero` if the window
+/// stops answering mid-animation (the animation treats that tick as a no-op).
+/// Self-contained and nonisolated so the nonisolated animation can drive it on
+/// the main run loop without an actor hop.
+final class AXWindowHandle {
+    private let element: AXUIElement
+
+    init(_ element: AXUIElement) { self.element = element }
+
+    var frame: CGRect {
+        guard let origin = axValue(kAXPositionAttribute, .cgPoint, CGPoint.self),
+              let size = axValue(kAXSizeAttribute, .cgSize, CGSize.self)
+        else {
+            return .zero
+        }
+        return CGRect(origin: origin, size: size)
+    }
+
+    func setPosition(_ point: CGPoint) {
+        var value = point
+        guard let axValue = AXValueCreate(.cgPoint, &value) else { return }
+        AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, axValue)
+    }
+
+    func setSize(_ size: CGSize) {
+        var value = size
+        guard let axValue = AXValueCreate(.cgSize, &value) else { return }
+        AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, axValue)
+    }
+
+    private func axValue<T>(_ attribute: String, _ type: AXValueType, _: T.Type) -> T? {
+        var raw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &raw) == .success,
+              let raw, CFGetTypeID(raw) == AXValueGetTypeID()
+        else {
+            return nil
+        }
+        let out = UnsafeMutablePointer<T>.allocate(capacity: 1)
+        defer { out.deallocate() }
+        guard AXValueGetValue(raw as! AXValue, type, out) else { return nil }
+        return out.pointee
+    }
+}
+
+/// Raw AX write of the app-level enhanced-UI flag. Free function (nonisolated)
+/// so the snap animation's completion can restore it without an actor hop.
+private func setEnhancedUserInterface(_ app: AXUIElement, _ value: Bool) {
+    let flag: CFBoolean = value ? kCFBooleanTrue : kCFBooleanFalse
+    AXUIElementSetAttributeValue(app, kAXEnhancedUserInterface as CFString, flag)
 }
 
 /// Bridge between AppKit's bottom-left, y-up coordinates and AX's top-left,

@@ -13,7 +13,7 @@ let package = Package(
             dependencies: [
                 .product(name: "Sparkle", package: "Sparkle")
             ],
-            resources: [.copy("Resources/Runners")],
+            resources: [.copy("Resources/Runners"), .copy("Resources/Licenses")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(

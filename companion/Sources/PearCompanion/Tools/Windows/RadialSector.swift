@@ -80,6 +80,23 @@ extension WindowZone {
         }
     }
 
+    /// SF Symbol shown at the ring's center for a directional selection,
+    /// mirroring Loop's per-action center glyph. Only the eight ring
+    /// directions map; other zones drive fill/hide instead, so they return nil.
+    var ringSymbol: String? {
+        switch self {
+        case .rightHalf: "arrow.right"
+        case .leftHalf: "arrow.left"
+        case .topHalf: "arrow.up"
+        case .bottomHalf: "arrow.down"
+        case .topRightQuarter: "arrow.up.right"
+        case .topLeftQuarter: "arrow.up.left"
+        case .bottomRightQuarter: "arrow.down.right"
+        case .bottomLeftQuarter: "arrow.down.left"
+        default: nil
+        }
+    }
+
     /// Arrow-key refinement of the current selection while the ring is open
     /// (Loop's keyboard direction picking: ← then ↑ lands top-left). An arrow
     /// orthogonal to the currently selected half combines into the quarter;
