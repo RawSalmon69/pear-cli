@@ -25,12 +25,30 @@ extension Notification.Name {
 @MainActor
 final class PanelController: NSObject {
     private let env: AppEnvironment
-    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let statusItem: NSStatusItem
     private var panel: NSPanel?
     private var host: PanelHostingView<AnyView>?
 
+    /// Persists the status item's bar position across launches. Without it the
+    /// item is a fresh identity every launch, and macOS drops fresh items at
+    /// the far LEFT of the status area — which, on a bar running the menu-bar
+    /// hider, is inside the hidden zone: the icon silently vanished after the
+    /// 2.4.0 rewrite (the 2.1.0 incident's shape, new entry point).
+    private static let autosaveName = "com.pear.companion.statusitem"
+
     init(env: AppEnvironment) {
         self.env = env
+
+        // First run of this identity: seed the preferred position near the
+        // right edge (the value is the offset from the right) so the item
+        // spawns beside the clock — to the right of any hider separator —
+        // instead of leftmost. The user's own ⌘-drag then owns it via autosave.
+        let positionKey = "NSStatusItem Preferred Position \(Self.autosaveName)"
+        if UserDefaults.standard.object(forKey: positionKey) == nil {
+            UserDefaults.standard.set(60, forKey: positionKey)
+        }
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem.autosaveName = Self.autosaveName
         super.init()
 
         // Always visible — no length-hiding. The menu-bar hider tool manages its
@@ -114,7 +132,15 @@ final class PanelController: NSObject {
             .glassCard(cornerRadius: 16)
         let host = PanelHostingView(rootView: AnyView(root))
         host.clipToCard(radius: 16)
-        host.onLayout = { [weak self] in self?.fitPanelToContent() }
+        // Deferred one runloop turn: `layout()` is inside AppKit's constraint
+        // pass, and calling `setFrame` from there re-enters the layout engine —
+        // an exception AppKit escalates to a crash. The accent color well's
+        // continuous drag (a re-render per tick) made this reliably fatal.
+        // `fitPanelToContent` is idempotent and frame-guarded, so coalescing
+        // several queued fits is harmless.
+        host.onLayout = { [weak self] in
+            Task { @MainActor in self?.fitPanelToContent() }
+        }
 
         let panel = PearPanel(
             contentRect: NSRect(origin: .zero, size: NSSize(width: 392, height: 240)),
