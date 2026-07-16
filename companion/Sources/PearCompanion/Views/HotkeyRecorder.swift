@@ -92,10 +92,10 @@ final class HotkeyRecorderModel {
             cancel()
             return
         }
-        // Delete/⌫ clears the override — reverting to the default, or (for a
-        // tool with no default) removing the binding entirely.
+        // Delete/⌫ removes the binding entirely — no chord fires, not even the
+        // default. The row's reset arrow brings the default back.
         if keyCode == kVK_Delete || keyCode == kVK_ForwardDelete {
-            registry.setHotkeyOverride(id, nil)
+            registry.removeHotkey(id)
             teardown()
             return
         }
@@ -142,6 +142,16 @@ struct HotkeyRecorderRow: View {
                 .tint(Theme.accent)
                 .focusable(false)
 
+                if env.tools.hotkeyLabel(for: id) != nil {
+                    Button {
+                        env.tools.removeHotkey(id)
+                    } label: {
+                        Image(systemName: "xmark.circle").font(.system(size: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Remove shortcut")
+                }
                 if env.tools.hasHotkeyOverride(id), env.tools.hasDefaultHotkey(id) {
                     Button {
                         env.tools.setHotkeyOverride(id, nil)

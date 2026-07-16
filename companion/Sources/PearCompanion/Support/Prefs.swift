@@ -68,6 +68,25 @@ enum Prefs {
     /// tested without touching the real domain.
     static func toolHotkeyKey(_ id: String) -> String { "toolHotkey.\(id)" }
 
+    /// Sentinel raw value: the user removed the binding entirely — no chord
+    /// fires, not even the tool's default. (Also parses to nil below, so an
+    /// older build reading it just falls back to the default chord.)
+    static let hotkeyRemovedValue = "none"
+
+    static func isHotkeyRemoved(_ id: String, defaults: UserDefaults = .standard) -> Bool {
+        defaults.string(forKey: toolHotkeyKey(id)) == hotkeyRemovedValue
+    }
+
+    static func removeHotkey(_ id: String, defaults: UserDefaults = .standard) {
+        defaults.set(hotkeyRemovedValue, forKey: toolHotkeyKey(id))
+    }
+
+    /// Whether the user customized this tool's shortcut at all — an override
+    /// chord or an explicit removal. Drives the "reset to default" affordance.
+    static func hasHotkeyCustomization(_ id: String, defaults: UserDefaults = .standard) -> Bool {
+        defaults.string(forKey: toolHotkeyKey(id)) != nil
+    }
+
     static func hotkeyOverride(_ id: String, defaults: UserDefaults = .standard) -> HotKeyChord? {
         guard let raw = defaults.string(forKey: toolHotkeyKey(id)) else { return nil }
         let parts = raw.split(separator: ",", maxSplits: 2, omittingEmptySubsequences: false)

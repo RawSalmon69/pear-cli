@@ -152,8 +152,17 @@ final class ToolRegistry {
         known.first(where: { $0.id == id })?.hotkeyLabel
     }
 
+    /// Removes a tool's shortcut entirely, live: no chord fires — not even the
+    /// default — until the user records a new one or resets to default.
+    func removeHotkey(_ id: String) {
+        Prefs.removeHotkey(id)
+        guard let entry = catalog.first(where: { $0.id == id }) else { return }
+        refreshKnownLabel(for: entry.tool)
+        unregisterHotkey(id)
+    }
+
     func hasHotkeyOverride(_ id: String) -> Bool {
-        Prefs.hotkeyOverride(id) != nil
+        Prefs.hasHotkeyCustomization(id)
     }
 
     /// Whether the tool ships with a default chord — drives the "reset to
@@ -217,7 +226,8 @@ final class ToolRegistry {
     }
 
     private func effectiveChord(for tool: any Tool) -> HotKeyChord? {
-        Prefs.hotkeyOverride(tool.id) ?? tool.hotkey
+        if Prefs.isHotkeyRemoved(tool.id) { return nil }
+        return Prefs.hotkeyOverride(tool.id) ?? tool.hotkey
     }
 
     private func refreshKnownLabel(for tool: any Tool) {

@@ -55,6 +55,36 @@ final class HotkeyOverrideTests: XCTestCase {
         XCTAssertNil(Prefs.hotkeyOverride("colorPicker", defaults: defaults))
     }
 
+    /// The explicit-removal sentinel: `removeHotkey` marks the binding gone
+    /// (even for a tool with a default), `hotkeyOverride` parses it as no
+    /// chord, and recording or resetting replaces it.
+    func testHotkeyRemovalSentinelRoundTrip() throws {
+        let suite = "HotkeyOverrideTests-removal"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertFalse(Prefs.isHotkeyRemoved("screenshot", defaults: defaults))
+        XCTAssertFalse(Prefs.hasHotkeyCustomization("screenshot", defaults: defaults))
+
+        Prefs.removeHotkey("screenshot", defaults: defaults)
+        XCTAssertTrue(Prefs.isHotkeyRemoved("screenshot", defaults: defaults))
+        XCTAssertTrue(Prefs.hasHotkeyCustomization("screenshot", defaults: defaults))
+        // The sentinel parses as "no chord", so an older build reading it just
+        // falls back to the default rather than tripping on a bad string.
+        XCTAssertNil(Prefs.hotkeyOverride("screenshot", defaults: defaults))
+
+        // Recording a chord replaces the removal…
+        let chord = HotKeyChord(keyCode: kVK_ANSI_Q, modifiers: controlKey | shiftKey, label: "⌃⇧Q")
+        Prefs.setHotkeyOverride("screenshot", chord, defaults: defaults)
+        XCTAssertFalse(Prefs.isHotkeyRemoved("screenshot", defaults: defaults))
+        XCTAssertEqual(Prefs.hotkeyOverride("screenshot", defaults: defaults), chord)
+
+        // …and reset-to-default clears every customization.
+        Prefs.setHotkeyOverride("screenshot", nil, defaults: defaults)
+        XCTAssertFalse(Prefs.hasHotkeyCustomization("screenshot", defaults: defaults))
+    }
+
     // MARK: - Conflict detection
 
     func testConflictMatchesSameChordAndIgnoresDifferentModifiers() {
