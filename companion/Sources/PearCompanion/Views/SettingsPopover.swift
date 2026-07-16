@@ -16,6 +16,10 @@ struct SettingsPopover: View {
     ).path
     @AppStorage(Prefs.soundsKey) private var soundsEnabled = true
     @AppStorage(Prefs.autoSaveKey) private var autoSave = true
+    /// Set when a tool toggle changes — tool registration only happens at
+    /// launch, so we surface a relaunch prompt rather than silently doing
+    /// nothing until next launch.
+    @State private var needsRelaunch = false
 
     private enum Tab: String, CaseIterable, Identifiable {
         case general = "General", tools = "Tools", menuBar = "Menu Bar"
@@ -98,7 +102,7 @@ struct SettingsPopover: View {
 
     private var toolsTab: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
-            Text("Turn off any tool you don't use — it won't load at all. Takes effect after relaunch.")
+            Text("Turn off any tool you don't use — it won't load at all.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
             ForEach(env.tools.known, id: \.id) { tool in
@@ -109,13 +113,39 @@ struct SettingsPopover: View {
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
             }
+
+            if needsRelaunch {
+                HStack(spacing: 8) {
+                    Text("Relaunch to apply.")
+                        .font(Theme.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Relaunch") { relaunch() }
+                        .controlSize(.small)
+                        .tint(Theme.accent)
+                }
+                .padding(.top, 4)
+                .transition(.opacity)
+            }
         }
+        .animation(.easeOut(duration: 0.15), value: needsRelaunch)
+    }
+
+    /// Restart the app so the registry re-reads which tools are enabled.
+    private func relaunch() {
+        let config = NSWorkspace.OpenConfiguration()
+        config.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config)
+        NSApp.terminate(nil)
     }
 
     private func toolBinding(_ id: String, default defaultEnabled: Bool) -> Binding<Bool> {
         Binding(
             get: { Prefs.isToolEnabled(id, default: defaultEnabled) },
-            set: { Prefs.setToolEnabled(id, $0) }
+            set: {
+                Prefs.setToolEnabled(id, $0)
+                needsRelaunch = true
+            }
         )
     }
 

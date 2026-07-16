@@ -14,7 +14,7 @@ final class WindowsTool: Tool {
     let id = "windows"
     let title = "Windows"
     let icon = "rectangle.split.2x1"
-    let category = ToolCategory.window
+    let category = ToolCategory.system
     let summary = "Snap windows to halves, quarters, and thirds."
     let hotkey: HotKeyChord? = nil
 

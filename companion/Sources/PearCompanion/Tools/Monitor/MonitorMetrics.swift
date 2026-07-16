@@ -116,7 +116,10 @@ enum CPUUsage {
             let nice = UInt64(current[base + 3] &- previous[base + 3])
             let inUse = user + system + nice
             let total = inUse + idle
-            result.append(total > 0 ? Double(inUse) / Double(total) : 0)
+            // Clamp: a core going offline between samples can reset its ticks,
+            // and a wrapped `&-` delta would otherwise read as a nonsense >100%.
+            let fraction = total > 0 ? Double(inUse) / Double(total) : 0
+            result.append(min(1, max(0, fraction)))
         }
         return result
     }

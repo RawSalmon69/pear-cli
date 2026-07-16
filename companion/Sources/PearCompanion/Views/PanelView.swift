@@ -349,7 +349,7 @@ struct ToolTile: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 4) {
+            VStack(spacing: 5) {
                 Image(systemName: symbol).font(.system(size: 16, weight: .medium))
                 Text(label).font(.system(size: 10, weight: .medium, design: .rounded))
                 // Always render the hint line (blank when none) so every tile
@@ -360,7 +360,8 @@ struct ToolTile: View {
             }
             .foregroundStyle(hovering ? Theme.accent : .primary)
             .frame(maxWidth: .infinity)
-            .frame(height: 58)
+            .padding(.vertical, 10)
+            .frame(height: 68)
             .glassCard(cornerRadius: 12)
             .overlay {
                 if hovering {
@@ -380,7 +381,9 @@ struct ToolTile: View {
 
 struct StatsSection: View {
     @Environment(AppEnvironment.self) private var env
-    private let refreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+    // 3 s so the numbers visibly move while the panel is open (60 s read as
+    // frozen). The panel only exists while open, so this costs nothing idle.
+    private let refreshTimer = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
@@ -394,24 +397,13 @@ struct StatsSection: View {
                 }
             }
 
-            if env.stats.cliMissing {
-                HStack(spacing: 6) {
-                    Image(systemName: "terminal").foregroundStyle(.tertiary)
-                    Text("Install the pear CLI to see disk, memory, CPU, and battery")
-                        .font(Theme.body)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(Theme.cardPadding)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .glassCard()
-            } else {
-                let tiles = env.stats.items
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.itemGap), count: 4),
-                          spacing: Theme.itemGap) {
-                    ForEach(tiles, id: \.label) { StatTile(stat: $0) }
-                }
+            let tiles = env.stats.items
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.itemGap), count: 4),
+                      spacing: Theme.itemGap) {
+                ForEach(tiles, id: \.label) { StatTile(stat: $0) }
             }
         }
+        .task { await env.stats.refresh() }
         .onReceive(refreshTimer) { _ in
             Task { await env.stats.refresh() }
         }

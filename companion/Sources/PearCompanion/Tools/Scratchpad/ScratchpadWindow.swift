@@ -52,9 +52,15 @@ final class ScratchpadWindowController {
         // No title bar to drag by; let the whole card move the window.
         panel.isMovableByWindowBackground = true
         panel.onCancel = { [weak self] in self?.hide() }
-        panel.contentView = NSHostingView(
+        let host = NSHostingView(
             rootView: ScratchpadView(store: store, onClose: { [weak self] in self?.hide() })
         )
+        // Clip the rectangular backing to the card's corner radius so no
+        // hairline edge shows past the rounded glass.
+        host.wantsLayer = true
+        host.layer?.cornerRadius = 16
+        host.layer?.masksToBounds = true
+        panel.contentView = host
 
         if let screen = NSScreen.main {
             let visible = screen.visibleFrame

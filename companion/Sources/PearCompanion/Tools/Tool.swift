@@ -18,12 +18,11 @@ enum ToolEntry {
 /// Groups tiles under a labeled row in the panel and the help sheet, so a
 /// dozen tools read as a few small sections instead of one overwhelming wall.
 enum ToolCategory: String, CaseIterable {
-    case capture, window, utilities, system
+    case capture, utilities, system
 
     var title: String {
         switch self {
         case .capture: "Capture"
-        case .window: "Windows"
         case .utilities: "Utilities"
         case .system: "System"
         }
