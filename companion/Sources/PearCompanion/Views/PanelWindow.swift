@@ -28,6 +28,12 @@ final class PanelController: NSObject {
     private let statusItem: NSStatusItem
     private var panel: NSPanel?
     private var host: PanelHostingView<AnyView>?
+    /// The content size the panel was last sized to. A re-fit whose content
+    /// size is unchanged is a no-op — this is what breaks the layout→setFrame→
+    /// relayout loop that tripped AppKit's per-cycle update-constraints limit
+    /// (owner crash on color pick, 2.5.x). The panel's width is fixed, so
+    /// `fittingSize` depends only on content, never on the window frame we set.
+    private var lastFittedSize: NSSize = .zero
 
     /// Persists the status item's bar position across launches. Without it the
     /// item is a fresh identity every launch, and macOS drops fresh items at
@@ -121,6 +127,7 @@ final class PanelController: NSObject {
         panel?.orderOut(nil)
         panel = nil
         host = nil
+        lastFittedSize = .zero
     }
 
     private func show() {
@@ -130,6 +137,12 @@ final class PanelController: NSObject {
         let root = PanelView()
             .environment(env)
             .glassCard(cornerRadius: 16)
+            // The panel hangs from the menu bar, so on a notched Mac its safe-
+            // area insets change every time it's repositioned. Left in, that
+            // fed a constraint-invalidation loop: reposition → insets recompute
+            // → hosting view re-marks the window for update → reposition …
+            // Ignoring the safe area breaks that arm of the loop.
+            .ignoresSafeArea()
         let host = PanelHostingView(rootView: AnyView(root))
         host.clipToCard(radius: 16)
         // Deferred one runloop turn: `layout()` is inside AppKit's constraint
@@ -173,8 +186,15 @@ final class PanelController: NSObject {
     private func fitPanelToContent() {
         guard let panel, let host,
               let buttonWindow = statusItem.button?.window else { return }
-        let size = host.fittingSize
+        let raw = host.fittingSize
+        let size = NSSize(width: raw.width.rounded(), height: raw.height.rounded())
         guard size.width > 1, size.height > 1 else { return }
+        // The loop-breaker: an unchanged content size does nothing. Rounded so
+        // sub-point jitter can't retrigger a resize. Width is fixed, so this
+        // size never depends on the frame we're about to set — the fit
+        // converges in a single pass instead of feeding itself.
+        guard size != lastFittedSize else { return }
+        lastFittedSize = size
         let screen = buttonWindow.screen ?? NSScreen.main
         let visible = screen?.visibleFrame ?? buttonWindow.frame
         var origin = NSPoint(
