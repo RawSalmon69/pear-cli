@@ -10,6 +10,8 @@ final class ScreenshotTool: Tool {
     let id = "screenshot"
     let title = "Screenshot"
     let icon = "camera.viewfinder"
+    let category = ToolCategory.capture
+    let summary = "Grab a region — copy it, mark it up, or save it."
     let hotkey: HotKeyChord? = HotKeyChord(
         keyCode: kVK_ANSI_P, modifiers: controlKey | shiftKey, label: "⌃⇧P")
 
@@ -44,6 +46,8 @@ final class OCRTool: Tool {
     let id = "ocr"
     let title = "Grab Text"
     let icon = "text.viewfinder"
+    let category = ToolCategory.capture
+    let summary = "Pick text out of any region on screen and copy it."
     let hotkey: HotKeyChord? = HotKeyChord(
         keyCode: kVK_ANSI_O, modifiers: controlKey | shiftKey, label: "⌃⇧O")
 
@@ -66,6 +70,8 @@ final class ClipboardTool: Tool {
     let id = "clipboard"
     let title = "Clipboard"
     let icon = "doc.on.clipboard"
+    let category = ToolCategory.utilities
+    let summary = "Recent copies, searchable, with pins for keepers."
     let hotkey: HotKeyChord? = HotKeyChord(
         keyCode: kVK_ANSI_C, modifiers: controlKey | shiftKey, label: "⌃⇧C")
 
@@ -92,6 +98,8 @@ final class DiskTool: Tool {
     let id = "disk"
     let title = "Disk"
     let icon = "chart.pie"
+    let category = ToolCategory.system
+    let summary = "See what's using space — sunburst, treemap, or bars."
     let hotkey: HotKeyChord? = nil
 
     var entry: ToolEntry {

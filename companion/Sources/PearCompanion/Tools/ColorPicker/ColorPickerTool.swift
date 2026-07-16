@@ -9,6 +9,8 @@ final class ColorPickerTool: Tool {
     let id = "colorPicker"
     let title = "Color Picker"
     let icon = "eyedropper"
+    let category = ToolCategory.utilities
+    let summary = "Pick any on-screen color; copy it in HEX, RGB, or HSL."
     let hotkey: HotKeyChord? = nil
 
     var entry: ToolEntry {

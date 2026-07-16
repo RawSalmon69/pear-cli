@@ -9,6 +9,8 @@ final class MonitorTool: Tool {
     let id = "monitor"
     let title = "Monitor"
     let icon = "gauge.with.dots.needle.67percent"
+    let category = ToolCategory.system
+    let summary = "Live CPU, memory, network, battery, and sensors."
     let hotkey: HotKeyChord? = nil
 
     var entry: ToolEntry {

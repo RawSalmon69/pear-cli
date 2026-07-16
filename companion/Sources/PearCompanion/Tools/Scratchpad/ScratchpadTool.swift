@@ -9,6 +9,8 @@ final class ScratchpadTool: Tool {
     let id = "scratchpad"
     let title = "Scratchpad"
     let icon = "note.text"
+    let category = ToolCategory.utilities
+    let summary = "A floating quick note that autosaves as you type."
     let hotkey: HotKeyChord? = HotKeyChord(
         keyCode: kVK_ANSI_N, modifiers: controlKey | shiftKey, label: "⌃⇧N")
 

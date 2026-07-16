@@ -9,6 +9,8 @@ final class ShelfTool: Tool {
     let id = "shelf"
     let title = "Shelf"
     let icon = "tray.full"
+    let category = ToolCategory.utilities
+    let summary = "A floating tray that holds files while you move them."
     let hotkey: HotKeyChord? = HotKeyChord(
         keyCode: kVK_ANSI_V, modifiers: controlKey | shiftKey, label: "⌃⇧V")
 

@@ -297,19 +297,24 @@ struct Composer: View {
 
 // MARK: - Tools
 
-/// Data-driven from the tool registry: one tile per registered tool.
+/// Data-driven from the tool registry, grouped by category so a dozen tools
+/// read as a few labeled rows instead of one wall of tiles.
 struct ToolsSection: View {
     @Environment(AppEnvironment.self) private var env
     @State private var activePopoverID: String?
 
+    private let columns = Array(
+        repeating: GridItem(.flexible(), spacing: Theme.itemGap), count: 4)
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
-            SectionLabel(text: "Tools")
-            // Four tiles per row; extra tools wrap instead of squeezing.
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.itemGap), count: 4),
-                      spacing: Theme.itemGap) {
-                ForEach(env.tools.all, id: \.id) { tool in
-                    tile(for: tool)
+            ForEach(ToolCategory.allCases, id: \.self) { category in
+                let tools = env.tools.all.filter { $0.category == category }
+                if !tools.isEmpty {
+                    SectionLabel(text: category.title)
+                    LazyVGrid(columns: columns, spacing: Theme.itemGap) {
+                        ForEach(tools, id: \.id) { tile(for: $0) }
+                    }
                 }
             }
         }
@@ -462,6 +467,7 @@ struct StatTile: View {
 struct BottomBar: View {
     @Environment(AppEnvironment.self) private var env
     @State private var showSettings = false
+    @State private var showHelp = false
 
     var body: some View {
         HStack(spacing: Theme.itemGap) {
@@ -482,6 +488,12 @@ struct BottomBar: View {
                 Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev")")
                     .font(Theme.caption)
                     .foregroundStyle(.quaternary)
+            }
+            GlyphButton(symbol: "questionmark", help: "What can Pear do?", tint: .secondary) {
+                showHelp = true
+            }
+            .popover(isPresented: $showHelp) {
+                HelpView(known: env.tools.known, onClose: { showHelp = false })
             }
             GlyphButton(symbol: "gearshape.fill", help: "Settings", tint: .secondary) {
                 showSettings = true

@@ -11,6 +11,8 @@ final class MenuBarTool: Tool {
     let id = "menubar"
     let title = "Menu Bar"
     let icon = "menubar.rectangle"
+    let category = ToolCategory.system
+    let summary = "Hide menu-bar clutter behind a click."
     let hotkey: HotKeyChord? = nil
 
     let manager = MenuBarManager()

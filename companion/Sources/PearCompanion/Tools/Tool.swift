@@ -15,6 +15,21 @@ enum ToolEntry {
     case popover(() -> AnyView)
 }
 
+/// Groups tiles under a labeled row in the panel and the help sheet, so a
+/// dozen tools read as a few small sections instead of one overwhelming wall.
+enum ToolCategory: String, CaseIterable {
+    case capture, window, utilities, system
+
+    var title: String {
+        switch self {
+        case .capture: "Capture"
+        case .window: "Windows"
+        case .utilities: "Utilities"
+        case .system: "System"
+        }
+    }
+}
+
 /// One tool: a tile in the panel's Tools section, optionally a global
 /// hotkey. Conformer inits run at launch for every registered tool, so they
 /// must stay cheap — create the heavy service lazily on first activation.
@@ -27,6 +42,10 @@ protocol Tool: AnyObject {
     var icon: String { get }
     var hotkey: HotKeyChord? { get }
     var entry: ToolEntry { get }
+    /// Panel/help grouping. Defaults to `.utilities`.
+    var category: ToolCategory { get }
+    /// One-line description shown in the help sheet. Defaults to empty.
+    var summary: String { get }
     /// Hotkey behavior; defaults to the tile action for `.action` tools.
     func hotkeyFired()
     /// Launch-time hook for always-on engines. Default no-op.
@@ -34,6 +53,9 @@ protocol Tool: AnyObject {
 }
 
 extension Tool {
+    var category: ToolCategory { .utilities }
+    var summary: String { "" }
+
     func start() {}
 
     func hotkeyFired() {
@@ -45,9 +67,15 @@ extension Tool {
 /// engines; adding a tool to the app is one `offer` call.
 @MainActor
 final class ToolRegistry {
+    /// Display metadata for every offered tool, enabled or not — drives the
+    /// settings toggles and the help sheet without holding the live tool.
     struct KnownTool {
         let id: String
         let title: String
+        let icon: String
+        let hotkeyLabel: String?
+        let category: ToolCategory
+        let summary: String
     }
 
     /// Enabled tools, in panel order.
@@ -59,7 +87,9 @@ final class ToolRegistry {
     /// Catalogs the tool and registers it unless the user disabled it —
     /// a disabled tool's hotkeys and engines never load.
     func offer(_ tool: any Tool) {
-        known.append(KnownTool(id: tool.id, title: tool.title))
+        known.append(KnownTool(
+            id: tool.id, title: tool.title, icon: tool.icon,
+            hotkeyLabel: tool.hotkey?.label, category: tool.category, summary: tool.summary))
         guard Prefs.isToolEnabled(tool.id) else { return }
         register(tool)
     }

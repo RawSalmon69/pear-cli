@@ -1,10 +1,12 @@
 import SwiftUI
 import AppKit
 
-/// One small surface for the two things the app needs configured:
-/// the couple key (once, on both Macs) and the screenshot folder.
+/// Settings, split into a few tabs so a dozen tools' worth of controls read
+/// as small groups instead of one long scroll. General = look and capture,
+/// Tools = per-tool on/off, Menu Bar = the runner.
 struct SettingsPopover: View {
     @Environment(AppEnvironment.self) private var env
+    @State private var tab: Tab = .general
     @State private var keyField = ""
     @State private var role = CoupleKey.deviceRole
     @State private var keyStatus: String?
@@ -15,73 +17,99 @@ struct SettingsPopover: View {
     @AppStorage(Prefs.soundsKey) private var soundsEnabled = true
     @AppStorage(Prefs.autoSaveKey) private var autoSave = true
 
+    private enum Tab: String, CaseIterable, Identifiable {
+        case general = "General", tools = "Tools", menuBar = "Menu Bar"
+        var id: String { rawValue }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.sectionGap) {
-            if FeatureFlags.coupleNote {
-                coupleKeySection
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            Picker("", selection: $tab) {
+                ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
 
-            VStack(alignment: .leading, spacing: Theme.itemGap) {
-                SectionLabel(text: "Screenshots")
-                Text("Captures are copied to the clipboard and saved here.")
-                    .font(Theme.caption)
-                    .foregroundStyle(.secondary)
-                Toggle("Save a copy to this folder", isOn: $autoSave)
-                    .font(Theme.body)
-                    .toggleStyle(.switch)
-                    .tint(Theme.accent)
-                HStack(spacing: 6) {
-                    Text(folder)
-                        .font(Theme.caption)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .foregroundStyle(autoSave ? .secondary : .quaternary)
-                    Spacer()
-                    Button("Change…") { pickFolder() }
-                        .font(Theme.caption)
-                        .disabled(!autoSave)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: Theme.itemGap) {
-                SectionLabel(text: "Accent")
-                HStack(spacing: 8) {
-                    ForEach(AccentPreset.allCases) { preset in
-                        AccentSwatch(
-                            preset: preset,
-                            selected: ThemeStore.shared.preset == preset
-                        ) {
-                            ThemeStore.shared.preset = preset
-                        }
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.sectionGap) {
+                    switch tab {
+                    case .general: generalTab
+                    case .tools: toolsTab
+                    case .menuBar: RunnerSettingsView(runner: env.runner)
                     }
                 }
+                .padding(.top, 4)
             }
-
-            VStack(alignment: .leading, spacing: Theme.itemGap) {
-                SectionLabel(text: "Tools")
-                Text("Disabled tools never load. Takes effect after relaunch.")
-                    .font(Theme.caption)
-                    .foregroundStyle(.secondary)
-                ForEach(env.tools.known, id: \.id) { tool in
-                    Toggle(tool.title, isOn: toolBinding(tool.id))
-                        .font(Theme.body)
-                        .toggleStyle(.switch)
-                        .tint(Theme.accent)
-                }
-            }
-
-            RunnerSettingsView(runner: env.runner)
-
-            VStack(alignment: .leading, spacing: Theme.itemGap) {
-                SectionLabel(text: "Feedback")
-                Toggle("Sound effects", isOn: $soundsEnabled)
-                    .font(Theme.body)
-                    .toggleStyle(.switch)
-                    .tint(Theme.accent)
-            }
+            .frame(maxHeight: 360)
         }
         .padding(16)
         .frame(width: 300)
+    }
+
+    @ViewBuilder private var generalTab: some View {
+        if FeatureFlags.coupleNote {
+            coupleKeySection
+        }
+
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Accent")
+            HStack(spacing: 8) {
+                ForEach(AccentPreset.allCases) { preset in
+                    AccentSwatch(
+                        preset: preset,
+                        selected: ThemeStore.shared.preset == preset
+                    ) {
+                        ThemeStore.shared.preset = preset
+                    }
+                }
+            }
+        }
+
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Screenshots")
+            Text("Captures are copied to the clipboard and saved here.")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+            Toggle("Save a copy to this folder", isOn: $autoSave)
+                .font(Theme.body)
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+            HStack(spacing: 6) {
+                Text(folder)
+                    .font(Theme.caption)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(autoSave ? .secondary : .quaternary)
+                Spacer()
+                Button("Change…") { pickFolder() }
+                    .font(Theme.caption)
+                    .disabled(!autoSave)
+            }
+        }
+
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Feedback")
+            Toggle("Sound effects", isOn: $soundsEnabled)
+                .font(Theme.body)
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+        }
+    }
+
+    private var toolsTab: some View {
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            Text("Turn off any tool you don't use — it won't load at all. Takes effect after relaunch.")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+            ForEach(env.tools.known, id: \.id) { tool in
+                Toggle(isOn: toolBinding(tool.id)) {
+                    Label(tool.title, systemImage: tool.icon)
+                        .font(Theme.body)
+                }
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+            }
+        }
     }
 
     private func toolBinding(_ id: String) -> Binding<Bool> {
