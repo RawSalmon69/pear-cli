@@ -59,7 +59,7 @@ struct RunnerStyle: Identifiable, Hashable, Sendable {
     func frames() -> [NSImage] {
         var images: [NSImage] = []
         var index = 0
-        while let url = Bundle.module.url(
+        while let url = Bundle.pearResources.url(
             forResource: "\(id)_\(index)",
             withExtension: "png",
             subdirectory: "Runners/\(id)"
@@ -77,7 +77,7 @@ struct RunnerStyle: Identifiable, Hashable, Sendable {
     /// single PNG instead of the whole cycle so rendering the grid of every runner
     /// stays cheap. Falls back to the blank frame if the asset is missing.
     func previewFrame() -> NSImage {
-        guard let url = Bundle.module.url(
+        guard let url = Bundle.pearResources.url(
             forResource: "\(id)_0",
             withExtension: "png",
             subdirectory: "Runners/\(id)"
@@ -92,7 +92,7 @@ struct RunnerStyle: Identifiable, Hashable, Sendable {
     /// Discovers the runner folders shipped in the resource bundle, sorted by id.
     /// The two `*-LICENSE.txt` siblings are skipped by taking directories only.
     private static func discover() -> [RunnerStyle] {
-        guard let root = Bundle.module.url(forResource: "Runners", withExtension: nil) else {
+        guard let root = Bundle.pearResources.url(forResource: "Runners", withExtension: nil) else {
             return [defaultStyle]
         }
         let entries = (try? FileManager.default.contentsOfDirectory(
