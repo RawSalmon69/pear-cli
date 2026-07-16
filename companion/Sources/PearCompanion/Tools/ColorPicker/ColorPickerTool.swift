@@ -23,10 +23,11 @@ final class ColorPickerTool: Tool {
     }
 
     /// A custom chord (the tool has no default) runs the eyedropper straight
-    /// away and copies the picked hex — no popover round-trip needed.
+    /// away and copies the pick in the chosen format — no popover round-trip
+    /// needed.
     func hotkeyFired() {
         let store = store ?? ColorStore()
         self.store = store
-        store.pickColor(copyingHex: true)
+        store.pickColor(copy: true)
     }
 }

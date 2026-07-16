@@ -144,6 +144,32 @@ struct PickedColor: Identifiable, Equatable {
     static let black = PickedColor(red: 0, green: 0, blue: 0)
 }
 
+/// The three formats the eyedropper can drop on the clipboard when a color is
+/// picked. The popover's per-row copy buttons still cover every format
+/// (including SwiftUI); this is only the default the pick action uses, so both
+/// the tile button and the global hotkey agree on what lands on the clipboard.
+enum ColorFormat: String, CaseIterable, Identifiable {
+    case hex, rgb, hsl
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .hex: "HEX"
+        case .rgb: "RGB"
+        case .hsl: "HSL"
+        }
+    }
+
+    func value(for color: PickedColor) -> String {
+        switch self {
+        case .hex: color.hexString
+        case .rgb: color.rgbString
+        case .hsl: color.hslString
+        }
+    }
+}
+
 /// One contrast-ratio result with WCAG 2.x pass badges for normal text
 /// (AA ≥ 4.5:1, AAA ≥ 7:1). Adapted from Pika (MIT), `WCAGCompliance.swift`.
 struct ContrastResult {
@@ -181,19 +207,22 @@ final class ColorStore {
     /// the Sendable `PickedColor` value before hopping back — the same
     /// weak-self-then-`Task { @MainActor in }` shape `ClipboardHistoryService`
     /// uses for its polling timer callback.
-    /// `copyingHex` drops the picked hex onto the pasteboard as well — the
-    /// global-hotkey path has no popover to click a format in, so the most
-    /// common format is copied for you.
-    func pickColor(copyingHex: Bool = false) {
+    /// `copy` also drops the pick onto the pasteboard in the user's chosen
+    /// format (`Prefs.colorFormat`), plays the copy cue, and floats a
+    /// confirmation toast at the cursor. Both the tile button and the global
+    /// hotkey pass `copy: true` — the eyedropper closes the popover the moment
+    /// it opens, so this is the only feedback the user ever sees.
+    func pickColor(copy: Bool = false) {
         NSColorSampler().show { [weak self] color in
             guard let color, let picked = PickedColor(sampled: color) else { return }
             Task { @MainActor in
                 self?.add(picked)
-                if copyingHex {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(picked.hexString, forType: .string)
-                    SoundEffects.play(.copy)
-                }
+                guard copy else { return }
+                let value = Prefs.colorFormat.value(for: picked)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(value, forType: .string)
+                SoundEffects.play(.copy)
+                ColorToast.show(color: picked, text: value)
             }
         }
     }

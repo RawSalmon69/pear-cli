@@ -7,11 +7,13 @@ import SwiftUI
 /// nothing about the tool exists until this view is first built.
 struct ColorPickerView: View {
     @State private var store = ColorStore()
+    @AppStorage(Prefs.colorFormatKey) private var copyFormat = ColorFormat.hex.rawValue
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.sectionGap) {
             SectionLabel(text: "Color Picker")
             pickButton
+            copyFormatPicker
 
             if let current = store.current {
                 swatch(for: current)
@@ -33,7 +35,7 @@ struct ColorPickerView: View {
 
     private var pickButton: some View {
         Button {
-            store.pickColor()
+            store.pickColor(copy: true)
         } label: {
             Label("Pick color", systemImage: "eyedropper")
                 .font(Theme.emphasis)
@@ -41,6 +43,19 @@ struct ColorPickerView: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(Theme.accent)
+    }
+
+    /// Which format the eyedropper copies to the clipboard. Live — the pick
+    /// button and the global hotkey both read `Prefs.colorFormat`.
+    private var copyFormatPicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SectionLabel(text: "Pick copies")
+            Picker("", selection: $copyFormat) {
+                ForEach(ColorFormat.allCases) { Text($0.label).tag($0.rawValue) }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+        }
     }
 
     private func swatch(for color: PickedColor) -> some View {

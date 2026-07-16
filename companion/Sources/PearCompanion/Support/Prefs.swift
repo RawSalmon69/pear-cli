@@ -4,6 +4,7 @@ import Foundation
 enum Prefs {
     static let soundsKey = "soundEffectsEnabled"
     static let autoSaveKey = "screenshotAutoSave"
+    static let colorFormatKey = "colorCopyFormat"
 
     /// Default on for both — opt-out, not opt-in.
     static var soundsEnabled: Bool {
@@ -12,6 +13,13 @@ enum Prefs {
 
     static var screenshotAutoSave: Bool {
         UserDefaults.standard.object(forKey: autoSaveKey) as? Bool ?? true
+    }
+
+    /// Which format the eyedropper drops on the clipboard — read by both the
+    /// tile "Pick color" button and the global hotkey. Defaults to HEX.
+    static var colorFormat: ColorFormat {
+        UserDefaults.standard.string(forKey: colorFormatKey)
+            .flatMap(ColorFormat.init(rawValue:)) ?? .hex
     }
 
     // MARK: - Per-tool toggles
