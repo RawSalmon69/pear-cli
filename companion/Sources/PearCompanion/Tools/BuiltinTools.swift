@@ -82,6 +82,11 @@ final class ClipboardTool: Tool {
         service.start()
     }
 
+    func stop() {
+        service.stop()
+        window.hide()
+    }
+
     var entry: ToolEntry {
         .popover { [service] in AnyView(ClipboardHistoryView(clipboard: service)) }
     }

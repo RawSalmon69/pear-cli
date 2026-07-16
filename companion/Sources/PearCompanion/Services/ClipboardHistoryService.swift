@@ -56,6 +56,13 @@ final class ClipboardHistoryService {
         self.timer = timer
     }
 
+    /// Stop polling. `start()` guards on `timer == nil`, so a later re-enable
+    /// resumes cleanly; the captured history stays intact.
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
     func copy(_ item: ClipItem) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()

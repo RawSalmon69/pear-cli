@@ -78,6 +78,17 @@ final class MenuBarManager {
         launch(with: StatusBarSeparator(autosaveName: autosaveName))
     }
 
+    /// Teardown for a live disable (mirrors `installSeparator`): reveal the
+    /// hidden icons first so they come back on-screen, then drop the status
+    /// item entirely and release the separator. A later `installSeparator()`
+    /// creates a fresh one and re-runs the collapse-on-launch sequence.
+    func uninstallSeparator() {
+        expand()
+        cancelRehide()
+        separator?.removeFromStatusBar()
+        separator = nil
+    }
+
     /// Attach the separator and enforce the collapsed-on-launch default.
     ///
     /// SaneBar collapses on launch rather than restoring a persisted expanded

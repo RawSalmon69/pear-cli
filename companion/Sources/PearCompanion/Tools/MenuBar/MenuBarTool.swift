@@ -24,7 +24,17 @@ final class MenuBarTool: Tool {
         manager.installSeparator()
     }
 
+    func stop() {
+        manager.uninstallSeparator()
+    }
+
     var entry: ToolEntry {
         .popover { [manager] in AnyView(MenuBarSettingsView(manager: manager)) }
+    }
+
+    /// A custom chord (the tool has no default) toggles the collapse/expand —
+    /// the SaneBar semantic behind the separator click.
+    func hotkeyFired() {
+        manager.toggle()
     }
 }

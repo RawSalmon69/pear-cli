@@ -181,11 +181,19 @@ final class ColorStore {
     /// the Sendable `PickedColor` value before hopping back — the same
     /// weak-self-then-`Task { @MainActor in }` shape `ClipboardHistoryService`
     /// uses for its polling timer callback.
-    func pickColor() {
+    /// `copyingHex` drops the picked hex onto the pasteboard as well — the
+    /// global-hotkey path has no popover to click a format in, so the most
+    /// common format is copied for you.
+    func pickColor(copyingHex: Bool = false) {
         NSColorSampler().show { [weak self] color in
             guard let color, let picked = PickedColor(sampled: color) else { return }
             Task { @MainActor in
                 self?.add(picked)
+                if copyingHex {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(picked.hexString, forType: .string)
+                    SoundEffects.play(.copy)
+                }
             }
         }
     }

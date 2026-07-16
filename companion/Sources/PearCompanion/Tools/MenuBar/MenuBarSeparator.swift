@@ -16,6 +16,9 @@ protocol MenuBarSeparating: AnyObject {
     var onClick: (() -> Void)? { get set }
     /// Flip the chevron to reflect collapsed (hidden) vs expanded (shown).
     func setChevron(collapsed: Bool)
+    /// Drop the underlying status item from the menu bar. Called when the tool
+    /// is disabled live; the manager releases the separator afterward.
+    func removeFromStatusBar()
 }
 
 /// Concrete separator backed by a single `NSStatusItem` — the tool's only
@@ -64,6 +67,10 @@ final class StatusBarSeparator: MenuBarSeparating {
             accessibilityDescription: collapsed ? "Reveal hidden menu bar icons" : "Hide menu bar icons")
         image?.isTemplate = true
         button.image = image
+    }
+
+    func removeFromStatusBar() {
+        NSStatusBar.system.removeStatusItem(item)
     }
 
     // Defensive teardown: if the manager (and thus this wrapper) is ever

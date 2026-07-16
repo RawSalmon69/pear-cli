@@ -149,6 +149,17 @@ final class RadialTrigger {
         }
     }
 
+    /// Teardown mirror of `start()`: cancel a pending hold, close any open
+    /// session, and drop the always-on flags monitors so a later `start()`
+    /// (guarded on `flagsMonitors.isEmpty`) can re-install them on re-enable.
+    func stop() {
+        holdTask?.cancel()
+        holdTask = nil
+        teardown()
+        for monitor in flagsMonitors { NSEvent.removeMonitor(monitor) }
+        flagsMonitors = []
+    }
+
     // MARK: Trigger edge detection
 
     private func flagsChanged(_ event: NSEvent) {

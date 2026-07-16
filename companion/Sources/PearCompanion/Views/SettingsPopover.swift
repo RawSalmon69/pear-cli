@@ -16,10 +16,6 @@ struct SettingsPopover: View {
     ).path
     @AppStorage(Prefs.soundsKey) private var soundsEnabled = true
     @AppStorage(Prefs.autoSaveKey) private var autoSave = true
-    /// Set when a tool toggle changes — tool registration only happens at
-    /// launch, so we surface a relaunch prompt rather than silently doing
-    /// nothing until next launch.
-    @State private var needsRelaunch = false
 
     private enum Tab: String, CaseIterable, Identifiable {
         case general = "General", tools = "Tools", menuBar = "Menu Bar"
@@ -102,50 +98,28 @@ struct SettingsPopover: View {
 
     private var toolsTab: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
-            Text("Turn off any tool you don't use — it won't load at all.")
+            Text("Turn off any tool you don't use — it won't load at all. Changes apply right away.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
             ForEach(env.tools.known, id: \.id) { tool in
-                Toggle(isOn: toolBinding(tool.id, default: tool.defaultEnabled)) {
-                    Label(tool.title, systemImage: tool.icon)
-                        .font(Theme.body)
+                VStack(alignment: .leading, spacing: 2) {
+                    Toggle(isOn: toolBinding(tool.id, default: tool.defaultEnabled)) {
+                        Label(tool.title, systemImage: tool.icon)
+                            .font(Theme.body)
+                    }
+                    .toggleStyle(.switch)
+                    .tint(Theme.accent)
+                    HotkeyRecorderRow(id: tool.id)
+                        .padding(.leading, 24)
                 }
-                .toggleStyle(.switch)
-                .tint(Theme.accent)
-            }
-
-            if needsRelaunch {
-                HStack(spacing: 8) {
-                    Text("Relaunch to apply.")
-                        .font(Theme.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Relaunch") { relaunch() }
-                        .controlSize(.small)
-                        .tint(Theme.accent)
-                }
-                .padding(.top, 4)
-                .transition(.opacity)
             }
         }
-        .animation(.easeOut(duration: 0.15), value: needsRelaunch)
-    }
-
-    /// Restart the app so the registry re-reads which tools are enabled.
-    private func relaunch() {
-        let config = NSWorkspace.OpenConfiguration()
-        config.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config)
-        NSApp.terminate(nil)
     }
 
     private func toolBinding(_ id: String, default defaultEnabled: Bool) -> Binding<Bool> {
         Binding(
             get: { Prefs.isToolEnabled(id, default: defaultEnabled) },
-            set: {
-                Prefs.setToolEnabled(id, $0)
-                needsRelaunch = true
-            }
+            set: { env.tools.setEnabled(id, $0) }
         )
     }
 

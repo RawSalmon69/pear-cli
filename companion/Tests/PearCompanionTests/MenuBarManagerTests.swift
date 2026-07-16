@@ -9,7 +9,9 @@ final class MenuBarManagerTests: XCTestCase {
         var length: CGFloat = 0
         var onClick: (() -> Void)?
         private(set) var lastChevronCollapsed: Bool?
+        private(set) var removed = false
         func setChevron(collapsed: Bool) { lastChevronCollapsed = collapsed }
+        func removeFromStatusBar() { removed = true }
     }
 
     private func makeManager(suite: String) throws -> (MenuBarManager, UserDefaults) {
@@ -112,6 +114,22 @@ final class MenuBarManagerTests: XCTestCase {
 
         XCTAssertTrue(manager.isCollapsed, "launch collapses regardless of persisted state")
         XCTAssertEqual(fake.length, MenuBarManager.collapsedLength)
+    }
+
+    func testUninstallRevealsThenRemovesSeparator() throws {
+        let (manager, defaults) = try makeManager(suite: "MenuBarTests-uninstall")
+        defer { defaults.removePersistentDomain(forName: "MenuBarTests-uninstall") }
+
+        let fake = FakeSeparator()
+        manager.launch(with: fake)
+        XCTAssertTrue(manager.isCollapsed)
+
+        manager.uninstallSeparator()
+
+        // Reveal-then-remove: expanded (hidden icons back) before the item drops.
+        XCTAssertFalse(manager.isCollapsed)
+        XCTAssertEqual(fake.length, MenuBarManager.expandedLength)
+        XCTAssertTrue(fake.removed)
     }
 
     // MARK: - Persistence round-trips

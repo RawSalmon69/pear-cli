@@ -322,11 +322,14 @@ struct ToolsSection: View {
 
     @ViewBuilder
     private func tile(for tool: any Tool) -> some View {
+        // Effective chord (override or default), read from the registry so a
+        // custom shortcut shows on the tile the moment it's set.
+        let hint = env.tools.hotkeyLabel(for: tool.id)
         switch tool.entry {
         case .action(let run):
-            ToolTile(symbol: tool.icon, label: tool.title, hint: tool.hotkey?.label, action: run)
+            ToolTile(symbol: tool.icon, label: tool.title, hint: hint, action: run)
         case .popover(let content):
-            ToolTile(symbol: tool.icon, label: tool.title, hint: tool.hotkey?.label) {
+            ToolTile(symbol: tool.icon, label: tool.title, hint: hint) {
                 activePopoverID = tool.id
             }
             .popover(
