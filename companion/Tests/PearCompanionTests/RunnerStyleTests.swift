@@ -78,6 +78,39 @@ final class RunnerStyleTests: XCTestCase {
         }
     }
 
+    /// Cropped-frame scaling: menu-bar height is fixed and width follows the
+    /// cropped aspect ratio. A square crop stays square; a wide crop stays wide;
+    /// a degenerate crop never divides by zero or yields a zero-size frame.
+    func testScaledSizeNormalizesHeightAndPreservesAspect() {
+        let square = RunnerStyle.scaledSize(cropWidth: 32, cropHeight: 32)
+        XCTAssertEqual(square.height, RunnerStyle.menuBarHeight)
+        XCTAssertEqual(square.width, RunnerStyle.menuBarHeight)
+
+        let wide = RunnerStyle.scaledSize(cropWidth: 70, cropHeight: 36)
+        XCTAssertEqual(wide.height, RunnerStyle.menuBarHeight)
+        XCTAssertEqual(wide.width, (RunnerStyle.menuBarHeight * 70 / 36).rounded())
+        XCTAssertGreaterThan(wide.width, wide.height)
+
+        XCTAssertEqual(RunnerStyle.scaledSize(cropWidth: 0, cropHeight: 0), RunnerStyle.placeholderSize)
+    }
+
+    /// The legacy 32×32 RunCat frames (cat/parrot/horse) load through the crop
+    /// path as height-normalized template images — the fix that makes their
+    /// artwork read at the same visual weight as the tightly-cropped gallery art
+    /// instead of half the size.
+    func testLegacyRunnerFramesAreCroppedTemplates() throws {
+        for id in ["cat", "parrot", "horse"] {
+            let style = try XCTUnwrap(RunnerStyle.style(id: id))
+            let frames = style.frames()
+            XCTAssertFalse(frames.isEmpty, "\(id) loaded no frames")
+            for frame in frames {
+                XCTAssertTrue(frame.isTemplate, "\(id) frames must be template images")
+                XCTAssertEqual(frame.size.height, RunnerStyle.menuBarHeight, "\(id) height")
+                XCTAssertGreaterThan(frame.size.width, 0, "\(id) width")
+            }
+        }
+    }
+
     /// The default runner is the cat and the CPU readout is off.
     func testDefaults() {
         let suite = "runnerStyleTests-\(UUID().uuidString)"
