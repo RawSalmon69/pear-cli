@@ -50,7 +50,10 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
         )
         window.title = "Markup"
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 520, height: 420)
+        // Wide enough for the full toolbar (7 tools + colour + stroke + undo +
+        // Cancel/Done ≈ 640 pt) — at 520 the trailing buttons clipped into
+        // unreadable slivers (owner report, 2.3.0).
+        window.minSize = NSSize(width: 660, height: 420)
         window.contentView = NSHostingView(rootView: root)
         window.delegate = self
         window.center()
