@@ -43,6 +43,7 @@ final class AppEnvironment {
         tools.offer(MonitorTool(window: monitorWindow))
         tools.offer(WindowsTool())
         tools.offer(MenuBarTool())
+        tools.offer(DockDoorTool())
         self.tools = tools
 
         runner.start() // no-op unless the user enabled it
