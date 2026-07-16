@@ -49,7 +49,9 @@ final class ShelfWindowController {
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.isMovableByWindowBackground = true
+        // Window dragging is driven explicitly by `ShelfWindowMoveOverlay` so
+        // it can never preempt an item row's drag-out (see that view's note).
+        panel.isMovableByWindowBackground = false
         panel.minSize = NSSize(width: 260, height: 300)
         panel.onCancel = { [weak self] in self?.hide() }
         let host = FirstMouseHostingView(rootView: view)

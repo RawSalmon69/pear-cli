@@ -25,6 +25,9 @@ struct ShelfView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // Behind the content, in front of the glass: presses that no row or
+        // button claims fall through to here and drag the whole panel.
+        .background { ShelfWindowMoveOverlay() }
         .glassCard(cornerRadius: 16)
         .overlay {
             // Accent ring while a drag hovers the card.

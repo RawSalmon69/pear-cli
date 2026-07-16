@@ -107,3 +107,24 @@ final class DragInitiatorView: NSView, NSDraggingSource {
         sessionActive = false
     }
 }
+
+/// Backing view that drags the whole panel. It sits *behind* the rows and
+/// buttons, so a press on a row hits that row's `DragInitiatorView` (item
+/// drag-out) and a press on empty space or the header chrome falls through to
+/// here (window move). This replaces `isMovableByWindowBackground`, whose
+/// draggable-region computation did not reliably honor a transparent
+/// representable's `mouseDownCanMoveWindow`, so the window used to move even
+/// when the press began on an item row.
+struct ShelfWindowMoveOverlay: NSViewRepresentable {
+    func makeNSView(context: Context) -> WindowMoveView { WindowMoveView() }
+    func updateNSView(_ nsView: WindowMoveView, context: Context) {}
+}
+
+final class WindowMoveView: NSView {
+    // Begin a window move even when the panel isn't yet key.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.performDrag(with: event)
+    }
+}
