@@ -116,6 +116,11 @@ struct MenuBarSettingsView: View {
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
                 .focusable(false)
+            Toggle("Show divider line", isOn: dividerLineBinding)
+                .font(Theme.body)
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+                .focusable(false)
         }
         .padding(Theme.cardPadding)
         .glassCard()
@@ -131,6 +136,10 @@ struct MenuBarSettingsView: View {
 
     private var optionRevealBinding: Binding<Bool> {
         Binding(get: { manager.optionRevealEnabled }, set: { manager.setOptionReveal($0) })
+    }
+
+    private var dividerLineBinding: Binding<Bool> {
+        Binding(get: { manager.dividerLineVisible }, set: { manager.setDividerLineVisible($0) })
     }
 
     private func label(for seconds: Int) -> String {

@@ -25,6 +25,10 @@ protocol MenuBarSurface: AnyObject {
     var alwaysHiddenLength: CGFloat { get set }
     /// Flip the chevron glyph to reflect collapsed (hidden) vs expanded (shown).
     func setChevron(collapsed: Bool)
+    /// Show or hide the stretch separator's visible line. Hidden leaves the slot
+    /// as a blank drag gap so the chevron alone marks the boundary; the hide
+    /// mechanism (its length) is unaffected either way.
+    func setDividerVisible(_ visible: Bool)
     /// True when the chevron sits to the right of the stretch separator, so a
     /// collapse can't push the only always-visible control off-screen. Port of
     /// Hidden Bar's `isBtnSeparateValidPosition`.
@@ -73,6 +77,15 @@ final class StatusBarSurface: MenuBarSurface {
 
     init(autosavePrefix: String) {
         self.autosavePrefix = autosavePrefix
+        // Seed first-run positions near the right edge so the items spawn beside
+        // the clock rather than at the far left — which on a crowded, notched bar
+        // is behind the notch, leaving the dividers invisible (owner report).
+        // Larger offset == further left, so chevron sits rightmost, the stretch
+        // separator to its left, the always-hidden zone further left still. Only
+        // seeds when unset; the user's own ⌘-drag then owns the positions.
+        Self.seedPosition("\(autosavePrefix).chevron", 100)
+        Self.seedPosition("\(autosavePrefix).separator", 130)
+
         chevron = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         separator = NSStatusBar.system.statusItem(withLength: MenuBarManager.expandedLength)
 
@@ -110,6 +123,23 @@ final class StatusBarSurface: MenuBarSurface {
         button.image = image
     }
 
+    func setDividerVisible(_ visible: Bool) {
+        // Only the glyph changes; the separator keeps its length, so it stays a
+        // functional (if blank) drag boundary when hidden.
+        separator.button?.image = visible ? Self.dividerImage() : nil
+    }
+
+    /// Seeds a status item's first-run bar position (offset from the right edge)
+    /// via the private-but-stable `NSStatusItem Preferred Position` default macOS
+    /// reads for an autosaved item. No-op once the item has a saved position, so
+    /// the user's ⌘-drag arrangement always wins.
+    private static func seedPosition(_ autosaveName: String, _ offsetFromRight: CGFloat) {
+        let key = "NSStatusItem Preferred Position \(autosaveName)"
+        if UserDefaults.standard.object(forKey: key) == nil {
+            UserDefaults.standard.set(offsetFromRight, forKey: key)
+        }
+    }
+
     var isChevronRightOfSeparator: Bool {
         // Compare the status-item backing-window origins (Hidden Bar's
         // `getOrigin`). If geometry isn't readable yet, refuse to treat the
@@ -122,6 +152,9 @@ final class StatusBarSurface: MenuBarSurface {
     func setAlwaysHiddenEnabled(_ enabled: Bool) {
         if enabled {
             guard alwaysHidden == nil else { return }
+            // Further left than the stretch separator, still seeded off the right
+            // edge so it doesn't spawn behind the notch on a crowded bar.
+            Self.seedPosition("\(autosavePrefix).alwaysHidden", 160)
             let item = NSStatusBar.system.statusItem(withLength: alwaysHiddenLength)
             item.autosaveName = "\(autosavePrefix).alwaysHidden"
             item.isVisible = true

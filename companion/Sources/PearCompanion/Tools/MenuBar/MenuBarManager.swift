@@ -70,6 +70,11 @@ final class MenuBarManager {
     private(set) var alwaysHiddenEnabled: Bool
     /// Whether ⌥-click reveals everything, including the always-hidden zone.
     private(set) var optionRevealEnabled: Bool
+    /// Whether the stretch separator draws its visible line. Off by default —
+    /// the chevron already marks the boundary, so the extra line reads as
+    /// clutter (owner ask). The separator still functions as a drag gap either
+    /// way; this is purely the glyph.
+    private(set) var dividerLineVisible: Bool
 
     // MARK: - Internals (not observed)
 
@@ -90,6 +95,7 @@ final class MenuBarManager {
     private var autoRehideKey: String { "\(keyPrefix).autoRehideSeconds" }
     private var alwaysHiddenKey: String { "\(keyPrefix).alwaysHiddenEnabled" }
     private var optionRevealKey: String { "\(keyPrefix).optionRevealEnabled" }
+    private var dividerLineKey: String { "\(keyPrefix).dividerLineVisible" }
 
     /// `defaults`/`keyPrefix` are injectable so tests never touch the real
     /// UserDefaults suite.
@@ -100,6 +106,7 @@ final class MenuBarManager {
         isCollapsed = defaults.object(forKey: "\(keyPrefix).isCollapsed") as? Bool ?? true
         alwaysHiddenEnabled = defaults.object(forKey: "\(keyPrefix).alwaysHiddenEnabled") as? Bool ?? false
         optionRevealEnabled = defaults.object(forKey: "\(keyPrefix).optionRevealEnabled") as? Bool ?? true
+        dividerLineVisible = defaults.object(forKey: "\(keyPrefix).dividerLineVisible") as? Bool ?? false
     }
 
     // MARK: - Launch
@@ -148,6 +155,7 @@ final class MenuBarManager {
         surface.onToggle = { [weak self] in self?.toggle() }
         surface.onOptionToggle = { [weak self] in self?.revealAll() }
         surface.setAlwaysHiddenEnabled(alwaysHiddenEnabled)
+        surface.setDividerVisible(dividerLineVisible)
     }
 
     private func scheduleLaunchCollapse() {
@@ -223,6 +231,13 @@ final class MenuBarManager {
     func setOptionReveal(_ enabled: Bool) {
         optionRevealEnabled = enabled
         defaults.set(enabled, forKey: optionRevealKey)
+    }
+
+    /// Rule-B live toggle: whether the stretch separator draws its line.
+    func setDividerLineVisible(_ visible: Bool) {
+        dividerLineVisible = visible
+        defaults.set(visible, forKey: dividerLineKey)
+        surface?.setDividerVisible(visible)
     }
 
     private func applyState() {

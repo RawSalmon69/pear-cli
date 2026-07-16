@@ -12,11 +12,13 @@ final class MenuBarManagerTests: XCTestCase {
         var alwaysHiddenLength: CGFloat = 0
         private(set) var lastChevronCollapsed: Bool?
         private(set) var alwaysHiddenActive = false
+        private(set) var dividerVisible: Bool?
         private(set) var removed = false
         /// Drives the position guard; valid (chevron right of separator) by default.
         var chevronRightOfSeparator = true
 
         func setChevron(collapsed: Bool) { lastChevronCollapsed = collapsed }
+        func setDividerVisible(_ visible: Bool) { dividerVisible = visible }
         var isChevronRightOfSeparator: Bool { chevronRightOfSeparator }
         func setAlwaysHiddenEnabled(_ enabled: Bool) { alwaysHiddenActive = enabled }
         func removeAll() { removed = true }
@@ -65,6 +67,25 @@ final class MenuBarManagerTests: XCTestCase {
         XCTAssertFalse(MenuBarManager.shouldScheduleRehide(collapsed: true, autoRehideSeconds: 10))
         XCTAssertFalse(MenuBarManager.shouldScheduleRehide(collapsed: false, autoRehideSeconds: 0))
         XCTAssertFalse(MenuBarManager.shouldScheduleRehide(collapsed: true, autoRehideSeconds: 0))
+    }
+
+    func testDividerLineHiddenByDefaultAndToggles() throws {
+        let (manager, defaults) = try makeManager(suite: "MenuBarTests-divider")
+        defer { defaults.removePersistentDomain(forName: "MenuBarTests-divider") }
+
+        XCTAssertFalse(manager.dividerLineVisible, "the stretch divider line is off by default")
+
+        let surface = FakeSurface()
+        manager.attach(surface)
+        XCTAssertEqual(surface.dividerVisible, false, "attach applies the hidden default to the surface")
+
+        manager.setDividerLineVisible(true)
+        XCTAssertTrue(manager.dividerLineVisible)
+        XCTAssertEqual(surface.dividerVisible, true, "toggling on shows the line live")
+        XCTAssertEqual(defaults.object(forKey: "mb.dividerLineVisible") as? Bool, true, "persisted")
+
+        manager.setDividerLineVisible(false)
+        XCTAssertEqual(surface.dividerVisible, false)
     }
 
     func testDisplaysIncludeNotchFromTopSafeAreaInset() {
