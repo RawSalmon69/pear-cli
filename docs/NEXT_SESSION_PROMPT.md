@@ -1,226 +1,76 @@
-# PearCompanion v2 — Next Session Prompt (the blueprint)
+# PearCompanion v2.3 — QoL & Refinement Session Prompt
 
-Paste this as the opening message of the next session.
-
----
-
-You are the **Fable orchestrator** for PearCompanion v2. Operate as an
-orchestrator: **spawn opus / sonnet-5 subagents** for parallel or mechanical
-work (isolated **git worktrees** when they edit overlapping Swift files;
-integrate their new files yourself). Keep architecture, integration, and
-verification in your own Fable main loop. **Adversarially verify** — never
-trust an agent's "done" without `swift build` + `swift test` passing and, for
-anything shippable, a signed launch and a footprint check. Commit per feature.
-Ship via `companion-v*` tags.
-
-**Read these FIRST:**
-`/Users/raws/.claude/projects/-Users-raws-Documents-Github-pear-cli/memory/`
-(full project state + every hard-won gotcha), then the current app under
-`companion/Sources/PearCompanion/`.
-
-## The product
-
-**PearCompanion = an all-in-one macOS productivity super-app** — one lightweight
-app that replaces a stack of paid/separate menu-bar utilities (CleanShot,
-Swish/Magnet, Maccy, iStat Menus, CleanMyMac, Yoink/Dropover, Pika). The
-pear/cat is the **brand**. Distribution: **friends & family** for now (not sold
-wide), so GPL code is fine as long as source stays shareable; if that ever
-changes to paid, swap the GPL pieces for the MIT ones noted below.
-
-Owner's mandate: **make the best possible app. Refactor or rewrite whatever is
-needed for quality — don't preserve mediocrity to save effort.** But use proven
-OSS engines rather than hand-rolling risky logic; the value is stitching them
-into ONE coherent, light, "just works" experience — a *good* Frankenstein.
-
-## Decisions already locked
-
-- **Min macOS = 14** (bump from 13). Unlocks `@Observable`; owner doesn't care
-  about dropping 13.
-- **Keep the provisioning profile** and current signing (Developer ID cert + 7
-  GH secrets all set). Don't touch the signing/notarization path except as noted.
-- **Friends-and-family** → GPL OK. Use **Loop** (GPL) for windows; keep source
-  shareable. (Sellable future → switch to Rectangle MIT.)
-- **No engine rewrite of the cleaner** — keep pear's proven, safety-tested
-  cleanup; only replace the Terminal-popping glue with a native runner.
-- **Hide the couple-note feature** (keep files, flag it off).
-- **Menu-bar management: not built.** Owner uses SaneBar (MIT) separately; macOS
-  Tahoe covers the basics natively. Revisit only if ever folding it in (adopt
-  SaneBar's MIT code then).
+Paste this to start the next clean session.
 
 ---
 
-## PHASE 0 — Refactor the foundation FIRST (before any new tool)
+You are the Fable orchestrator for PearCompanion v2.3 (QoL + refinement round). Orchestrate: keep architecture, integration, safety review, and verification in your own Fable main loop; spawn **opus** subagents in isolated git worktrees for parallel or self-contained work. Adversarially verify every agent result — read the diff line-by-line, run swift build (zero warnings, on a NON-incremental build — incremental masks warnings) + swift test, and for shippable work do a dev launch + footprint check (≤80 MB idle / ~0% CPU) before merging. Commit per feature, push main when verified. Ship via companion-v* tags only on the maintainer's explicit channel confirmation.
 
-An architecture audit (2026-07-15) found the base **robust and clean on the
-expensive fundamentals** (zero force-unwraps/`as!`/`try!`, per-subsystem
-soft-fail, sound MainActor concurrency, a real design-token + `glassCard()`
-material seam, one correct lazy module in `DiskAnalyzeView`) — but **three
-patterns that rot combinatorially** as tools are added. Fix these before piling
-on. Do them in this order; `swift build` + `swift test` after each.
+Invoke the ponytail skill and keep it active all session — laziest solution that works, fewest files, shortest diff. "Lazy" means adopt upstream code that already works rather than rebuild it, not "hand-roll a minimal version."
 
-1. **Enforce strict concurrency** (audit C4). `Package.swift` is tools 5.9 in
-   Swift-5 mode — races aren't checked. Bump to tools 6.0 + `swiftLanguageMode(.v6)`
-   (or `.enableExperimentalFeature("StrictConcurrency")`) and fix fallout now, at
-   ~4k LOC, not at 20k after vendoring.
-2. **Introduce a Tool module system** (audit C3). Define a `Tool` protocol
-   (`id`, `title`, `icon`, optional `hotkey`, `makeService()`, `makePanelEntry()`)
-   + a registry. Make `ToolsSection` **data-driven** from the registry so adding a
-   tool is one registration, not edits in 3-4 files. **Lazy-instantiate** each
-   tool's service on first activation — generalize the existing
-   `DiskAnalyzeView` pattern (`@StateObject` created when opened). No eager engine
-   construction at launch. This is the core "clean plug-in foundation" enabler.
-3. **Break the AppEnvironment change-funnel** (audit C1). Today every service
-   `objectWillChange` is republished through the container, so any tick (e.g. the
-   clipboard poll) re-renders the whole panel. Migrate services to `@Observable`
-   (now that we're macOS 14) and let each subview observe the specific service it
-   uses. Delete the `changes`/`.receive(on:)` republish workaround.
-4. **Fix the StatsService seam** (audit C2). The protocol is a fake — the
-   container reaches through it with `as? PearStatsService` downcasts for
-   `diskUsedFraction`/`uptime`/`healthScore`/etc. Widen the protocol or drop the
-   pretense; whatever you choose becomes the template every tool copies, so make
-   it clean.
-5. **HotKeyManager.unregister** (audit S1). Currently register-only; actions +
-   `EventHotKeyRef`s leak. Add `unregister` (returns a token from `register`,
-   calls `UnregisterEventHotKey`). Required before load/unloadable modules.
-6. **Image discipline** (audit S2/S3). Add an ImageIO downsampling helper
-   (`CGImageSourceCreateThumbnailAtIndex`) for all thumbnails (clipboard/preview/
-   shelf); cap clipboard image history by **total bytes**, not count; back the
-   clipboard poll off to 2-3s and/or pause when no consumer is active.
-7. **Cleanups** (audit S4/S5/S6): remove dead `MockStatsService`; extract the
-   duplicated `screencapture` region-capture into one `ScreenCapture.region()`
-   helper (ScreenshotService + OCRService are byte-identical); inject a tiny
-   `CommandRunner` protocol so `Process`-shelling services are testable.
+Read FIRST: the memory at /Users/raws/.claude/projects/-Users-raws-Documents-Github-pear-cli/memory/ (project state, every gotcha — especially the v2.2 entries: Bundle.pearResources, measurement pitfalls, dead-agent rules), then the app under companion/Sources/PearCompanion/.
 
-**Exit gate for Phase 0:** build + tests green under strict concurrency; adding a
-trivial demo tool is a single registry entry; footprint still ~≤55 MB idle / 0%
-idle CPU. Commit. Then and only then, start tools.
+## Where things stand
 
----
+companion-v2.2.1 shipped 2026-07-16 (notarized, launch-verified, appcast live, auto-updated owner's Macs). 198 tests green, ~58 MB idle / 0% CPU, 9 MB bundle. On main: live tool toggles + rebindable hotkeys (no relaunch), Loop's real radial ring + display-synced snap animation, all 25 RunCat runners + grid picker, Monitor section toggles/refresh/history charts, Radix sunburst zoom/pan + treemap tooltips, Esc-everywhere, DockDoor hover-preview v1 (static thumbnails, on by default), CI launch-smoke crash guard.
 
-## DESIGN CONSTITUTION (every tool built to this)
+Standing rules (owner, unchanged): **A. Copy what works** — vendor upstream UI verbatim where better (GPL/Apache/MIT fine for F&F; provenance headers + license texts in Resources/Licenses/). **B. Everything toggleable + richly customizable, applied LIVE** — toggle + settings section is part of definition-of-done for every feature.
 
-**UX**
-1. **One interaction model.** Every tool: a global hotkey to summon from
-   anywhere + presence in the menu-bar panel as calm home base. Same dismiss
-   (Esc/swipe), same sound feedback, everywhere.
-2. **One visual system.** Adopt OSS **engines**, but **re-skin their surface** in
-   our design system (`Theme` + `glassCard()`). Do NOT drop raw upstream UI in —
-   that's the "5 apps in a trenchcoat" failure. Coherence is the whole product.
-3. **Modular + lazy = light.** Each tool loads only when first used; event-driven,
-   not polling; tear down what's not visible.
-4. **Toggle what you don't use.** Settings disables any tool → its subsystem never
-   loads. All-in-one, pruned to the user's needs.
-5. **One-sentence mental model:** *PearCompanion is your Mac's control center —
-   menu bar is home, a hotkey summons any tool anywhere, tools appear as clean
-   floating panels that all look like one app.* If a feature doesn't fit that
-   sentence, it doesn't go in.
+## Owner feedback round 6 (2026-07-16, post-2.2.1) — the work list, in priority order
 
-**Robustness / maintenance**
-6. **Vendor-and-own.** Copy the useful subsystem into our repo and make it ours;
-   do NOT take live dependencies (they break/abandon — see Ice). Cherry-pick
-   upstream fixes manually, on our schedule. Only real live deps: **Sparkle**
-   (pinned) and the **pear CLI** (updated via the existing reviewed weekly sync
-   PR). Keep source shareable (GPL parts stay GPL).
-7. **Every tool fails alone.** Defined, contained failure state per tool
-   (degraded UI, not a crash). Feature toggles are circuit breakers. No
-   force-unwraps; guard every external edge (CLI JSON, pasteboard, AX, CloudKit).
-   Blast-radius discipline is the price of all-in-one — enforce it.
+**Reliability first (owner: "lots of the time clicking on each button still doesn't work, doesn't show anything"):**
 
----
+1. **Panel tiles frequently dead on click.** Clicking tiles often shows nothing. Root-cause this before polishing anything — owner expects root-cause fixes, not workarounds. Leads: tile `.popover` attachment inside the MenuBarExtra window (only one popover can be up; a stale `activePopoverID` may block the next), first-click-after-open focus issues, non-activating panel key handling. Reproduce first (PanelView.swift ToolsSection, activePopoverID state), then fix the mechanism, not the symptom.
 
-## PHASE 1+ — Adopt tools (each as a Tool module: engine vendored + re-skinned)
+2. **Grey rectangular focus box around the MAC section on open** (owner: "like I clicked on it, I hate that" — screenshot on file). The Mac stats row is a tappable button (opens Monitor) and takes first-responder focus when the panel opens. Kill the ring (focusEffectDisabled/focusable(false) or defaultFocus elsewhere) — sweep the whole panel for open-time focus artifacts while there.
 
-Order by value/safety; parallelize self-contained ones to worktree agents.
+**Tool UX fixes:**
 
-- **No-Terminal cleaner fix (do first, low-risk).** Replace `TerminalRunner`'s
-  Terminal.app path: run `pear clean/optimize` via Swift `Process`, stream
-  stdout/exit into a **native progress sheet**; escalate sudo with a one-shot
-  `osascript … with administrator privileges` (native auth dialog, no Terminal).
-  Engine untouched.
-- **Hide couple-note.** Flag off Notes/composer/poke/seen + the CloudKit
-  messaging wiring; keep files for a future sync tier. (Profile/entitlements stay.)
-- **Disk → Radix (MIT).** Vendor Radix's scan engine + sunburst + treemap; re-skin
-  to our system; replace the bar view (keep bars as a 3rd mode). Drill-in +
-  breadcrumb. Good opus-agent task.
-- **Shelf → Dropshit (MIT).** Standalone non-activating floating `NSPanel`
-  (shake-to-summon / hotkey ⌃⇧V / drop-anywhere), persistent, drag-in + drag-out,
-  Quick Look, local storage. NOT the menu-bar popover (auto-closes — the known bug).
-- **Windows → Loop (GPL, OK for F&F).** Vendor Loop's radial snap engine + AX
-  window move/resize; re-skin. Add trackpad title-bar two-finger swipe (Swish's
-  signature) via `NSEvent`. Zones: halves/quarters/thirds/max/center + keyboard.
-  Accessibility-permission onboarding. High-maintenance module — gate behind
-  availability checks + graceful degradation.
-- **Markup freehand.** Add a `.freehand` pen tool to the existing markup editor
-  (path of drag points) — we have arrow/rect/highlighter/text/blur, not freehand.
-- **Clipboard → Maccy (MIT).** Vendor Maccy's store/search/pin logic (fuzzy
-  search, pins, ignore-apps, images); re-skin the list into our panel. Replaces
-  our basic clipboard.
-- **Scratchpad → Antinote-style.** Floating quick-note (`NSPanel`, ⌃⇧N,
-  autosave, swipe between notes), with top-of-note commands: inline math/`sum`,
-  unit/currency convert, `timer`/`todo`, strip-formatting-on-paste. Light original
-  build (or lift an MIT quick-note engine).
-- **Color picker → Pika (MIT).** Vendor eyedropper + formats; re-skin.
-- **System monitor → Stats (MIT).** Expand our stats natively: per-core CPU, GPU,
-  fans, temp/voltage sensors, network, battery detail.
+3. **Color Picker flow is broken UX.** Today: tile → popover → Pick color → sample → popover closed, no feedback, result only visible by reopening. Owner wants: pick → **hex lands on the clipboard immediately** + a confirmation pop-up/toast (+ the copy sound). The hotkey path already does copy-hex (ColorStore.pickColor(copyingHex:)) — make the tile/popover path do the same and add visible confirmation (small toast near cursor; keep it sleek). Rule B: make the copied format (HEX/RGB/HSL) a setting if trivial.
 
-## Lightweightness — budgets + verification (check every release)
+4. **Default cat runner renders way too small** next to the gallery runners. Legacy cat/parrot/horse are 32×32 squares scaled to 18 pt height; gallery frames are 36 px tall and wider. Normalize perceived size (RunnerStyle.scaledSize in Tools/RunCat/RunnerStyle.swift) — scale legacy sets to match the gallery's visual weight or swap the default to the gallery's classic-cat. Owner compares side by side; make them consistent in the menu bar AND the picker grid.
 
-- Idle RAM ≤ ~80 MB even with tools loaded (currently ~55 MB); idle CPU ~0%;
-  bundle small (currently 5 MB). Measure with `ps -axo rss,pcpu` on a running
-  build + `du -sh` for bundle; add bundle-size to CI. The pitch — *lighter than
-  the 5 apps it replaces (250 MB+ across 5 processes)* — is provable; keep it true.
+5. **Windows popover overflows.** After opening the Windows tile, content doesn't fit: the snap-animation controls and everything below are cut off / out of bounds (WindowsView grew past the popover in v2.2). Restructure: bounded ScrollView, tighter sections, or split zones grid vs settings — dense, no clipped controls. Sweep other popovers for the same overflow while there.
 
-## Rebrand / reposition
+6. **? help sheet: uneven row colors** — some rows render a different "blackness" than others (glassCard/material inconsistency in HelpView rows). Make them uniform.
 
-README + app strings + onboarding from couple-gift → general product. Remove
-personal identities baked in code (`greeting(role:)` "raws"/"Pear 🍐" at
-MascotView, CoupleKey roles) — audit N2.
+**Disk (two-phase delete + fixes):**
 
-## Known gotchas (do NOT rediscover — cost us real cycles)
+7. **Right-click context menu** on disk items (bars/sunburst/treemap rows) with Delete.
+8. **Staged deletion instead of instant:** deleting marks the item into a visible "Pending deletion" section; each pending item can be restored/cancelled (right-click or button); a single explicit "Delete all" button then moves everything to Trash at once. Keep every hard rule: single NSWorkspace.recycle sink, DiskDeletion.canTrash home-guard, Trash-only, reviewed line-by-line. Two-phase is a safety improvement — build it as the only path (replaces instant delete).
+9. **Bug: after a delete, the whole chart greys out** and stays that way. Root-cause (likely rescan/hover/selection state after mutation in DiskChartView/DiskScanModel).
 
-- **Sparkle, two bugs:** appcast `sparkle:version` must be **CFBundleVersion
-  (build integer)**, not the marketing string; and bump **both**
-  CFBundleShortVersionString and CFBundleVersion every release.
-  `companion-release.yml` reads CFBundleVersion via plutil — keep it.
-- **Sparkle notarization:** nested Updater.app/Autoupdate/XPC signed inside-out,
-  each with `--timestamp --options runtime`, before framework+app (in `build.sh`
-  — don't regress).
-- **Agent launcher flaky:** dead spawns / 600s stalls — resume via `SendMessage`,
-  have agents write to disk incrementally, re-verify their output yourself.
-- **Pipe-safe CI:** `gh run watch | tail` masks failure — confirm with
-  `gh run view <id> --json conclusion`.
-- Hotkeys via shared `HotKeyManager` (taken: ⌃⇧P screenshot, ⌃⇧O OCR, ⌃⇧C
-  clipboard; planned ⌃⇧V shelf, ⌃⇧N scratchpad). App is `LSUIElement`.
+**Screenshot / markup (CleanShot parity round):**
 
-## OSS building blocks (licenses — matter if this ever goes paid)
+10. **Markup editor: add crop** (top ask), plus whatever CleanShot-basics are cheap once crop's in. Views/MarkupEditor.swift + MarkupModel.swift.
+11. **Screenshot preview overhaul:** sleeker look; a real swipe-away animation (it currently just disappears); and **multiple previews stacking** that persist until each is manually swiped away (CleanShot behavior) — today it's one preview with a 6 s auto-timeout. Views/ScreenshotPreviewWindow.swift. This is the owner's daily-driver surface; study CleanShot's actual feel.
 
-| Need | Repo | License | Note |
-|---|---|---|---|
-| Disk sunburst+treemap | colinvkim/Radix | MIT | adopt engine + viz |
-| Shelf | iamsumanp/Dropshit | MIT | Dropover clone, NSPanel |
-| Windows | MrKai77/Loop | **GPL** | OK for F&F; swap → Rectangle (MIT) if paid |
-| Windows (MIT alt) | rxhanson/Rectangle | MIT | the sellable option |
-| Clipboard | p0deje/Maccy | MIT | store/search/pins |
-| System monitor | exelban/Stats | MIT | fans/sensors/per-core |
-| Color picker | superhighfives/Pika | MIT | eyedropper |
-| Menu-bar (NOT building) | sane-apps/SaneBar | MIT | use separately |
-| AVOID for paid | Ice (GPL), Pearcleaner (Commons Clause), macshot/Flameshot/ksnip (GPL) | — | reference only |
+**Dock Preview (v1 → real):**
+
+12. **Panel appears UNDER the Dock** — z-order/level bug (DockPreviewPanel level vs the Dock's window level; also verify anchoring math per Dock side). Fix so it floats above.
+13. **Only works for some apps** — diagnose coverage: multi-instance apps take first instance only, minimized/off-space windows have no SCK match, some apps may fail AX enumeration. Widen enumeration (DockDoor upstream handles these — port more of their window-listing; clone is gone, re-clone github.com/ejbills/DockDoor, commit 78b0862f was the scouted baseline).
+14. **Customization is invisible** — settings exist in the tile popover (hover delay, size, titles) but the owner didn't find them ("what about the customization?"). Make discoverable + richer per Rule B.
+15. **⌥-tab switcher: not built** (v1 deliberately shipped hover-only). Owner asked where it is. Build it as the next DockDoor slice: upstream's switcher, Accessibility-gated, own settings, live toggle. Also consider upgrading static thumbnails → live SCStream previews (the `// ponytail:` marker in DockThumbnailer.swift is the upgrade point).
+
+## Hard-won gotchas — do NOT rediscover (cumulative, all real)
+
+- **Bundle.module is FORBIDDEN in app code** — CI's Xcode emits an accessor that never checks Contents/Resources; v2.2.0 shipped crash-looping because of it. Use `Bundle.pearResources` (Support/ResourceBundle.swift) for every resource load. The CI launch-smoke step now guards this class.
+- Never resume a dead agent (0 tool uses) — spawn fresh; its worktree is gone and a resume writes into the main tree. BUT: agents killed by "session limit" auto-resume in their worktrees after reset — TaskStop them before assuming dead, and never assume a failed command chain's later steps ran.
+- Every worktree agent's first action: `git rebase main` + verify log (worktrees spawn from session-start snapshot).
+- `git status` before any `git add -A` while agents are in flight.
+- Swift 6 strict: @Observable stored props are computed → nonisolated deinit can't touch them (@ObservationIgnored); AXUIElement/CGEvent/NSStatusItem aren't Sendable; no @unchecked Sendable without written justification.
+- Deletion is sacred: single NSWorkspace.recycle sink, DiskDeletion.canTrash home guard, confirmed, Trash-only, line-by-line review. Never removeItem/unlink/rm.
+- AX calls: AXUIElementSetMessagingTimeout ~0.5 s on every element created (6 s default froze the app once).
+- Sparkle releases: bump BOTH CFBundleShortVersionString and CFBundleVersion (next build is 10); appcast sparkle:version = build integer; minimumSystemVersion read from LSMinimumSystemVersion; nested Sparkle XPCs signed inside-out in build.sh.
+- Measurement on this box: `ps -axo args | grep` silently drops matches under rtk — use `pgrep -fl`; top/ps %CPU are decayed averages — use cputime deltas over 30 s; dev builds share the owner's real UserDefaults (runnerEnabled=1 makes idle CPU look ~7% — that's the cat animating; override via `open --args -runnerEnabled 0`, never mutate his defaults); `git diff | git apply` breaks under rtk (compacted) — use `rtk proxy git diff` for raw patches.
+- gh run watch masks failures — poll `gh run view <id> --json conclusion`.
+- Release verification MUST include launching the downloaded shipped zip binary directly (this caught 2.2.0; spctl/stapler/appcast all passed on the broken build).
+- Tools with system-MUTATING launch behavior default OFF (menu-bar hider lesson); observers that never prompt (DockDoor) may default ON.
+
+## Verification (every change)
+
+swift build zero warnings (non-incremental) + swift test green; for shippable changes ./build.sh + launch the assembled .app + cputime-delta footprint (≤80 MB idle / ~0% CPU) + smoke the actual behavior changed. Commit per feature, no AI attribution trailers. Full release flow (owner says "release"): confirm channels (GitHub release + appcast), bump both version keys, tag companion-v*, verify conclusion via gh run view, download shipped zip → spctl + stapler + **direct-exec launch test** → notes via gh release edit (never create).
 
 ## Success criteria
 
-- Phase 0 done: strict-concurrency clean, Tool registry + lazy loading, no
-  AppEnvironment funnel, clean stats seam, hotkey unregister, image downsampling.
-- No Terminal window ever; actions show native progress.
-- Disk: interactive sunburst + treemap. Shelf: persistent floating window,
-  drag-in/out, no auto-close. Windows: keyboard + edge-drag + trackpad swipe.
-  Clipboard/color/monitor/scratchpad in, coherent skin. Markup has freehand.
-- Couple-note hidden. Idle ≤~80 MB / ~0% CPU. Notarized release auto-updates.
-- Copy reads as a general product. Every tool fails alone + is toggleable.
-
-## Sources
-
-Radix https://github.com/colinvkim/Radix · Dropshit https://github.com/iamsumanp/Dropshit ·
-Loop https://github.com/MrKai77/Loop · Rectangle https://github.com/rxhanson/Rectangle ·
-Maccy https://github.com/p0deje/Maccy · Stats https://github.com/exelban/stats ·
-Pika https://github.com/superhighfives/pika · SaneBar https://github.com/sane-apps/SaneBar ·
-Swish (closed, gesture to emulate) https://highlyopinionated.co/swish/
+Every tile click works, every time; no focus box on open; color pick = instant clipboard hex + visible confirmation; runner sizes consistent; Windows popover fits; help rows uniform; disk deletes are two-phase (pending list → restore or Trash-all) with context menus and no grey-out bug; markup has crop; screenshot previews stack, persist, and swipe away with animation; Dock Preview floats above the Dock, covers effectively every app, has discoverable rich settings, and gains the ⌥-tab switcher; footprint held; all upstream provenance intact. Release only on the maintainer's explicit channel confirmation.
