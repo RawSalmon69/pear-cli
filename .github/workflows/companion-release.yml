@@ -41,6 +41,12 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Releasing companion v$VERSION"
 
+      # build.sh compiles the bundled CLI's Go helpers (analyze-go, status-go).
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
       - name: Import Developer ID certificate
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
@@ -97,9 +103,12 @@ jobs:
           APP="companion/build/PearCompanion.app"
           SIZE_MB=$(( $(du -sk "$APP" | cut -f1) / 1024 ))
           echo "Bundle size: ${SIZE_MB} MB"
-          # Lightweightness is the pitch; 15 MB is triple the current bundle.
-          if [ "$SIZE_MB" -gt 15 ]; then
-            echo "::error::Bundle ${SIZE_MB} MB exceeds the 15 MB budget"
+          # Lightweightness is still the pitch, but the bundled pear CLI
+          # (scripts + two stripped arm64 Go helpers, ~9 MB) ships inside the
+          # app as of 2.5.0 so it works on Macs with no installed pear. 25 MB
+          # leaves the same headroom over the ~19 MB it produces.
+          if [ "$SIZE_MB" -gt 25 ]; then
+            echo "::error::Bundle ${SIZE_MB} MB exceeds the 25 MB budget"
             exit 1
           fi
 

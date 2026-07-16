@@ -30,8 +30,23 @@ final class PearStatsService {
         "/opt/homebrew/bin/pear",
     ]
 
+    /// The copy build.sh ships inside the app (Contents/Resources/pear-cli) —
+    /// the fallback that keeps Clean/Optimize and the disk bars working on a
+    /// Mac with no installed pear. Absent in `swift run`/tests, where only the
+    /// installed candidates apply.
+    private nonisolated static var bundled: String? {
+        Bundle.main.resourceURL?.appendingPathComponent("pear-cli/pear").path
+    }
+
     nonisolated static func pearBinary() -> String? {
-        candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+        pearBinary(isExecutable: { FileManager.default.isExecutableFile(atPath: $0) })
+    }
+
+    /// Installed copies win — `pe update` keeps them fresher than the app —
+    /// and the bundled copy backstops. Predicate-injectable so the order is
+    /// unit-testable without touching the filesystem.
+    nonisolated static func pearBinary(isExecutable: (String) -> Bool) -> String? {
+        (candidates + [bundled].compactMap { $0 }).first(where: isExecutable)
     }
 
     func refresh() async {

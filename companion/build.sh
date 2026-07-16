@@ -42,6 +42,22 @@ if [[ -f Resources/PearCompanion.icns ]]; then
     cp Resources/PearCompanion.icns "$APP/Contents/Resources/PearCompanion.icns"
 fi
 
+# Bundle the pear CLI so Clean/Optimize and the disk bars work on Macs with no
+# installed pear (an installed copy still wins — see PearStatsService). The
+# tree is self-locating (pear resolves bin/ and lib/ from its own path), so a
+# straight copy of the entry script, the tracked shell scripts, and lib/ is a
+# working install. The repo's bin/ also holds untracked local Go artifacts —
+# copy only *.sh and build the two Go helpers fresh, arm64-only (every F&F
+# machine is Apple silicon; min macOS is 14).
+CLI_DEST="$APP/Contents/Resources/pear-cli"
+mkdir -p "$CLI_DEST/bin"
+cp ../pear "$CLI_DEST/pear"
+cp -R ../lib "$CLI_DEST/lib"
+cp ../bin/*.sh "$CLI_DEST/bin/"
+echo "Building bundled CLI helpers (analyze-go, status-go)..."
+(cd .. && go build -ldflags "-s -w" -o "companion/$CLI_DEST/bin/analyze-go" ./cmd/analyze)
+(cd .. && go build -ldflags "-s -w" -o "companion/$CLI_DEST/bin/status-go" ./cmd/status)
+
 # Embed the Developer ID provisioning profile that authorizes the CloudKit and
 # push entitlements. Without it a hardened, entitled build will not launch.
 PROFILE="${PROVISION_PROFILE:-Resources/PearCompanion.provisionprofile}"
@@ -70,6 +86,13 @@ if [[ -n "${IDENTITY:-}" ]]; then
         done < <(find "$FW" -name "Autoupdate" -type f; find "$FW" -name "Updater.app" -type d)
         sign "$FW"
     fi
+
+    # The bundled CLI's Go helpers are Mach-O and notarization checks them
+    # individually; shell scripts need no signature.
+    for helper in "$APP/Contents/Resources/pear-cli/bin/analyze-go" \
+        "$APP/Contents/Resources/pear-cli/bin/status-go"; do
+        if [[ -f "$helper" ]]; then sign "$helper"; fi
+    done
 
     # Main app last, over the already-signed nested code.
     codesign --force --options runtime --timestamp \
