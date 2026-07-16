@@ -6,7 +6,7 @@ import Observation
 // when the Mac is idle and sprints when the CPU is pegged. The animation logic
 // (frame cadence as a function of CPU load) is adapted from RunCat365
 // (Apache-2.0) — https://github.com/runcat-dev/RunCat365 — specifically its
-// `Program.CalculateInterval`. We draw our own frames (see RunnerFrames) and
+// `Program.CalculateInterval`. We draw our own frames (see RunnerStyle) and
 // take no dependency on RunCat.
 
 /// Pure CPU-load → frame-interval mapping. Kept free of any state or actor so
@@ -79,7 +79,33 @@ final class RunnerModel {
         }
     }
 
-    @ObservationIgnored private let frames: [NSImage]
+    /// Which runner to draw. Persisted; changing it re-renders the frame set live
+    /// (whether or not currently animating) without disturbing the on/off state.
+    var style: RunnerStyle {
+        didSet {
+            guard style != oldValue else { return }
+            defaults.set(style.rawValue, forKey: styleKey)
+            rebuildFrames()
+        }
+    }
+
+    /// Whether the menu-bar label should show the current CPU percentage next to
+    /// the runner. Persisted. Only meaningful while enabled; the sampler that
+    /// drives cadence also feeds `cpuPercent`, so there is no second sampler.
+    var showsCPU: Bool {
+        didSet {
+            guard showsCPU != oldValue else { return }
+            defaults.set(showsCPU, forKey: showsCPUKey)
+            if !showsCPU { cpuPercent = nil }
+        }
+    }
+
+    /// The latest whole-number CPU percentage, published only while enabled and
+    /// `showsCPU` is on. `nil` when there is nothing to show (off, disabled, or
+    /// no reading yet), so the label can drop it cleanly.
+    private(set) var cpuPercent: Int?
+
+    @ObservationIgnored private var frames: [NSImage]
     @ObservationIgnored private var frameIndex = 0
     /// The live per-frame interval, updated by the CPU sampler and read by the
     /// animation loop each tick. Starts at the idle amble.
@@ -91,16 +117,31 @@ final class RunnerModel {
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let defaultsKey: String
+    @ObservationIgnored private let styleKey: String
+    @ObservationIgnored private let showsCPUKey: String
 
     /// - Parameters:
     ///   - defaults: injectable so tests don't touch the shared domain.
     ///   - defaultsKey: injectable persistence key. Default off — opt-in.
-    init(defaults: UserDefaults = .standard, defaultsKey: String = "runnerEnabled") {
+    ///   - styleKey: injectable persistence key for the runner style (default cat).
+    ///   - showsCPUKey: injectable persistence key for the CPU readout (default off).
+    init(
+        defaults: UserDefaults = .standard,
+        defaultsKey: String = "runnerEnabled",
+        styleKey: String = "runnerStyle",
+        showsCPUKey: String = "runnerShowsCPU"
+    ) {
         self.defaults = defaults
         self.defaultsKey = defaultsKey
+        self.styleKey = styleKey
+        self.showsCPUKey = showsCPUKey
         self.isEnabled = defaults.bool(forKey: defaultsKey)
-        self.frames = RunnerFrames.frames()
-        self.currentFrame = frames.first ?? NSImage(size: RunnerFrames.size)
+        self.showsCPU = defaults.bool(forKey: showsCPUKey)
+        let storedStyle = defaults.string(forKey: styleKey).flatMap(RunnerStyle.init(rawValue:)) ?? .cat
+        self.style = storedStyle
+        let built = storedStyle.frames()
+        self.frames = built
+        self.currentFrame = built.first ?? NSImage(size: RunnerStyle.size)
     }
 
     /// Starts sampling + animating if enabled. Idempotent — a second call while
@@ -120,6 +161,16 @@ final class RunnerModel {
         animateTask = nil
         sampleTask?.cancel()
         sampleTask = nil
+        cpuPercent = nil
+        frameIndex = 0
+        currentFrame = frames[frameIndex]
+    }
+
+    /// Re-renders the frame set for the current style and parks on its first
+    /// frame. Safe whether or not the animation loop is running: the loop reads
+    /// `frames`/`frameIndex` on the main actor, so there is no torn read.
+    private func rebuildFrames() {
+        frames = style.frames()
         frameIndex = 0
         currentFrame = frames[frameIndex]
     }
@@ -133,7 +184,11 @@ final class RunnerModel {
             while !Task.isCancelled {
                 let total = await sampler.sampleTotal()
                 guard let self, !Task.isCancelled else { return }
-                if let total { self.interval = RunnerCadence.frameInterval(cpuFraction: total) }
+                if let total {
+                    self.interval = RunnerCadence.frameInterval(cpuFraction: total)
+                    // Same sample feeds the optional readout; no second sampler.
+                    if self.showsCPU { self.cpuPercent = Int((total * 100).rounded()) }
+                }
                 try? await Task.sleep(for: .seconds(2))
             }
         }
