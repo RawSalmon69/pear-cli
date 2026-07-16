@@ -68,7 +68,9 @@ final class ScreenshotPreviewController {
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.contentView = NSHostingView(rootView: content)
+        let host = NSHostingView(rootView: content)
+        host.clipToCard()
+        panel.contentView = host
 
         if let screen = NSScreen.main {
             let visible = screen.visibleFrame

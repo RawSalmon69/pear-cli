@@ -49,7 +49,9 @@ final class ShelfWindowController {
         panel.isMovableByWindowBackground = true
         panel.minSize = NSSize(width: 260, height: 300)
         panel.onCancel = { [weak self] in self?.hide() }
-        panel.contentView = FirstMouseHostingView(rootView: view)
+        let host = FirstMouseHostingView(rootView: view)
+        host.clipToCard()
+        panel.contentView = host
 
         // Centered on the screen under the pointer.
         let mouse = NSEvent.mouseLocation

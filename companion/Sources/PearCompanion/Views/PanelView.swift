@@ -385,24 +385,39 @@ struct StatsSection: View {
     // frozen). The panel only exists while open, so this costs nothing idle.
     private let refreshTimer = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
 
+    @State private var hovering = false
+
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
-            HStack {
-                SectionLabel(text: "Mac")
-                Spacer()
-                if let uptime = env.stats.uptime {
-                    Text("up \(uptime)")
-                        .font(Theme.caption)
-                        .foregroundStyle(.quaternary)
+        Button {
+            env.monitorWindow.show()
+        } label: {
+            VStack(alignment: .leading, spacing: Theme.itemGap) {
+                HStack(spacing: 4) {
+                    SectionLabel(text: "Mac")
+                    if hovering {
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Theme.accent)
+                    }
+                    Spacer()
+                    if let uptime = env.stats.uptime {
+                        Text("up \(uptime)")
+                            .font(Theme.caption)
+                            .foregroundStyle(.quaternary)
+                    }
+                }
+
+                let tiles = env.stats.items
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.itemGap), count: 4),
+                          spacing: Theme.itemGap) {
+                    ForEach(tiles, id: \.label) { StatTile(stat: $0) }
                 }
             }
-
-            let tiles = env.stats.items
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.itemGap), count: 4),
-                      spacing: Theme.itemGap) {
-                ForEach(tiles, id: \.label) { StatTile(stat: $0) }
-            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .help("Open the full Monitor")
+        .onHover { hovering = $0 }
         .task { await env.stats.refresh() }
         .onReceive(refreshTimer) { _ in
             Task { await env.stats.refresh() }

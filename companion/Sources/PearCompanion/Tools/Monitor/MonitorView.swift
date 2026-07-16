@@ -28,8 +28,9 @@ struct MonitorView: View {
             }
             .padding(14)
         }
-        .frame(width: 360)
-        .frame(maxHeight: 640)
+        // Fills the Monitor window; also fine at the old ~360 pt in narrow
+        // hosts since it just expands to whatever the window gives it.
+        .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { model.start() }
         .onDisappear { model.stop() }
     }

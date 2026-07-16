@@ -39,7 +39,9 @@ final class ClipboardWindowController {
         // its reference too, or the next hotkey press toggles a panel that is
         // already invisible and appears to do nothing.
         panel.onDidResign = { [weak self] in self?.panel = nil }
-        panel.contentView = FirstMouseHostingView(rootView: view)
+        let host = FirstMouseHostingView(rootView: view)
+        host.clipToCard()
+        panel.contentView = host
 
         // Near the mouse, clamped on-screen.
         let mouse = NSEvent.mouseLocation

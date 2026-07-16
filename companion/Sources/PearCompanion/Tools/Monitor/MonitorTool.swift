@@ -13,7 +13,13 @@ final class MonitorTool: Tool {
     let summary = "Live CPU, memory, network, battery, and sensors."
     let hotkey: HotKeyChord? = nil
 
+    private let window: MonitorWindowController
+
+    init(window: MonitorWindowController) {
+        self.window = window
+    }
+
     var entry: ToolEntry {
-        .popover { AnyView(MonitorView()) }
+        .action { [window] in window.show() }
     }
 }

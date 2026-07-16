@@ -1,4 +1,15 @@
 import SwiftUI
+import AppKit
+
+extension NSView {
+    /// Clip a borderless panel's hosting view to its card corner radius so the
+    /// rectangular backing never shows a hairline past the rounded glass.
+    func clipToCard(radius: CGFloat = 16) {
+        wantsLayer = true
+        layer?.cornerRadius = radius
+        layer?.masksToBounds = true
+    }
+}
 
 /// The single material abstraction for the whole app. Liquid Glass on
 /// macOS 26+, ultra-thin material below. Views use `.glassCard()` and

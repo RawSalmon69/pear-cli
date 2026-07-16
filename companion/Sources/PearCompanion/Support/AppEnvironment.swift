@@ -22,6 +22,9 @@ final class AppEnvironment {
     /// Menu-bar runner (RunCat-style). The menu-bar label observes
     /// `runner.currentFrame` directly; off by default, 0% cost when off.
     let runner = RunnerModel()
+    /// Full Monitor window, shared by the Monitor tile and the panel's "Mac"
+    /// row so both open the same detail view.
+    @ObservationIgnored let monitorWindow = MonitorWindowController()
 
     init(messaging: MessagingService, stats: PearStatsService, updater: UpdaterService?) {
         self.messaging = messaging
@@ -37,7 +40,7 @@ final class AppEnvironment {
         tools.offer(ShelfTool())
         tools.offer(ScratchpadTool())
         tools.offer(ColorPickerTool())
-        tools.offer(MonitorTool())
+        tools.offer(MonitorTool(window: monitorWindow))
         tools.offer(WindowsTool())
         tools.offer(MenuBarTool())
         self.tools = tools
