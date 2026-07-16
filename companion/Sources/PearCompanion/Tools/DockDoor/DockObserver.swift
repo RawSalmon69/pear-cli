@@ -59,20 +59,23 @@ final class DockObserver {
 
     /// Installs the Dock AXObserver (only if already trusted — never prompts)
     /// and an event-driven Dock-relaunch watcher. Safe to call when untrusted:
-    /// it no-ops.
+    /// the AX subscription is skipped. Idempotent, so the settings card can
+    /// call it again the moment Accessibility is granted — the tool is enabled
+    /// by default, and on a fresh install trust usually arrives after launch.
     func start() {
-        guard AXIsProcessTrusted() else { return }
-        subscribe()
-
-        launchObserver = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didLaunchApplicationNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] note in
-            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            guard app?.bundleIdentifier == "com.apple.dock" else { return }
-            MainActor.assumeIsolated { self?.resubscribe() }
+        if launchObserver == nil {
+            launchObserver = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didLaunchApplicationNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] note in
+                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                guard app?.bundleIdentifier == "com.apple.dock" else { return }
+                MainActor.assumeIsolated { self?.resubscribe() }
+            }
         }
+        guard AXIsProcessTrusted(), axObserver == nil else { return }
+        subscribe()
     }
 
     /// Full teardown: removes the run-loop source, the observer, and the launch

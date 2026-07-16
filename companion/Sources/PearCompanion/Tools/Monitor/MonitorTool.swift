@@ -10,7 +10,7 @@ final class MonitorTool: Tool {
     let title = "Monitor"
     let icon = "gauge.with.dots.needle.67percent"
     let category = ToolCategory.system
-    let summary = "Live CPU, memory, network, battery, and sensors."
+    let summary = "Live CPU, memory, network, battery, and sensors, with history graphs. Pick sections and refresh speed inside."
     let hotkey: HotKeyChord? = nil
 
     private let window: MonitorWindowController

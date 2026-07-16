@@ -2,9 +2,10 @@ import AppKit
 import SwiftUI
 
 /// Dock hover-preview. Hovering a Dock icon shows that app's windows as
-/// thumbnails above the Dock; clicking one raises it. System-observing, so it
-/// is opt-in (off by default) and installs its AX observer only once Pear is
-/// trusted for Accessibility — the tile shows an onboarding card until then.
+/// thumbnails above the Dock; clicking one raises it. On by default — it only
+/// observes (never mutates system state) and never prompts: until Pear is
+/// trusted for Accessibility the observer no-ops and the tile shows an
+/// onboarding card, whose grant flow restarts the observer live.
 ///
 /// The always-on cost while enabled is a single Dock AXObserver; nothing polls.
 /// `stop()` (which the registry calls on live-disable) tears the observer, the
@@ -16,9 +17,6 @@ final class DockDoorTool: Tool {
     let icon = "dock.rectangle"
     let category = ToolCategory.system
     let summary = "Hover a Dock icon to preview and raise its windows."
-    // Off by default: a system-observing tool that watches the Dock should be
-    // opt-in, and it must not prompt for Accessibility at launch.
-    let defaultEnabled = false
     let hotkey: HotKeyChord? = nil
 
     private let controller = DockHoverController()
@@ -27,7 +25,11 @@ final class DockDoorTool: Tool {
     func stop() { controller.stop() }
 
     var entry: ToolEntry {
-        .popover { AnyView(DockDoorSettingsView()) }
+        // onTrusted: the permission card just confirmed Accessibility, so the
+        // (idempotent) start path can now install the Dock observer live.
+        .popover { [controller] in
+            AnyView(DockDoorSettingsView(onTrusted: { controller.start() }))
+        }
     }
 }
 

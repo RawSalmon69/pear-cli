@@ -25,8 +25,17 @@ struct HelpView: View {
               summary: "Run bounded maintenance tasks.",
               category: .system),
         Extra(icon: "hare", title: "Menu-bar runner", hotkey: nil,
-              summary: "A cat that runs faster as the CPU heats up. Turn it on in Settings.",
+              summary: "25 RunCat runners that speed up with CPU load — cat, dogs, dino, and more. Pick one in Settings › Menu Bar.",
               category: .system),
+        Extra(icon: "circle.dotted.circle", title: "Radial ring", hotkey: "hold Fn",
+              summary: "Hold Fn / Globe, aim at a zone, release to snap the window. Trigger key, ring style, and snap animation live in Windows.",
+              category: .system),
+        Extra(icon: "keyboard", title: "Custom shortcuts", hotkey: nil,
+              summary: "Every tool's hotkey is rebindable — Settings › Tools, click Record Shortcut. Toggles apply instantly, no relaunch.",
+              category: .utilities),
+        Extra(icon: "escape", title: "Esc closes anything", hotkey: "esc",
+              summary: "Every Pear panel and window dismisses with Esc.",
+              category: .utilities),
     ]
 
     var body: some View {

@@ -6,6 +6,11 @@ import SwiftUI
 /// Every control persists under a `dockdoor.*` key and is read at use time, so
 /// changes apply with no relaunch.
 struct DockDoorSettingsView: View {
+    /// Fired whenever a trust check comes back positive, so the tool can start
+    /// its Dock observer live — the tool is enabled by default, and on a fresh
+    /// install Accessibility is usually granted after launch.
+    var onTrusted: () -> Void = {}
+
     // A plain, non-isolated C read — safe to seed @State and re-poll on appear.
     @State private var trusted = AXIsProcessTrusted()
 
@@ -21,12 +26,17 @@ struct DockDoorSettingsView: View {
             if trusted {
                 settings
             } else {
-                PermissionCard { trusted = AXIsProcessTrusted() }
+                PermissionCard { recheck() }
             }
         }
         .padding(14)
         .frame(width: 300)
-        .onAppear { trusted = AXIsProcessTrusted() }
+        .onAppear { recheck() }
+    }
+
+    private func recheck() {
+        trusted = AXIsProcessTrusted()
+        if trusted { onTrusted() }
     }
 
     private var settings: some View {

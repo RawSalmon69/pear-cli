@@ -17,7 +17,7 @@ final class WindowsTool: Tool {
     let title = "Windows"
     let icon = "rectangle.split.2x1"
     let category = ToolCategory.system
-    let summary = "Snap windows to halves, quarters, and thirds."
+    let summary = "Snap windows with ⌃⌥ + arrows/UIJK/DFG chords, or hold Fn for the radial ring."
     let hotkey: HotKeyChord? = nil
 
     /// ⌃⌥ chords → zone. Two-thirds zones are grid-only (no chord), matching
