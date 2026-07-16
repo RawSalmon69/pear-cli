@@ -72,6 +72,15 @@ final class DiskScanModel {
         task = nil
         isScanning = false
     }
+
+    /// Prunes a just-trashed path from the in-memory tree, adjusting ancestor
+    /// sizes, without a rescan. A no-op if the tree is empty or the path isn't
+    /// present. This is the recovery path after a delete: it keeps the chart in
+    /// place instead of kicking off a full home-folder rescan.
+    func remove(pathID: String) {
+        guard let current = root, let pruned = current.removingDescendant(id: pathID) else { return }
+        root = pruned
+    }
 }
 
 /// Maps a segment's position in the tree to a fill color.

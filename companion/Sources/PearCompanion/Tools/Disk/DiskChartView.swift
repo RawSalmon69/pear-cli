@@ -194,10 +194,27 @@ struct DiskChartView: View {
         guard let path = item.path else { return }
         let trashed = await DiskTrashPrompt.confirmAndTrash(name: item.name, path: path, size: item.size)
         guard trashed else { return }
-        // The tree is immutable and drilled state points at now-stale nodes, so
-        // the correct, simple reflection of reality is a fresh scan from home.
+        // Reflect the removal in place: prune the trashed node from the tree and
+        // re-resolve the drill stack against it. A full rescan here is what left
+        // the chart dimmed for the whole (untimed) home walk — see resyncStack.
+        hover = nil
         focused = nil
-        rescan()
+        model.remove(pathID: path)
+        resyncStack()
+    }
+
+    /// Re-resolves the drill stack against the current tree after a prune. Stack
+    /// entries are value copies of `DiskNode`, so once the tree changes they go
+    /// stale; this maps each level back to its fresh node and drops any level
+    /// whose node no longer exists.
+    private func resyncStack() {
+        guard let root = model.root else { stack = []; return }
+        var resolved: [DiskNode] = []
+        for node in stack {
+            guard let fresh = root.firstDescendant(id: node.id) else { break }
+            resolved.append(fresh)
+        }
+        stack = resolved
     }
 
     // MARK: Navigation

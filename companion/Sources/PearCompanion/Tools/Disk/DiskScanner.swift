@@ -35,6 +35,34 @@ struct DiskNode: Identifiable, Sendable, Hashable {
         }
         return nil
     }
+
+    /// Returns a copy of this subtree with the descendant identified by `target`
+    /// removed and this node's (and every ancestor's) `size` reduced by the
+    /// removed subtree's size. Returns nil when `target` isn't found below this
+    /// node, so a caller can tell a real removal from a no-op. Never removes the
+    /// receiver itself — callers prune descendants of the scan root, not the
+    /// root. Pure, no disk access: it reflects a just-trashed item in the
+    /// in-memory tree so the chart updates in place instead of rescanning.
+    func removingDescendant(id target: String) -> DiskNode? {
+        guard !children.isEmpty else { return nil }
+
+        if let index = children.firstIndex(where: { $0.id == target }) {
+            var pruned = children
+            let removed = pruned.remove(at: index)
+            return DiskNode(id: id, name: name, size: max(size - removed.size, 0),
+                            isDirectory: isDirectory, children: pruned)
+        }
+
+        for index in children.indices {
+            guard let prunedChild = children[index].removingDescendant(id: target) else { continue }
+            let delta = children[index].size - prunedChild.size
+            var pruned = children
+            pruned[index] = prunedChild
+            return DiskNode(id: id, name: name, size: max(size - delta, 0),
+                            isDirectory: isDirectory, children: pruned)
+        }
+        return nil
+    }
 }
 
 /// Read-only, cancellable disk scanner. No deletion, no mutation — it only
