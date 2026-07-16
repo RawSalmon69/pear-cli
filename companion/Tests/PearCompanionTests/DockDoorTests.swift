@@ -266,12 +266,12 @@ final class DockDoorTests: XCTestCase {
         let defaults = suite("dockdoor-switcher")
         defer { defaults.removePersistentDomain(forName: "dockdoor-switcher") }
 
-        XCTAssertTrue(DockDoorSettings.switcherEnabled(defaults)) // default on
+        XCTAssertFalse(DockDoorSettings.switcherEnabled(defaults)) // default off (opt-in)
         XCTAssertEqual(DockDoorSettings.switcherScope(defaults), .allWindows)
 
-        defaults.set(false, forKey: DockDoorSettings.Key.switcherEnabled)
+        defaults.set(true, forKey: DockDoorSettings.Key.switcherEnabled)
         defaults.set(DockSwitcherScope.activeApp.rawValue, forKey: DockDoorSettings.Key.switcherScope)
-        XCTAssertFalse(DockDoorSettings.switcherEnabled(defaults))
+        XCTAssertTrue(DockDoorSettings.switcherEnabled(defaults))
         XCTAssertEqual(DockDoorSettings.switcherScope(defaults), .activeApp)
 
         defaults.set("nonsense", forKey: DockDoorSettings.Key.switcherScope)

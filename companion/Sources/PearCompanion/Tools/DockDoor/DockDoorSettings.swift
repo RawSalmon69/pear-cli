@@ -17,9 +17,10 @@ enum DockDoorSettings {
     static let defaultHoverDelay: Double = 200 // ms
     static let defaultPreviewSize = DockPreviewSize.medium
     static let defaultShowTitles = true
-    /// The ⌥-tab switcher is on by default — it only acts on ⌥-tab and is
-    /// silent otherwise, so an on default costs nothing until summoned.
-    static let defaultSwitcherEnabled = true
+    /// The ⌥-tab switcher is opt-in (off by default): turning it on registers a
+    /// global ⌥-tab Carbon hotkey that claims the chord system-wide, so Pear
+    /// only takes it once the user asks for it. The live toggle flips it on.
+    static let defaultSwitcherEnabled = false
     static let defaultSwitcherScope = DockSwitcherScope.allWindows
 
     // Hover delay slider range, in milliseconds.
