@@ -129,6 +129,21 @@ struct SettingsPopover: View {
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
         }
+
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Startup")
+            Toggle("Open at login", isOn: loginItemBinding)
+                .font(Theme.body)
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+        }
+    }
+
+    /// Reads/writes the login-item state straight from `SMAppService` (its
+    /// status is the source of truth), so the toggle reflects reality even if
+    /// login items were changed in System Settings.
+    private var loginItemBinding: Binding<Bool> {
+        Binding(get: { LoginItem.isEnabled }, set: { LoginItem.setEnabled($0) })
     }
 
     private var toolsTab: some View {
