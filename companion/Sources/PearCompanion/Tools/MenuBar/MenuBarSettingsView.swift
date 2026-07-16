@@ -16,7 +16,7 @@ struct MenuBarSettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(Theme.heroPadding)
-        .frame(width: 280)
+        .frame(width: 300)
     }
 
     private var toggleButton: some View {

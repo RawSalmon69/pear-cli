@@ -28,7 +28,7 @@ struct ColorPickerView: View {
             }
         }
         .padding(Theme.heroPadding)
-        .frame(width: 280)
+        .frame(width: 300)
     }
 
     private var pickButton: some View {
