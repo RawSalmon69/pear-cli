@@ -307,6 +307,9 @@ struct SunburstChartView: View {
     let onHover: (DiskChartHover?) -> Void
     let onDrill: (DiskNode) -> Void
     let onGoUp: () -> Void
+    /// Right-click actions for the wedge under the pointer, built by the host
+    /// and surfaced through the overlay's NSMenu.
+    let contextActions: (DiskChartHover) -> [DiskChartContextAction]
 
     @State private var hoveredID: String?
     @State private var viewport = SunburstViewportTransform.identity
@@ -355,7 +358,8 @@ struct SunburstChartView: View {
                         viewport = viewport.zoomed(by: factor, anchor: location, in: baseFrame)
                     },
                     canStartPan: { canStartPan($0, index: index, baseFrame: baseFrame) },
-                    isPanEnabled: viewport.isZoomed
+                    isPanEnabled: viewport.isZoomed,
+                    contextActions: { contextActions(at: $0, index: index, baseFrame: baseFrame) }
                 )
             }
             .onChange(of: size) { _, newSize in
@@ -392,6 +396,18 @@ struct SunburstChartView: View {
               hit.isDrillable,
               let node = root.firstDescendant(id: hit.path ?? "") else { return }
         onDrill(node)
+    }
+
+    /// Resolves a container point to the wedge under it and asks the host for
+    /// its right-click actions. Empty for the center hole, folded wedges, and
+    /// empty space.
+    private func contextActions(
+        at location: CGPoint, index: SunburstHitTestIndex, baseFrame: CGRect
+    ) -> [DiskChartContextAction] {
+        guard let chart = viewport.localChartPoint(for: location, in: baseFrame),
+              let hit = index.segment(at: chart.point, in: chart.size),
+              let path = hit.path else { return [] }
+        return contextActions(DiskChartHover(name: hit.label, size: hit.size, path: path))
     }
 
     /// Pan starts only on empty space (outside any wedge and off-center), so a

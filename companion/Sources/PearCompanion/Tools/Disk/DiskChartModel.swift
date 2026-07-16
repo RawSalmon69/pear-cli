@@ -21,6 +21,15 @@ struct DiskChartHover: Equatable, Sendable {
     let path: String?
 }
 
+/// One entry in a disk item's right-click menu. Path-based so the SwiftUI
+/// `.contextMenu` (treemap) and the AppKit `NSMenu` (sunburst overlay) build
+/// from the exact same source; `handler` runs on the main actor.
+struct DiskChartContextAction {
+    let title: String
+    let isDestructive: Bool
+    let handler: @MainActor () -> Void
+}
+
 /// Owns one native scan and publishes its result. `@MainActor` so view state
 /// stays on the main actor; the heavy walk runs off-main inside `DiskScanner`.
 @MainActor

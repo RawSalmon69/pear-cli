@@ -103,7 +103,8 @@ struct DiskChartView: View {
                 stagedPaths: staging.stagedPaths,
                 onHover: { handleHover($0) },
                 onDrill: { drill(into: $0) },
-                onGoUp: { goUp() }
+                onGoUp: { goUp() },
+                contextActions: { contextActions(for: $0) }
             )
             .padding(4)
         case .treemap:
@@ -112,7 +113,8 @@ struct DiskChartView: View {
                 depthLimit: Self.treemapDepth,
                 stagedPaths: staging.stagedPaths,
                 onHover: { handleHover($0) },
-                onDrill: { drill(into: $0) }
+                onDrill: { drill(into: $0) },
+                contextActions: { contextActions(for: $0) }
             )
             .glassCard(cornerRadius: 12)
         }
@@ -193,6 +195,29 @@ struct DiskChartView: View {
             .padding(Theme.cardPadding)
             .glassCard(cornerRadius: 12)
         }
+    }
+
+    /// Right-click actions for a chart segment, shared by the treemap's SwiftUI
+    /// menu and the sunburst overlay's NSMenu: Delete (stage) or Restore, plus
+    /// Reveal in Finder. Delete/Restore appear only for a home-local path.
+    private func contextActions(for item: DiskChartHover) -> [DiskChartContextAction] {
+        guard let path = item.path else { return [] }
+        var actions: [DiskChartContextAction] = []
+        if DiskDeletion.canTrash(path: path) {
+            if staging.isStaged(path) {
+                actions.append(DiskChartContextAction(title: "Restore", isDestructive: false) {
+                    staging.restore(path: path)
+                })
+            } else {
+                actions.append(DiskChartContextAction(title: "Delete", isDestructive: true) {
+                    staging.stage(name: item.name, path: path, size: item.size)
+                })
+            }
+        }
+        actions.append(DiskChartContextAction(title: "Reveal in Finder", isDestructive: false) {
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+        })
+        return actions
     }
 
     private func handleHover(_ item: DiskChartHover?) {

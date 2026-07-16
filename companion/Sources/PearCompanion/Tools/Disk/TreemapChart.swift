@@ -385,8 +385,11 @@ struct TreemapChartView: View {
     let stagedPaths: Set<String>
     let onHover: (DiskChartHover?) -> Void
     let onDrill: (DiskNode) -> Void
+    /// Right-click actions for the tile under the pointer.
+    let contextActions: (DiskChartHover) -> [DiskChartContextAction]
 
     @State private var hoveredID: String?
+    @State private var hovered: DiskChartHover?
     @State private var tooltip: Tooltip?
 
     /// Upper bound the placement math reserves so a long name wrapping onto a
@@ -418,12 +421,24 @@ struct TreemapChartView: View {
                 case .active(let point):
                     let hit = index.segment(at: point, in: size)
                     hoveredID = hit?.id
-                    onHover(hit.map { DiskChartHover(name: $0.label, size: $0.size, path: $0.path) })
+                    let readout = hit.map { DiskChartHover(name: $0.label, size: $0.size, path: $0.path) }
+                    hovered = readout
+                    onHover(readout)
                     tooltip = hit.map { Tooltip(name: $0.label, size: $0.size, location: point) }
                 case .ended:
                     hoveredID = nil
+                    hovered = nil
                     onHover(nil)
                     tooltip = nil
+                }
+            }
+            .contextMenu {
+                if let hovered, hovered.path != nil {
+                    ForEach(Array(contextActions(hovered).enumerated()), id: \.offset) { _, action in
+                        Button(action.title, role: action.isDestructive ? .destructive : nil) {
+                            action.handler()
+                        }
+                    }
                 }
             }
             .overlay(alignment: .topLeading) {

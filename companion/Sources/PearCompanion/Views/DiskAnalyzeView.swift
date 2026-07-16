@@ -380,7 +380,24 @@ private struct EntryBar: View {
         .contentShape(Rectangle())
         .onTapGesture { if canDrill && !isStaged { onDrill() } }
         .onHover { hovering = $0 }
+        .contextMenu { menuItems }
         .animation(.easeOut(duration: 0.15), value: hovering)
+    }
+
+    @ViewBuilder
+    private var menuItems: some View {
+        if DiskDeletion.canTrash(path: entry.path) {
+            if isStaged {
+                Button("Restore") { staging.restore(path: entry.path) }
+            } else {
+                Button("Delete", role: .destructive) {
+                    staging.stage(name: entry.name, path: entry.path, size: entry.size)
+                }
+            }
+        }
+        Button("Reveal in Finder") {
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: entry.path)])
+        }
     }
 }
 
@@ -440,6 +457,20 @@ private struct LargeFileRow: View {
         .padding(.vertical, 8)
         .glassCard(cornerRadius: 10)
         .opacity(isStaged ? 0.5 : 1)
+        .contextMenu {
+            if DiskDeletion.canTrash(path: file.path) {
+                if isStaged {
+                    Button("Restore") { staging.restore(path: file.path) }
+                } else {
+                    Button("Delete", role: .destructive) {
+                        staging.stage(name: file.name, path: file.path, size: file.size)
+                    }
+                }
+            }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: file.path)])
+            }
+        }
     }
 }
 

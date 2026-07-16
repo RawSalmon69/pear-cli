@@ -19,6 +19,8 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
     let onMagnify: (CGPoint, CGFloat) -> Void
     let canStartPan: (CGPoint) -> Bool
     let isPanEnabled: Bool
+    /// Right-click actions for the wedge at a point; empty means no menu.
+    let contextActions: (CGPoint) -> [DiskChartContextAction]
 
     func makeNSView(context: Context) -> InteractionView {
         let view = InteractionView()
@@ -37,6 +39,7 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
         view.onMagnify = onMagnify
         view.canStartPan = canStartPan
         view.isPanEnabled = isPanEnabled
+        view.contextActions = contextActions
     }
 
     final class InteractionView: NSView {
@@ -46,7 +49,9 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
         var onMagnify: (CGPoint, CGFloat) -> Void = { _, _ in }
         var canStartPan: (CGPoint) -> Bool = { _ in false }
         var isPanEnabled = false
+        var contextActions: (CGPoint) -> [DiskChartContextAction] = { _ in [] }
 
+        private var menuActions: [DiskChartContextAction] = []
         private static let dragThreshold: CGFloat = 3
         private static let lineScrollScale: CGFloat = 10
         // nonisolated: referenced from the nonisolated CGFloat clamp helper below.
@@ -121,6 +126,29 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
             lastDragLocation = nil
             shouldPan = false
             didPan = false
+        }
+
+        override func rightMouseDown(with event: NSEvent) {
+            let actions = contextActions(eventLocation(event))
+            guard !actions.isEmpty else {
+                super.rightMouseDown(with: event)
+                return
+            }
+            menuActions = actions
+            let menu = NSMenu()
+            for (index, action) in actions.enumerated() {
+                let item = NSMenuItem(
+                    title: action.title, action: #selector(fireMenuAction(_:)), keyEquivalent: "")
+                item.target = self
+                item.tag = index
+                menu.addItem(item)
+            }
+            menu.popUp(positioning: nil, at: eventLocation(event), in: self)
+        }
+
+        @objc private func fireMenuAction(_ sender: NSMenuItem) {
+            guard menuActions.indices.contains(sender.tag) else { return }
+            menuActions[sender.tag].handler()
         }
 
         override func magnify(with event: NSEvent) {
