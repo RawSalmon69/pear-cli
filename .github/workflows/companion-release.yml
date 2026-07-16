@@ -75,6 +75,22 @@ jobs:
           cd companion
           ./build.sh "${{ steps.version.outputs.version }}"
 
+      - name: Launch smoke (crash guard)
+        run: |
+          set -euo pipefail
+          # companion-v2.2.0 shipped a launch-crash that spctl/stapler can't
+          # catch (a toolchain-dependent Bundle.module lookup): run the built
+          # app for 5 s and fail the release if the process dies.
+          companion/build/PearCompanion.app/Contents/MacOS/PearCompanion > smoke.log 2>&1 &
+          APP_PID=$!
+          sleep 5
+          if ! kill -0 "$APP_PID" 2> /dev/null; then
+            echo "::error::App died within 5 s of launch"
+            cat smoke.log
+            exit 1
+          fi
+          kill "$APP_PID"
+
       - name: Check bundle size budget
         run: |
           set -euo pipefail
