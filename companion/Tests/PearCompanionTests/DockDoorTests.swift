@@ -180,6 +180,58 @@ final class DockDoorTests: XCTestCase {
         XCTAssertNotEqual(a, c)
     }
 
+    // MARK: - CGWindowList fallback parsing (zero-AX apps)
+
+    private func cgEntry(pid: Int32, layer: Int, x: Double, y: Double, w: Double, h: Double, name: String?) -> [String: Any] {
+        var entry: [String: Any] = [
+            kCGWindowOwnerPID as String: NSNumber(value: pid),
+            kCGWindowLayer as String: NSNumber(value: layer),
+            kCGWindowBounds as String: ["X": x, "Y": y, "Width": w, "Height": h],
+        ]
+        if let name { entry[kCGWindowName as String] = name }
+        return entry
+    }
+
+    func testFallbackKeepsOwnedNormalLayerWindow() {
+        let list = [cgEntry(pid: 501, layer: 0, x: 10, y: 20, w: 800, h: 600, name: "Doc")]
+        let parsed = DockWindows.parseFallback(list, pids: [501])
+        XCTAssertEqual(parsed, [DockWindows.CGFallbackWindow(title: "Doc", frame: CGRect(x: 10, y: 20, width: 800, height: 600))])
+    }
+
+    func testFallbackFiltersByPID() {
+        let list = [cgEntry(pid: 999, layer: 0, x: 0, y: 0, w: 400, h: 300, name: "Other")]
+        XCTAssertTrue(DockWindows.parseFallback(list, pids: [501]).isEmpty)
+    }
+
+    func testFallbackSkipsNonZeroLayer() {
+        // Menus, the Dock, and shadows sit on non-zero layers and must not show.
+        let list = [cgEntry(pid: 501, layer: 25, x: 0, y: 0, w: 400, h: 300, name: "Menu")]
+        XCTAssertTrue(DockWindows.parseFallback(list, pids: [501]).isEmpty)
+    }
+
+    func testFallbackSkipsDegenerateFrame() {
+        let list = [cgEntry(pid: 501, layer: 0, x: 0, y: 0, w: 1, h: 1, name: "Sliver")]
+        XCTAssertTrue(DockWindows.parseFallback(list, pids: [501]).isEmpty)
+    }
+
+    func testFallbackMatchesAnyPIDInSet() {
+        // Multi-instance apps contribute several pids; a window owned by any of
+        // them is kept.
+        let list = [
+            cgEntry(pid: 700, layer: 0, x: 0, y: 0, w: 500, h: 400, name: "A"),
+            cgEntry(pid: 701, layer: 0, x: 5, y: 5, w: 500, h: 400, name: "B"),
+        ]
+        let parsed = DockWindows.parseFallback(list, pids: [700, 701])
+        XCTAssertEqual(parsed.count, 2)
+        XCTAssertEqual(Set(parsed.map(\.title)), ["A", "B"])
+    }
+
+    func testFallbackEmptyNameTolerated() {
+        let list = [cgEntry(pid: 501, layer: 0, x: 0, y: 0, w: 500, h: 400, name: nil)]
+        let parsed = DockWindows.parseFallback(list, pids: [501])
+        XCTAssertEqual(parsed.first?.title, "")
+    }
+
     // MARK: - Helpers
 
     private func suite(_ name: String) -> UserDefaults {
