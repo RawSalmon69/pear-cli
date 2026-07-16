@@ -49,7 +49,8 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
 
         private static let dragThreshold: CGFloat = 3
         private static let lineScrollScale: CGFloat = 10
-        fileprivate static let maximumScrollPanDelta: CGFloat = 80
+        // nonisolated: referenced from the nonisolated CGFloat clamp helper below.
+        fileprivate nonisolated static let maximumScrollPanDelta: CGFloat = 80
 
         private var trackingArea: NSTrackingArea?
         private var mouseDownLocation: CGPoint?

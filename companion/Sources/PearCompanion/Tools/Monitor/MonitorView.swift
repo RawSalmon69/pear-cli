@@ -67,9 +67,18 @@ struct MonitorView: View {
             // Gate on the live visible set as well as the sampled value, so
             // toggling a section off hides it instantly rather than at the
             // next tick.
-            if visible.contains(.cpu), let cpu = snap.cpu { CPUCard(sample: cpu) }
-            if visible.contains(.memory), let memory = snap.memory { MemoryCard(sample: memory) }
-            if visible.contains(.network), let network = snap.network { NetworkCard(sample: network) }
+            if visible.contains(.cpu), let cpu = snap.cpu {
+                CPUCard(sample: cpu, history: model.cpuHistory.values)
+            }
+            if visible.contains(.memory), let memory = snap.memory {
+                MemoryCard(sample: memory, history: model.memoryHistory.values)
+            }
+            if visible.contains(.network), let network = snap.network {
+                NetworkCard(
+                    sample: network,
+                    download: model.netDownHistory.values,
+                    upload: model.netUpHistory.values)
+            }
             if visible.contains(.battery), let battery = snap.battery { BatteryCard(sample: battery) }
             if visible.contains(.sensors), let sensors = snap.sensors { SensorsCard(sample: sensors) }
         }
@@ -200,6 +209,8 @@ private struct MetricRow: View {
 
 private struct CPUCard: View {
     let sample: CPUSample
+    /// Total-load history, oldest → newest (0…1).
+    let history: [Double]
 
     private let columns = [
         GridItem(.flexible(), spacing: 12),
@@ -214,6 +225,9 @@ private struct CPUCard: View {
                     .font(Theme.rounded(13, .semibold))
                     .monospacedDigit()
                     .frame(width: 40, alignment: .trailing)
+            }
+            if history.count >= 2 {
+                TrendChart(values: history, tint: Theme.accent)
             }
             LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(sample.cores) { core in
@@ -241,10 +255,15 @@ private struct CPUCard: View {
 
 private struct MemoryCard: View {
     let sample: MemorySample
+    /// Used-fraction history, oldest → newest (0…1).
+    let history: [Double]
 
     var body: some View {
         MonitorCard(title: "Memory") {
             StackedBar(segments: segments)
+            if history.count >= 2 {
+                TrendChart(values: history, tint: Theme.accent)
+            }
             MetricRow(label: "Used", value: MonitorFormat.gib(sample.used))
             MetricRow(label: "Free", value: MonitorFormat.gib(sample.free))
             HStack(spacing: 12) {
@@ -275,6 +294,9 @@ private struct MemoryCard: View {
 
 private struct NetworkCard: View {
     let sample: NetworkSample
+    /// Throughput history, oldest → newest (bytes/sec).
+    let download: [Double]
+    let upload: [Double]
 
     var body: some View {
         MonitorCard(title: "Network") {
@@ -283,7 +305,12 @@ private struct NetworkCard: View {
                 tint: Theme.accent)
             MetricRow(
                 label: "Upload", value: MonitorFormat.rate(sample.upBytesPerSec),
-                tint: Theme.accent)
+                tint: Theme.warn)
+            if download.count >= 2 || upload.count >= 2 {
+                NetworkTrendChart(
+                    download: download, upload: upload,
+                    downTint: Theme.accent, upTint: Theme.warn)
+            }
             if let name = sample.interfaceName {
                 Text(name).font(Theme.caption).foregroundStyle(.tertiary)
             }

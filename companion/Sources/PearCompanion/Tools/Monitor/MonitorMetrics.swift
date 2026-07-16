@@ -27,6 +27,12 @@ struct MemorySample: Sendable {
     let wired: UInt64
     let compressed: UInt64
     let free: UInt64
+
+    /// Used as a 0…1 fraction of physical memory — the single scalar the memory
+    /// history line tracks over time.
+    var usedFraction: Double {
+        total > 0 ? min(1, Double(used) / Double(total)) : 0
+    }
 }
 
 /// Instantaneous network throughput for the busiest primary interface(s).
