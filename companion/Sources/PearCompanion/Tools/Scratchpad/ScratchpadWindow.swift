@@ -51,6 +51,7 @@ final class ScratchpadWindowController {
         panel.isReleasedWhenClosed = false
         // No title bar to drag by; let the whole card move the window.
         panel.isMovableByWindowBackground = true
+        panel.onCancel = { [weak self] in self?.hide() }
         panel.contentView = NSHostingView(
             rootView: ScratchpadView(store: store, onClose: { [weak self] in self?.hide() })
         )
@@ -69,5 +70,13 @@ final class ScratchpadWindowController {
 /// Borderless panel that both takes key focus (so typing works) and keeps
 /// it — no `resignKey` auto-hide, so focus loss doesn't close the note.
 private final class ScratchpadPanel: NSPanel {
+    var onCancel: (() -> Void)?
+
     override var canBecomeKey: Bool { true }
+
+    // One dismissal grammar across every floating surface: Esc closes
+    // (and the controller's hide() saves first).
+    override func cancelOperation(_ sender: Any?) {
+        onCancel?()
+    }
 }

@@ -48,6 +48,7 @@ final class ShelfWindowController {
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = true
         panel.minSize = NSSize(width: 260, height: 300)
+        panel.onCancel = { [weak self] in self?.hide() }
         panel.contentView = FirstMouseHostingView(rootView: view)
 
         // Centered on the screen under the pointer.
@@ -68,8 +69,15 @@ final class ShelfWindowController {
 /// Borderless panel that can take key focus (so buttons and Quick Look work)
 /// but — deliberately unlike `KeyablePanel` — does not close on `resignKey`.
 private final class ShelfPanel: NSPanel {
+    var onCancel: (() -> Void)?
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    // One dismissal grammar across every floating surface: Esc closes.
+    override func cancelOperation(_ sender: Any?) {
+        onCancel?()
+    }
 }
 
 /// Delivers the first click even when the panel isn't key, so a row drag or

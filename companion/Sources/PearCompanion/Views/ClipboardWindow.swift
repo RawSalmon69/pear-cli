@@ -80,4 +80,10 @@ private final class KeyablePanel: NSPanel {
         orderOut(nil)
         onDidResign?()
     }
+
+    // One dismissal grammar across every floating surface: Esc closes.
+    override func cancelOperation(_ sender: Any?) {
+        orderOut(nil)
+        onDidResign?()
+    }
 }
