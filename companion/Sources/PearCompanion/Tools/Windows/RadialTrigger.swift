@@ -338,15 +338,19 @@ final class RadialTrigger {
         select(selection)
     }
 
-    /// Center-click → maximize (Loop's center-special action).
+    /// Center-click → toggle the focused window's native fullscreen (the
+    /// green-button behavior: enter, or exit back to the desktop it came from).
+    /// Commits immediately and closes the ring, like a released selection —
+    /// the maximize / "fake fullscreen" zone stays reachable via ⌃⌥↑, the grid,
+    /// and the full-circle sweep.
     private func handleMouseDown() {
         guard let session else { return }
         let mouse = NSEvent.mouseLocation
         let dx = mouse.x - session.origin.x
         let dy = mouse.y - session.origin.y
         guard ((dx * dx) + (dy * dy)).squareRoot() <= Self.deadzoneRadius else { return }
-        session.latch = .insideDeadzone
-        select(.maximize)
+        teardown()
+        WindowEngine.toggleFullscreen()
     }
 
     /// Returns true when the key was handled (and should be swallowed

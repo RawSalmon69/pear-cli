@@ -78,6 +78,39 @@ enum WindowEngine {
         // hook in here by remembering the last zone applied per window.
     }
 
+    /// Toggle native macOS fullscreen on the frontmost app's focused window —
+    /// the green-button behavior. Not fullscreen → enter (macOS animates it
+    /// into its own Space); already fullscreen → exit (macOS restores the
+    /// pre-fullscreen frame and Space it came from — no frame bookkeeping here).
+    /// Silent no-op on any failure, and a graceful no-op for windows that don't
+    /// expose AXFullScreen at all (the set simply fails).
+    static func toggleFullscreen() {
+        guard isTrusted else { return }
+        guard let app = NSWorkspace.shared.frontmostApplication else {
+            NSSound.beep()
+            return
+        }
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(appElement, 0.5)
+
+        guard let window = focusedWindow(of: appElement) else {
+            NSSound.beep()
+            return
+        }
+        // `boolAttribute` reads "AXFullScreen", reporting a missing attribute as
+        // false (not fullscreen). The decision then enters, and macOS no-ops the
+        // set for windows that can't fullscreen.
+        setBool(window, kAXFullScreen, nextFullscreenState(from: boolAttribute(window, kAXFullScreen)))
+    }
+
+    /// The "AXFullScreen" value to write next, given the current one. A window
+    /// already fullscreen (`true`) exits; one that isn't (`false`) or that never
+    /// reports the attribute (`nil`) enters. Pure so the decision is unit-
+    /// testable — the AX read/write around it needs a live window and isn't.
+    static func nextFullscreenState(from current: Bool?) -> Bool {
+        current != true
+    }
+
     // MARK: - Snap target (read-only context for the radial ring's preview)
 
     /// The focused window's frame and screen, both in AppKit space. The
@@ -416,3 +449,7 @@ private extension NSRect {
 /// `AXEnhancedUserInterface` has no `kAX*` constant in the SDK; Loop uses the
 /// same raw attribute string.
 private let kAXEnhancedUserInterface = "AXEnhancedUserInterface"
+
+/// `AXFullScreen` likewise has no `kAX*` constant; it's the undocumented
+/// attribute macOS's green fullscreen button toggles.
+private let kAXFullScreen = "AXFullScreen"
