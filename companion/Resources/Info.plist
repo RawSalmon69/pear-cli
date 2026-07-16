@@ -6,6 +6,8 @@
 	<string>Pear</string>
 	<key>CFBundleExecutable</key>
 	<string>PearCompanion</string>
+	<key>CFBundleIconFile</key>
+	<string>PearCompanion</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.rawsalmon69.pear.companion</string>
 	<key>CFBundleName</key>

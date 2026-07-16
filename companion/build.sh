@@ -37,6 +37,11 @@ fi
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP/Contents/Info.plist"
 
+# App icon (Finder, About panel, Sparkle dialogs, notifications).
+if [[ -f Resources/PearCompanion.icns ]]; then
+    cp Resources/PearCompanion.icns "$APP/Contents/Resources/PearCompanion.icns"
+fi
+
 # Embed the Developer ID provisioning profile that authorizes the CloudKit and
 # push entitlements. Without it a hardened, entitled build will not launch.
 PROFILE="${PROVISION_PROFILE:-Resources/PearCompanion.provisionprofile}"
