@@ -80,6 +80,9 @@ final class ScreenshotService {
         preview.show(
             imageData: data,
             canMarkup: onMarkupRequest != nil,
+            // Only offer Save when auto-save is off; with it on the file is
+            // already in the folder (and the preview already points at it).
+            canSave: !Prefs.screenshotAutoSave,
             onCopy: { [weak self] in
                 self?.copyToPasteboard(data)
                 SoundEffects.play(.copy)
@@ -95,8 +98,20 @@ final class ScreenshotService {
                         log.error("screenshot send failed: \(error.localizedDescription, privacy: .public)")
                     }
                 }
-            }
+            },
+            onSave: { [weak self] in self?.saveToFolder(data) }
         )
+    }
+
+    /// Writes the capture into the screenshot folder on demand — the Save
+    /// button's action when auto-save is off. Reuses the same `persist` writer
+    /// as auto-save, so naming and location stay identical.
+    private func saveToFolder(_ data: Data) {
+        do {
+            _ = try persist(data)
+        } catch {
+            logger.error("screenshot manual save failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Opens the markup editor; on completion, overwrites the saved PNG and

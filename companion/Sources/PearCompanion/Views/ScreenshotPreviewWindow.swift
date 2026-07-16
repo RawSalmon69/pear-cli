@@ -63,10 +63,12 @@ final class ScreenshotPreviewController {
         imageData: Data,
         canMarkup: Bool,
         canSend: Bool = FeatureFlags.coupleNote,
+        canSave: Bool = false,
         onCopy: @escaping () -> Void,
         onReveal: @escaping () -> Void,
         onMarkup: @escaping () -> Void,
-        onSend: @escaping () -> Void
+        onSend: @escaping () -> Void,
+        onSave: @escaping () -> Void = {}
     ) {
         // 252 pt display width @2x — never inflate the full capture here.
         guard let image = Thumbnail.image(from: imageData, maxPixel: 504) else { return }
@@ -76,7 +78,9 @@ final class ScreenshotPreviewController {
             image: image,
             canMarkup: canMarkup,
             canSend: canSend,
+            canSave: canSave,
             onCopy: onCopy,
+            onSave: onSave,
             onReveal: onReveal,
             onMarkup: { [weak self] in
                 onMarkup()
@@ -267,7 +271,9 @@ private struct ScreenshotPreviewView: View {
     let image: NSImage
     let canMarkup: Bool
     let canSend: Bool
+    let canSave: Bool
     let onCopy: () -> Void
+    let onSave: () -> Void
     let onReveal: () -> Void
     let onMarkup: () -> Void
     let onSend: () -> Void
@@ -276,6 +282,7 @@ private struct ScreenshotPreviewView: View {
 
     @State private var drag: CGSize = .zero
     @State private var copied = false
+    @State private var saved = false
 
     var body: some View {
         VStack(spacing: 10) {
@@ -302,6 +309,13 @@ private struct ScreenshotPreviewView: View {
                               label: copied ? "Copied" : "Copy") {
                     onCopy()
                     withAnimation { copied = true }
+                }
+                if canSave {
+                    PreviewAction(symbol: saved ? "checkmark" : "square.and.arrow.down",
+                                  label: saved ? "Saved" : "Save") {
+                        onSave()
+                        withAnimation { saved = true }
+                    }
                 }
                 PreviewAction(symbol: "folder", label: "Reveal", action: onReveal)
                 if canMarkup {
