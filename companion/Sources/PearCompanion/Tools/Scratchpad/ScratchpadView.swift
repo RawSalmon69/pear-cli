@@ -8,6 +8,11 @@ struct ScratchpadView: View {
     let onClose: () -> Void
 
     @State private var confirmingDelete = false
+    @State private var showingSettings = false
+    /// Read here (not just at the controller) so flipping the toggle live
+    /// re-renders the editor with detection on or off.
+    @AppStorage(ScratchpadSettings.Key.linkDetection)
+    private var linkDetection = ScratchpadSettings.defaultLinkDetection
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
@@ -56,6 +61,13 @@ struct ScratchpadView: View {
                 deleteTapped()
             }
 
+            GlyphButton(symbol: "gearshape", help: "Scratchpad settings") {
+                showingSettings.toggle()
+            }
+            .popover(isPresented: $showingSettings, arrowEdge: .bottom) {
+                ScratchpadSettingsView()
+            }
+
             GlyphButton(symbol: "xmark", help: "Close") {
                 onClose()
             }
@@ -63,10 +75,7 @@ struct ScratchpadView: View {
     }
 
     private var editor: some View {
-        TextEditor(text: textBinding)
-            .font(Theme.body)
-            .scrollContentBackground(.hidden)
-            .background(Color.clear)
+        LinkTextView(text: textBinding, detectLinks: linkDetection)
             .onChange(of: store.currentIndex) { _, _ in confirmingDelete = false }
     }
 
@@ -85,5 +94,25 @@ struct ScratchpadView: View {
         } else {
             confirmingDelete = true
         }
+    }
+}
+
+/// The header gear's popover: two live toggles, self-contained in the panel.
+/// Both write `scratchpad.*` keys the controller and editor read at use time,
+/// so changes apply with no relaunch.
+private struct ScratchpadSettingsView: View {
+    @AppStorage(ScratchpadSettings.Key.swipeEnabled)
+    private var swipeEnabled = ScratchpadSettings.defaultSwipeEnabled
+    @AppStorage(ScratchpadSettings.Key.linkDetection)
+    private var linkDetection = ScratchpadSettings.defaultLinkDetection
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            Toggle("Swipe to switch notes", isOn: $swipeEnabled)
+            Toggle("Detect links", isOn: $linkDetection)
+        }
+        .font(Theme.body)
+        .padding(Theme.cardPadding)
+        .frame(width: 220)
     }
 }

@@ -8,6 +8,10 @@ import AppKit
 final class ScratchpadWindowController {
     let store: ScratchpadStore
     private var panel: NSPanel?
+    /// Local scroll monitor, live only while the panel is open — zero cost
+    /// closed (mirrors ShelfWindow's key monitor). Feeds `swipe`.
+    private var scrollMonitor: Any?
+    private var swipe = SwipeAccumulator()
 
     /// `store` created here, not at `ScratchpadTool` init — both the window
     /// and its store are lazy, built together on first activation.
@@ -25,6 +29,7 @@ final class ScratchpadWindowController {
 
     func hide() {
         store.saveNow()
+        removeScrollMonitor()
         panel?.orderOut(nil)
     }
 
@@ -32,6 +37,65 @@ final class ScratchpadWindowController {
         let panel = panel ?? makePanel()
         self.panel = panel
         panel.makeKeyAndOrderFront(nil)
+        installScrollMonitor()
+    }
+
+    // MARK: - Swipe to switch / create notes
+
+    private func installScrollMonitor() {
+        swipe = SwipeAccumulator()
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            self?.handleScroll(event) ?? event
+        }
+    }
+
+    private func removeScrollMonitor() {
+        if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
+        scrollMonitor = nil
+    }
+
+    /// Returns the event to pass through, or `nil` to consume it. Only
+    /// horizontal-dominant frames over our own panel are consumed (so the text
+    /// view never also pans sideways); vertical frames pass through untouched so
+    /// the editor scrolls normally.
+    private func handleScroll(_ event: NSEvent) -> NSEvent? {
+        guard event.window === panel, ScratchpadSettings.swipeEnabled(),
+            let phase = Self.swipePhase(for: event)
+        else { return event }
+
+        if let direction = swipe.feed(
+            deltaX: event.scrollingDeltaX, deltaY: event.scrollingDeltaY, phase: phase) {
+            apply(direction)
+        }
+
+        let horizontal = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
+        return horizontal ? nil : event
+    }
+
+    private func apply(_ direction: SwipeDirection) {
+        switch direction {
+        case .next:
+            // Antinote's swipe-to-new-note: a forward swipe past the last note
+            // creates one; otherwise advance (the store handles wrapping).
+            if store.currentIndex == store.notes.count - 1 {
+                store.createNote()
+            } else {
+                store.next()
+            }
+        case .previous:
+            store.previous()
+        }
+    }
+
+    /// Maps an `NSEvent` scroll to a `SwipePhase`, or `nil` for a classic mouse
+    /// wheel (no phase, no momentum) — those keep the editor's normal scrolling,
+    /// since swipe-to-switch is a trackpad gesture.
+    private static func swipePhase(for event: NSEvent) -> SwipePhase? {
+        if !event.momentumPhase.isEmpty { return .momentum }
+        if event.phase.contains(.began) { return .began }
+        if event.phase.contains(.changed) { return .changed }
+        if event.phase.contains(.ended) || event.phase.contains(.cancelled) { return .ended }
+        return nil
     }
 
     private func makePanel() -> NSPanel {
