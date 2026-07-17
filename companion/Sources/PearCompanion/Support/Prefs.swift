@@ -8,10 +8,18 @@ enum Prefs {
     static let previewAutoDismissKey = "screenshotPreviewAutoDismiss"
     static let previewAutoDismissSecondsKey = "screenshotPreviewAutoDismissSeconds"
     static let previewMaxStackKey = "screenshotPreviewMaxStack"
+    static let panelClosesOnFocusLossKey = "panelClosesOnFocusLoss"
 
     /// Default on for both — opt-out, not opt-in.
     static var soundsEnabled: Bool {
         UserDefaults.standard.object(forKey: soundsKey) as? Bool ?? true
+    }
+
+    /// The panel closes when it loses focus (like a normal menu popover).
+    /// Default on; opt out to pin it open until an explicit close (Esc, the
+    /// menu-bar click, or ⌃⇧P) — the pre-2.7.x behavior.
+    static var panelClosesOnFocusLoss: Bool {
+        UserDefaults.standard.object(forKey: panelClosesOnFocusLossKey) as? Bool ?? true
     }
 
     static var screenshotAutoSave: Bool {

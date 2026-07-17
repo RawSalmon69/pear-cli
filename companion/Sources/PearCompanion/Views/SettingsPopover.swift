@@ -20,6 +20,7 @@ struct SettingsPopover: View {
     @AppStorage(Prefs.previewAutoDismissKey) private var previewAutoDismiss = false
     @AppStorage(Prefs.previewAutoDismissSecondsKey) private var previewAutoDismissSeconds = 6.0
     @AppStorage(Prefs.previewMaxStackKey) private var previewMaxStack = 5
+    @AppStorage(Prefs.panelClosesOnFocusLossKey) private var panelClosesOnFocusLoss = true
 
     private enum Tab: String, CaseIterable, Identifiable {
         case general = "General", tools = "Tools", menuBar = "Menu Bar"
@@ -95,6 +96,18 @@ struct SettingsPopover: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 4)
             }
+        }
+
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Panel")
+            Toggle("Close when it loses focus", isOn: $panelClosesOnFocusLoss)
+                .font(Theme.body)
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+            Text("Off keeps the panel open until you click the menu-bar icon or press Esc. Drag it anywhere by an empty area.")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
 
         VStack(alignment: .leading, spacing: Theme.itemGap) {

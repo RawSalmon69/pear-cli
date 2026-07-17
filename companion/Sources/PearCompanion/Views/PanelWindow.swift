@@ -35,6 +35,15 @@ final class PanelController: NSObject {
     /// `fittingSize` depends only on content, never on the window frame we set.
     private var lastFittedSize: NSSize = .zero
 
+    /// The user dragged the panel, so a later content re-fit must keep their
+    /// position instead of snapping back under the menu-bar item. Reset on each
+    /// open, so a freshly toggled panel always returns to hang under the item.
+    private var userMoved = false
+    /// The origin we last set programmatically. `windowDidMove` compares against
+    /// it (with a 1 pt tolerance for sub-point frame rounding) to tell our own
+    /// fit-driven moves apart from a real user drag.
+    private var lastProgrammaticOrigin: NSPoint = .zero
+
     /// Persists the status item's bar position across launches. Without it the
     /// item is a fresh identity every launch, and macOS drops fresh items at
     /// the far LEFT of the status area — which, on a bar running the menu-bar
@@ -128,6 +137,7 @@ final class PanelController: NSObject {
         panel = nil
         host = nil
         lastFittedSize = .zero
+        userMoved = false
     }
 
     private func show() {
@@ -169,11 +179,19 @@ final class PanelController: NSObject {
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
+        // Drag by any empty background area. Interactive SwiftUI controls
+        // (tiles, buttons, the note field) report `mouseDownCanMoveWindow=false`,
+        // so a press on them still interacts — same one-liner the scratchpad and
+        // cleaner windows use with editable content.
+        panel.isMovableByWindowBackground = true
         panel.onCancel = { [weak self] in self?.hide() }
+        // Delegate drives the close-on-focus-loss toggle and drag detection.
+        panel.delegate = self
         panel.contentView = host
 
         self.host = host
         self.panel = panel
+        userMoved = false
 
         host.layoutSubtreeIfNeeded()
         fitPanelToContent()
@@ -197,15 +215,67 @@ final class PanelController: NSObject {
         lastFittedSize = size
         let screen = buttonWindow.screen ?? NSScreen.main
         let visible = screen?.visibleFrame ?? buttonWindow.frame
-        var origin = NSPoint(
-            x: buttonWindow.frame.midX - size.width / 2,
-            y: buttonWindow.frame.minY - size.height
-        )
+        var origin: NSPoint
+        if userMoved {
+            // Keep the user's top-left corner; only grow/shrink downward so a
+            // late content change (a note arrives, the battery row appears)
+            // doesn't yank the panel back under the menu bar.
+            origin = NSPoint(x: panel.frame.minX, y: panel.frame.maxY - size.height)
+        } else {
+            origin = NSPoint(
+                x: buttonWindow.frame.midX - size.width / 2,
+                y: buttonWindow.frame.minY - size.height
+            )
+        }
         origin.x = min(max(visible.minX + 8, origin.x), visible.maxX - size.width - 8)
         origin.y = max(visible.minY + 8, origin.y)
         let frame = NSRect(origin: origin, size: size)
         // Guarded so the setFrame → layout() → fit loop terminates.
+        lastProgrammaticOrigin = frame.origin
         if panel.frame != frame { panel.setFrame(frame, display: true) }
+    }
+
+    /// Whether a resign-key should close the panel. Pure so the guard — never
+    /// close while our own Settings/Help popover or the folder-picker sheet owns
+    /// focus, and never if the panel took key back — is testable without AppKit.
+    static func shouldAutoClose(
+        prefEnabled: Bool,
+        hasChildWindows: Bool,
+        hasAttachedSheet: Bool,
+        panelIsKey: Bool
+    ) -> Bool {
+        guard prefEnabled else { return false }
+        return !(hasChildWindows || hasAttachedSheet || panelIsKey)
+    }
+}
+
+extension PanelController: NSWindowDelegate {
+    /// Close on focus loss when the user opted in (the default). Deferred one
+    /// turn because opening our own Settings/Help popover — or the folder
+    /// picker — resigns the panel's key status to a child window; re-checking
+    /// next turn lets a self-owned popover keep the panel up.
+    func windowDidResignKey(_ notification: Notification) {
+        Task { @MainActor [weak self] in
+            guard let self, let panel = self.panel else { return }
+            let close = Self.shouldAutoClose(
+                prefEnabled: Prefs.panelClosesOnFocusLoss,
+                hasChildWindows: !(panel.childWindows?.isEmpty ?? true),
+                hasAttachedSheet: panel.attachedSheet != nil,
+                panelIsKey: panel.isKeyWindow
+            )
+            if close { self.hide() }
+        }
+    }
+
+    /// A move whose origin differs from the one we last set (beyond sub-point
+    /// rounding) is a user drag — remember it so the next fit keeps the position.
+    func windowDidMove(_ notification: Notification) {
+        guard let panel else { return }
+        let origin = panel.frame.origin
+        if abs(origin.x - lastProgrammaticOrigin.x) > 1
+            || abs(origin.y - lastProgrammaticOrigin.y) > 1 {
+            userMoved = true
+        }
     }
 }
 
