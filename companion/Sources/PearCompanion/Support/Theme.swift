@@ -71,33 +71,29 @@ final class ThemeStore {
     }
 }
 
-/// Opens the shared `NSColorPanel` bound to `ThemeStore.custom`. This exists
-/// because a SwiftUI ColorPicker can't do the job from the settings popover:
-/// the popover is transient, so the color panel taking key dismisses it and
-/// unmounts the picker — severing the binding mid-pick — and from Pear's
-/// nonactivating panel the color panel could order in behind the frontmost
-/// app. This target lives on the singleton, so picks keep applying live for
-/// as long as the color panel is open, no matter what the popover does.
-@MainActor
-final class AccentColorPanelTarget: NSObject {
-    static let shared = AccentColorPanelTarget()
+/// The custom-accent hue wheel's math: angle → hue, radius → saturation,
+/// brightness pinned vivid (an accent wants full brightness). Owner-requested
+/// replacement for the system color panel — one simple wheel, inline in the
+/// popover, so there is no external panel to fight the transient popover or
+/// the nonactivating app for key status.
+///
+/// SwiftUI view space is y-down and `AngularGradient` sweeps clockwise from
+/// 3 o'clock, and `atan2(dy, dx)` under y-down is also clockwise-positive
+/// from 3 o'clock — so the gesture math below lands exactly on the gradient's
+/// rendered hue. Pure, unit-tested.
+enum AccentWheelMath {
+    /// Hue/saturation under `point` in a wheel of `size`, or nil outside it.
+    static func pick(at point: CGPoint, in size: CGSize) -> (hue: Double, saturation: Double)? {
+        let radius = min(size.width, size.height) / 2
+        guard radius > 0 else { return nil }
+        let dx = point.x - size.width / 2
+        let dy = point.y - size.height / 2
+        let distance = (dx * dx + dy * dy).squareRoot()
+        guard distance <= radius else { return nil }
 
-    func open() {
-        let panel = NSColorPanel.shared
-        panel.showsAlpha = false
-        panel.isContinuous = true
-        panel.color = NSColor(ThemeStore.shared.color)
-        panel.setTarget(self)
-        panel.setAction(#selector(colorChanged(_:)))
-        // Accessory app + nonactivating panel: without an explicit activation
-        // the color panel appears behind whatever app is frontmost (or not at
-        // all, visually) — the reported "doesn't work."
-        NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
-    }
-
-    @objc private func colorChanged(_ sender: NSColorPanel) {
-        ThemeStore.shared.custom = Color(nsColor: sender.color)
+        var hue = Double(atan2(dy, dx)) / (2 * .pi)
+        if hue < 0 { hue += 1 }
+        return (hue, Double(min(1, distance / radius)))
     }
 }
 

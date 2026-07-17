@@ -7,6 +7,7 @@ import AppKit
 struct SettingsPopover: View {
     @Environment(AppEnvironment.self) private var env
     @State private var tab: Tab = .general
+    @State private var showAccentWheel = false
     @State private var keyField = ""
     @State private var role = CoupleKey.deviceRole
     @State private var keyStatus: String?
@@ -66,14 +67,11 @@ struct SettingsPopover: View {
                         ThemeStore.shared.preset = preset
                     }
                 }
-                // Not a SwiftUI ColorPicker: its well can't survive this spot.
-                // The settings popover is transient — the color panel taking
-                // key dismisses it, unmounting the picker and severing its
-                // binding — and from the nonactivating panel the color panel
-                // could open behind the frontmost app. The AppKit target below
-                // outlives the popover, so picks keep applying live.
+                // Not a SwiftUI ColorPicker (its NSColorPanel dismisses this
+                // transient popover, killing the binding) and not the system
+                // color panel either — owner wants one simple wheel, inline.
                 Button {
-                    AccentColorPanelTarget.shared.open()
+                    showAccentWheel.toggle()
                 } label: {
                     Circle()
                         .fill(AngularGradient(
@@ -91,6 +89,11 @@ struct SettingsPopover: View {
                 .buttonStyle(.plain)
                 .focusable(false)
                 .help("Custom color")
+            }
+            if showAccentWheel {
+                AccentWheel { ThemeStore.shared.custom = $0 }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
             }
         }
 
@@ -233,6 +236,40 @@ struct SettingsPopover: View {
                 .pickerStyle(.segmented)
                 .onChange(of: role) { _, newRole in CoupleKey.store(role: newRole) }
             }
+    }
+
+    /// The inline hue/saturation wheel behind the custom-accent swatch: tap or
+    /// drag anywhere on the disc, the accent recolors live as you move. Angle
+    /// is hue, distance from center is saturation, brightness stays vivid —
+    /// the math lives in `AccentWheelMath` (pure, tested).
+    private struct AccentWheel: View {
+        let onPick: (Color) -> Void
+
+        private static let diameter: CGFloat = 140
+
+        var body: some View {
+            Circle()
+                .fill(AngularGradient(
+                    colors: (0...6).map { Color(hue: Double($0) / 6, saturation: 1, brightness: 1) },
+                    center: .center))
+                .overlay(
+                    Circle().fill(RadialGradient(
+                        colors: [.white, .white.opacity(0)], center: .center,
+                        startRadius: 0, endRadius: Self.diameter / 2)))
+                .frame(width: Self.diameter, height: Self.diameter)
+                .contentShape(Circle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { apply(at: $0.location) }
+                        .onEnded { apply(at: $0.location) }
+                )
+        }
+
+        private func apply(at point: CGPoint) {
+            let size = CGSize(width: Self.diameter, height: Self.diameter)
+            guard let pick = AccentWheelMath.pick(at: point, in: size) else { return }
+            onPick(Color(hue: pick.hue, saturation: pick.saturation, brightness: 1))
+        }
     }
 
     private struct AccentSwatch: View {
