@@ -52,31 +52,34 @@ struct KeyCluOverlayView: View {
     }
 
     private var grid: some View {
-        HStack(alignment: .top, spacing: Self.columnGap) {
-            ForEach(Array(columns().enumerated()), id: \.offset) { _, column in
+        let cols = columns()
+        return HStack(alignment: .top, spacing: 18) {
+            ForEach(Array(cols.enumerated()), id: \.offset) { index, column in
                 columnStack(column)
+                if index < cols.count - 1 {
+                    Divider()
+                }
             }
         }
     }
 
     private func columnStack(_ groups: [MenuGroup]) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 22) {
             ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
                 section(group)
             }
-            Spacer(minLength: 0)
         }
         .frame(width: Self.columnWidth, alignment: .leading)
     }
 
     private func section(_ group: MenuGroup) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(group.title)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.accent)
-                .padding(.bottom, 3)
+                .padding(.bottom, 4)
             ForEach(Array(group.shortcuts.enumerated()), id: \.offset) { _, shortcut in
-                HStack(spacing: 12) {
+                HStack(spacing: 16) {
                     Text(shortcut.title)
                         .font(.system(size: 13))
                         .lineLimit(1)
@@ -84,6 +87,7 @@ struct KeyCluOverlayView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text(shortcut.glyph)
                         .font(.system(size: 13, design: .monospaced))
+                        .tracking(3)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -179,8 +183,13 @@ final class KeyCluOverlayController {
         panel.onCancel = { [weak self] in self?.hide() }
         panel.contentView = host
 
-        // Center, then clamp fully on-screen so no row renders off the edge.
-        var origin = NSPoint(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2)
+        // Top-centered on the active screen: horizontally centered, anchored a
+        // little below the top (deterministic — a plain center drifted low on
+        // some screens). Clamp fully on-screen so no row renders off an edge.
+        let topInset = max(28, visible.height * 0.08)
+        var origin = NSPoint(
+            x: visible.midX - size.width / 2,
+            y: visible.maxY - topInset - size.height)
         origin.x = min(max(visible.minX + 8, origin.x), visible.maxX - size.width - 8)
         origin.y = min(max(visible.minY + 8, origin.y), visible.maxY - size.height - 8)
         panel.setFrameOrigin(origin)
