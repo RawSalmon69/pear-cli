@@ -16,9 +16,9 @@ protocol CleanModeKeyboardLocking: AnyObject {
     func release()
 }
 
-/// Covers every screen with an opaque black overlay carrying the Done button,
-/// hint, and live countdown. The real implementation builds pure-AppKit
-/// windows; tests inject a fake so `swift test` never opens real windows.
+/// Covers every screen with an opaque black overlay carrying the Done button
+/// and hint. The real implementation builds pure-AppKit windows; tests inject
+/// a fake so `swift test` never opens real windows.
 @MainActor
 protocol CleanModeScreenBlanking: AnyObject {
     /// Puts a black overlay on every screen. `onDone` fires when any overlay's
@@ -27,35 +27,22 @@ protocol CleanModeScreenBlanking: AnyObject {
     /// Re-covers after a screen-configuration change (a display added/removed),
     /// so a newly attached screen never shows through un-blanked.
     func recover()
-    /// Updates the countdown text on every overlay.
-    func updateCountdown(_ text: String)
     /// Removes every overlay.
     func uncover()
 }
 
-/// Drives the auto-exit countdown. The real implementation is a 1-Hz `Timer`;
-/// tests inject a fake so scheduling logic is verified without wall-clock time.
-@MainActor
-protocol CleanModeCountdownScheduling: AnyObject {
-    /// Ticks once per second, calling `onTick` with the seconds remaining, then
-    /// `onExpire` when it reaches zero.
-    func start(seconds: Int, onTick: @escaping (Int) -> Void, onExpire: @escaping () -> Void)
-    /// Stops the countdown. Safe to call when not running.
-    func cancel()
-}
-
 // MARK: - Controller
 
-/// The Clean Mode state machine. Entering blanks every screen, optionally locks
-/// the keyboard, and starts the auto-exit countdown; every exit path (Done,
-/// timeout, `stop()`, live-disable, termination) funnels through the single
-/// idempotent `exit()` → `teardown()`. Nothing survives exit.
+/// The Clean Mode state machine. Entering blanks every screen and optionally
+/// locks the keyboard; every exit path (Done, `stop()`, live-disable,
+/// termination) funnels through the single idempotent `exit()` → `teardown()`.
+/// Nothing survives exit.
 ///
-/// SAFETY: the one unforgivable failure is locking the user out, so the design
-/// stacks independent escape hatches — the mouse is never tapped, a visible
-/// Done button sits on every screen, and the countdown exits on its own. The
-/// keyboard tap is a session `CGEventTap`, which the OS destroys the instant
-/// this process ends, so a lock can never outlive Pear.
+/// There is deliberately NO auto-timeout (owner: exit only on Done). Safety
+/// still holds without it: the mouse is never tapped, so the Done button on
+/// every screen is always reachable, and the keyboard tap is a session
+/// `CGEventTap`, which the OS destroys the instant this process ends — a lock
+/// can never outlive Pear.
 @MainActor
 final class CleanModeController {
     enum State: Equatable {
@@ -71,7 +58,6 @@ final class CleanModeController {
 
     private let keyboard: CleanModeKeyboardLocking
     private let blanker: CleanModeScreenBlanking
-    private let countdown: CleanModeCountdownScheduling
     private let defaults: UserDefaults
 
     private var screenObserver: NSObjectProtocol?
@@ -80,12 +66,10 @@ final class CleanModeController {
     init(
         keyboard: CleanModeKeyboardLocking,
         blanker: CleanModeScreenBlanking,
-        countdown: CleanModeCountdownScheduling,
         defaults: UserDefaults = .standard
     ) {
         self.keyboard = keyboard
         self.blanker = blanker
-        self.countdown = countdown
         self.defaults = defaults
     }
 
@@ -94,7 +78,6 @@ final class CleanModeController {
         self.init(
             keyboard: CleanModeKeyboardLock(),
             blanker: CleanModeScreenBlanker(),
-            countdown: CleanModeCountdown(),
             defaults: defaults
         )
     }
@@ -117,19 +100,7 @@ final class CleanModeController {
             keyboardLocked = keyboard.engage()
         }
 
-        // 3. Auto-exit countdown, seeded so the overlay shows the full duration
-        //    immediately rather than after the first tick.
-        let seconds = CleanModeSettings.timeoutSeconds(defaults)
-        blanker.updateCountdown(Self.countdownText(remaining: seconds))
-        countdown.start(
-            seconds: seconds,
-            onTick: { [weak self] remaining in
-                self?.blanker.updateCountdown(Self.countdownText(remaining: remaining))
-            },
-            onExpire: { [weak self] in self?.exit() }
-        )
-
-        // 4. Re-cover on display changes; force-exit on app termination.
+        // 3. Re-cover on display changes; force-exit on app termination.
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main
@@ -146,10 +117,9 @@ final class CleanModeController {
         state = .active(keyboardLocked: keyboardLocked)
     }
 
-    /// The single exit path. Idempotent: a no-op unless currently active, so
-    /// Done + timeout racing, a double click, or `stop()` while idle all resolve
-    /// to one clean teardown. Every caller (Done, timeout, `stop()`,
-    /// live-disable, termination) routes here.
+    /// The single exit path. Idempotent: a no-op unless currently active, so a
+    /// double click or `stop()` while idle resolves to one clean teardown.
+    /// Every caller (Done, `stop()`, live-disable, termination) routes here.
     func exit() {
         guard isActive else { return }
         state = .idle // flip first so any re-entrant callback sees idle
@@ -160,7 +130,6 @@ final class CleanModeController {
     /// Each step is independently safe to run when its resource is absent, so
     /// teardown itself is idempotent.
     private func teardown() {
-        countdown.cancel()
         keyboard.release()
         if let screenObserver {
             NotificationCenter.default.removeObserver(screenObserver)
@@ -174,13 +143,6 @@ final class CleanModeController {
     }
 
     // MARK: - Pure helpers (unit-tested without a GUI)
-
-    /// Countdown label as `M:SS`. Negatives clamp to zero, so a late tick can
-    /// never render a negative time.
-    static func countdownText(remaining: Int) -> String {
-        let clamped = max(0, remaining)
-        return String(format: "%d:%02d", clamped / 60, clamped % 60)
-    }
 
     /// The overlay frames for a given screen configuration: one per screen,
     /// dropping any degenerate (zero-area) frame. Used by the real blanker's

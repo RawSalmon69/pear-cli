@@ -1,15 +1,14 @@
 import AppKit
 
 /// Production screen blanker. Puts one opaque black, borderless window on every
-/// `NSScreen`, each carrying a hint, a live countdown, and a Done button. PURE
-/// APPKIT — no `NSHostingView`/SwiftUI anywhere in these windows (the repo's
-/// macOS-26 hosting-view-in-floating-panel crash rule). The mouse is never
-/// intercepted, so the Done button is always clickable; that is the escape
-/// hatch the whole design leans on.
+/// `NSScreen`, each carrying a hint and a Done button. PURE APPKIT — no
+/// `NSHostingView`/SwiftUI anywhere in these windows (the repo's macOS-26
+/// hosting-view-in-floating-panel crash rule). The mouse is never intercepted,
+/// so the Done button is always clickable; that is the escape hatch the whole
+/// design leans on.
 @MainActor
 final class CleanModeScreenBlanker: CleanModeScreenBlanking {
     private var windows: [NSWindow] = []
-    private var countdownFields: [NSTextField] = []
     private var onDone: (() -> Void)?
 
     func cover(onDone: @escaping () -> Void) {
@@ -25,14 +24,9 @@ final class CleanModeScreenBlanker: CleanModeScreenBlanking {
         rebuild()
     }
 
-    func updateCountdown(_ text: String) {
-        for field in countdownFields { field.stringValue = text }
-    }
-
     func uncover() {
         for window in windows { window.orderOut(nil) }
         windows.removeAll()
-        countdownFields.removeAll()
         onDone = nil
     }
 
@@ -41,14 +35,12 @@ final class CleanModeScreenBlanker: CleanModeScreenBlanking {
     private func rebuild() {
         for window in windows { window.orderOut(nil) }
         windows.removeAll()
-        countdownFields.removeAll()
 
         guard !CleanModeRuntime.isRunningTests else { return }
 
         for screen in NSScreen.screens {
-            let (window, countdownField) = makeOverlay(for: screen)
+            let window = makeOverlay(for: screen)
             windows.append(window)
-            countdownFields.append(countdownField)
             window.orderFrontRegardless()
         }
         // Take key so a first click anywhere actuates Done without a focus round
@@ -56,7 +48,7 @@ final class CleanModeScreenBlanker: CleanModeScreenBlanking {
         windows.first?.makeKey()
     }
 
-    private func makeOverlay(for screen: NSScreen) -> (NSWindow, NSTextField) {
+    private func makeOverlay(for screen: NSScreen) -> NSWindow {
         let frame = screen.frame
 
         let window = OverlayWindow(
@@ -82,28 +74,19 @@ final class CleanModeScreenBlanker: CleanModeScreenBlanking {
         let centerY = frame.size.height / 2
 
         let hint = Self.makeLabel(
-            string: "Clean Mode — click Done or wait for the timer",
+            string: "Clean Mode — click Done when you're finished",
             size: 15,
             color: NSColor(white: 0.42, alpha: 1)
         )
-        hint.frame = NSRect(x: centerX - 320, y: centerY + 56, width: 640, height: 24)
+        hint.frame = NSRect(x: centerX - 320, y: centerY + 36, width: 640, height: 24)
         content.addSubview(hint)
 
-        let countdown = Self.makeLabel(
-            string: "",
-            size: 40,
-            color: NSColor(white: 0.55, alpha: 1)
-        )
-        countdown.font = .monospacedDigitSystemFont(ofSize: 40, weight: .medium)
-        countdown.frame = NSRect(x: centerX - 160, y: centerY - 8, width: 320, height: 52)
-        content.addSubview(countdown)
-
         let done = ClosureButton(title: "Done") { [weak self] in self?.onDone?() }
-        done.frame = NSRect(x: centerX - 100, y: centerY - 120, width: 200, height: 60)
+        done.frame = NSRect(x: centerX - 100, y: centerY - 48, width: 200, height: 60)
         content.addSubview(done)
 
         window.contentView = content
-        return (window, countdown)
+        return window
     }
 
     private static func makeLabel(string: String, size: CGFloat, color: NSColor) -> NSTextField {

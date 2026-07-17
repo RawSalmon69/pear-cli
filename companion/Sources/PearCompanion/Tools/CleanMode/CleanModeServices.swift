@@ -4,8 +4,8 @@ import Foundation
 
 /// Belt-and-suspenders test guard. Tests already inject fakes for every seam,
 /// but the real services also refuse to touch the system under `swift test` —
-/// no event tap, no timer — so even a stray real-controller construction in a
-/// test can never lock the machine or spin a wall-clock timer.
+/// no event tap, no windows — so even a stray real-controller construction in
+/// a test can never lock the machine.
 @MainActor
 enum CleanModeRuntime {
     static var isRunningTests: Bool {
@@ -42,43 +42,3 @@ final class CleanModeKeyboardLock: CleanModeKeyboardLocking {
     }
 }
 
-/// Production countdown: a 1-Hz `Timer` on the main run loop. Mirrors the repo's
-/// established timer pattern (`ClipboardHistoryService`).
-@MainActor
-final class CleanModeCountdown: CleanModeCountdownScheduling {
-    private var timer: Timer?
-    private var remaining = 0
-    private var onTick: ((Int) -> Void)?
-    private var onExpire: (() -> Void)?
-
-    func start(seconds: Int, onTick: @escaping (Int) -> Void, onExpire: @escaping () -> Void) {
-        cancel()
-        remaining = max(0, seconds)
-        self.onTick = onTick
-        self.onExpire = onExpire
-        guard !CleanModeRuntime.isRunningTests else { return }
-        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.fire() }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
-    }
-
-    private func fire() {
-        remaining -= 1
-        if remaining <= 0 {
-            let expire = onExpire
-            cancel()
-            expire?()
-        } else {
-            onTick?(remaining)
-        }
-    }
-
-    func cancel() {
-        timer?.invalidate()
-        timer = nil
-        onTick = nil
-        onExpire = nil
-    }
-}

@@ -5,10 +5,10 @@ import XCTest
 
 /// Logic-level cover for Clean Mode's testable seams: the enter/exit state
 /// machine, the single-teardown invariant across every exit path, the
-/// tap-creation-failure fallback (keyboard stays live), timeout scheduling with
-/// an injected countdown, the `cleanmode.*` settings round-trip, and the pure
-/// countdown-text / screen-cover helpers. No event tap, no windows, no
-/// wall-clock timer — every side-effecting seam is a fake.
+/// tap-creation-failure fallback (keyboard stays live), the `cleanmode.*`
+/// settings round-trip, and the pure screen-cover helper. No event tap, no
+/// windows — every side-effecting seam is a fake. There is no auto-timeout:
+/// Clean Mode exits only on Done (or stop()/quit).
 @MainActor
 final class CleanModeTests: XCTestCase {
     // MARK: - Fakes
@@ -35,7 +35,6 @@ final class CleanModeTests: XCTestCase {
         private(set) var coverCount = 0
         private(set) var recoverCount = 0
         private(set) var uncoverCount = 0
-        private(set) var lastCountdown: String?
         var onDone: (() -> Void)?
 
         func cover(onDone: @escaping () -> Void) {
@@ -44,7 +43,6 @@ final class CleanModeTests: XCTestCase {
         }
 
         func recover() { recoverCount += 1 }
-        func updateCountdown(_ text: String) { lastCountdown = text }
 
         func uncover() {
             uncoverCount += 1
@@ -52,45 +50,19 @@ final class CleanModeTests: XCTestCase {
         }
     }
 
-    private final class FakeCountdown: CleanModeCountdownScheduling {
-        private(set) var startCount = 0
-        private(set) var cancelCount = 0
-        private(set) var lastSeconds: Int?
-        var onTick: ((Int) -> Void)?
-        var onExpire: (() -> Void)?
-
-        func start(seconds: Int, onTick: @escaping (Int) -> Void, onExpire: @escaping () -> Void) {
-            startCount += 1
-            lastSeconds = seconds
-            self.onTick = onTick
-            self.onExpire = onExpire
-        }
-
-        func cancel() {
-            cancelCount += 1
-            onTick = nil
-            onExpire = nil
-        }
-
-        func fireExpire() { onExpire?() }
-        func tick(_ remaining: Int) { onTick?(remaining) }
-    }
-
     private struct Rig {
         let controller: CleanModeController
         let keyboard: FakeKeyboardLock
         let blanker: FakeScreenBlanker
-        let countdown: FakeCountdown
     }
 
     private func makeRig(defaults: UserDefaults) -> Rig {
         let keyboard = FakeKeyboardLock()
         let blanker = FakeScreenBlanker()
-        let countdown = FakeCountdown()
         let controller = CleanModeController(
-            keyboard: keyboard, blanker: blanker, countdown: countdown, defaults: defaults
+            keyboard: keyboard, blanker: blanker, defaults: defaults
         )
-        return Rig(controller: controller, keyboard: keyboard, blanker: blanker, countdown: countdown)
+        return Rig(controller: controller, keyboard: keyboard, blanker: blanker)
     }
 
     private func suite(_ name: String) -> UserDefaults {
@@ -112,7 +84,6 @@ final class CleanModeTests: XCTestCase {
         XCTAssertEqual(rig.controller.state, .active(keyboardLocked: true))
         XCTAssertEqual(rig.blanker.coverCount, 1)
         XCTAssertEqual(rig.keyboard.engageCount, 1)
-        XCTAssertEqual(rig.countdown.startCount, 1)
     }
 
     func testEnterWhileActiveIsNoOp() {
@@ -123,10 +94,9 @@ final class CleanModeTests: XCTestCase {
         rig.controller.enter()
         rig.controller.enter()
 
-        // Nothing stacks: one cover, one tap, one countdown.
+        // Nothing stacks: one cover, one tap.
         XCTAssertEqual(rig.blanker.coverCount, 1)
         XCTAssertEqual(rig.keyboard.engageCount, 1)
-        XCTAssertEqual(rig.countdown.startCount, 1)
     }
 
     func testExitIsIdempotentAndTearsDownOnce() {
@@ -142,7 +112,6 @@ final class CleanModeTests: XCTestCase {
         XCTAssertEqual(rig.controller.state, .idle)
         XCTAssertEqual(rig.blanker.uncoverCount, 1)
         XCTAssertEqual(rig.keyboard.releaseCount, 1)
-        XCTAssertEqual(rig.countdown.cancelCount, 1)
     }
 
     func testExitWhileIdleDoesNothing() {
@@ -157,7 +126,7 @@ final class CleanModeTests: XCTestCase {
         XCTAssertEqual(rig.keyboard.releaseCount, 0)
     }
 
-    // MARK: - Every exit path funnels to one teardown
+    // MARK: - The Done path funnels to the one teardown
 
     func testDonePathTearsDown() {
         let defaults = suite("cleanmode-done")
@@ -170,21 +139,20 @@ final class CleanModeTests: XCTestCase {
         XCTAssertFalse(rig.controller.isActive)
         XCTAssertEqual(rig.blanker.uncoverCount, 1)
         XCTAssertEqual(rig.keyboard.releaseCount, 1)
-        XCTAssertEqual(rig.countdown.cancelCount, 1)
     }
 
-    func testTimeoutPathTearsDown() {
-        let defaults = suite("cleanmode-timeout-path")
-        defer { defaults.removePersistentDomain(forName: "cleanmode-timeout-path") }
+    func testReenterAfterDoneWorks() {
+        let defaults = suite("cleanmode-reenter-after-done")
+        defer { defaults.removePersistentDomain(forName: "cleanmode-reenter-after-done") }
         let rig = makeRig(defaults: defaults)
 
         rig.controller.enter()
-        rig.countdown.fireExpire() // timer reached zero
+        rig.blanker.onDone?()
+        rig.controller.enter()
 
-        XCTAssertFalse(rig.controller.isActive)
-        XCTAssertEqual(rig.blanker.uncoverCount, 1)
-        XCTAssertEqual(rig.keyboard.releaseCount, 1)
-        XCTAssertEqual(rig.countdown.cancelCount, 1)
+        XCTAssertTrue(rig.controller.isActive)
+        XCTAssertEqual(rig.blanker.coverCount, 2)
+        XCTAssertEqual(rig.keyboard.engageCount, 2)
     }
 
     // MARK: - Tap-creation-failure fallback
@@ -219,51 +187,12 @@ final class CleanModeTests: XCTestCase {
         XCTAssertEqual(rig.blanker.coverCount, 1)
     }
 
-    // MARK: - Timeout scheduling honors the setting
-
-    func testCountdownUsesDefaultDuration() {
-        let defaults = suite("cleanmode-dur-default")
-        defer { defaults.removePersistentDomain(forName: "cleanmode-dur-default") }
-        let rig = makeRig(defaults: defaults)
-
-        rig.controller.enter()
-
-        XCTAssertEqual(rig.countdown.lastSeconds, 60)
-        // Overlay is seeded with the full time immediately.
-        XCTAssertEqual(rig.blanker.lastCountdown, "1:00")
-    }
-
-    func testCountdownHonorsConfiguredDuration() {
-        let defaults = suite("cleanmode-dur-set")
-        defer { defaults.removePersistentDomain(forName: "cleanmode-dur-set") }
-        defaults.set(CleanModeTimeout.fiveMinutes.rawValue, forKey: CleanModeSettings.Key.timeout)
-        let rig = makeRig(defaults: defaults)
-
-        rig.controller.enter()
-
-        XCTAssertEqual(rig.countdown.lastSeconds, 300)
-        XCTAssertEqual(rig.blanker.lastCountdown, "5:00")
-    }
-
-    func testTickUpdatesOverlayCountdown() {
-        let defaults = suite("cleanmode-tick")
-        defer { defaults.removePersistentDomain(forName: "cleanmode-tick") }
-        let rig = makeRig(defaults: defaults)
-
-        rig.controller.enter()
-        rig.countdown.tick(65)
-
-        XCTAssertEqual(rig.blanker.lastCountdown, "1:05")
-    }
-
     // MARK: - Settings accessors (defaults + fallback)
 
     func testSettingsDefaultsWhenUnset() {
         let defaults = suite("cleanmode-settings-default")
         defer { defaults.removePersistentDomain(forName: "cleanmode-settings-default") }
 
-        XCTAssertEqual(CleanModeSettings.timeout(defaults), .oneMinute)
-        XCTAssertEqual(CleanModeSettings.timeoutSeconds(defaults), 60)
         XCTAssertTrue(CleanModeSettings.lockKeyboard(defaults))
     }
 
@@ -271,38 +200,14 @@ final class CleanModeTests: XCTestCase {
         let defaults = suite("cleanmode-settings-roundtrip")
         defer { defaults.removePersistentDomain(forName: "cleanmode-settings-roundtrip") }
 
-        defaults.set(CleanModeTimeout.twoMinutes.rawValue, forKey: CleanModeSettings.Key.timeout)
         defaults.set(false, forKey: CleanModeSettings.Key.lockKeyboard)
-
-        XCTAssertEqual(CleanModeSettings.timeout(defaults), .twoMinutes)
-        XCTAssertEqual(CleanModeSettings.timeoutSeconds(defaults), 120)
         XCTAssertFalse(CleanModeSettings.lockKeyboard(defaults))
-    }
 
-    func testGarbageTimeoutFallsBackToDefault() {
-        let defaults = suite("cleanmode-settings-garbage")
-        defer { defaults.removePersistentDomain(forName: "cleanmode-settings-garbage") }
-
-        // A value not in the picker's set (e.g. a stray `defaults write`).
-        defaults.set(999, forKey: CleanModeSettings.Key.timeout)
-        XCTAssertEqual(CleanModeSettings.timeout(defaults), .oneMinute)
-        XCTAssertEqual(CleanModeSettings.timeoutSeconds(defaults), 60)
-
-        defaults.set(0, forKey: CleanModeSettings.Key.timeout)
-        XCTAssertEqual(CleanModeSettings.timeoutSeconds(defaults), 60)
+        defaults.set(true, forKey: CleanModeSettings.Key.lockKeyboard)
+        XCTAssertTrue(CleanModeSettings.lockKeyboard(defaults))
     }
 
     // MARK: - Pure helpers
-
-    func testCountdownTextFormatting() {
-        XCTAssertEqual(CleanModeController.countdownText(remaining: 0), "0:00")
-        XCTAssertEqual(CleanModeController.countdownText(remaining: 5), "0:05")
-        XCTAssertEqual(CleanModeController.countdownText(remaining: 59), "0:59")
-        XCTAssertEqual(CleanModeController.countdownText(remaining: 60), "1:00")
-        XCTAssertEqual(CleanModeController.countdownText(remaining: 125), "2:05")
-        XCTAssertEqual(CleanModeController.countdownText(remaining: 300), "5:00")
-        XCTAssertEqual(CleanModeController.countdownText(remaining: -10), "0:00") // clamps
-    }
 
     func testCoverFramesOnePerScreenDroppingDegenerate() {
         let a = CGRect(x: 0, y: 0, width: 1440, height: 900)

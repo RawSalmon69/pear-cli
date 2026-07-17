@@ -2,9 +2,9 @@ import SwiftUI
 
 /// Clean Mode: blacks out every display and (by default) locks the keyboard so
 /// you can wipe the screen and keys without triggering anything. Entering is
-/// explicit — a tile click, never automatic. Exit is guaranteed three ways, each
-/// independently sufficient: the on-screen Done button, the auto-timeout, and —
-/// because the mouse is never tapped — the pointer stays fully live throughout.
+/// explicit — a tile click, never automatic. Exit is the on-screen Done button
+/// (no auto-timeout, owner decision), always reachable because the mouse is
+/// never tapped; live-disable and app quit also force-exit.
 ///
 /// Off by default: it mutates system input while active, so it ships opt-in like
 /// the other system-touching tools. `stop()` (live-disable) force-exits, so
@@ -17,7 +17,7 @@ final class CleanModeTool: Tool {
     let title = "Clean Mode"
     let icon = "sparkles.tv"
     let category = ToolCategory.system
-    let summary = "Black out the screen and lock the keyboard to clean your Mac. Click Done or wait to exit."
+    let summary = "Black out the screen and lock the keyboard to clean your Mac. Click Done to exit."
     // Opt-in: it locks keyboard input while active (a system-mutating tool).
     let defaultEnabled = false
     let hotkey: HotKeyChord? = nil
