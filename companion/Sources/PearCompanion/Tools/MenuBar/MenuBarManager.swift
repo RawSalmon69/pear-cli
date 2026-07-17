@@ -19,6 +19,11 @@ final class MenuBarManager {
 
     /// Narrow slot that reveals a zone and leaves items to its left alone.
     static let expandedLength: CGFloat = 24
+    /// Revealed width when the divider line is hidden: nearly zero so the
+    /// separator leaves no visible gap (the empty 24-pt slot read as a blank
+    /// black space). Non-zero so it keeps a readable frame for the position
+    /// guard; it still inflates to `collapsedLength` to hide on collapse.
+    static let hiddenSeparatorLength: CGFloat = 1
     /// Oversized slot that pushes every item to the separator's left off-screen.
     static let collapsedLength: CGFloat = 10_000
 
@@ -233,15 +238,21 @@ final class MenuBarManager {
         defaults.set(enabled, forKey: optionRevealKey)
     }
 
-    /// Rule-B live toggle: whether the stretch separator draws its line.
+    /// Rule-B live toggle: whether the stretch separator draws its line. Also
+    /// re-applies the length, since hiding the line shrinks the revealed slot to
+    /// ~0 (and showing it restores the full width for the glyph).
     func setDividerLineVisible(_ visible: Bool) {
         dividerLineVisible = visible
         defaults.set(visible, forKey: dividerLineKey)
         surface?.setDividerVisible(visible)
+        applyState()
     }
 
     private func applyState() {
-        surface?.separatorLength = Self.separatorLength(collapsed: isCollapsed)
+        // When the divider line is hidden the revealed width shrinks to ~0 so
+        // there's no blank slot; collapse still inflates to `collapsedLength`.
+        let revealed = dividerLineVisible ? Self.expandedLength : Self.hiddenSeparatorLength
+        surface?.separatorLength = isCollapsed ? Self.collapsedLength : revealed
         surface?.setChevron(collapsed: isCollapsed)
         if alwaysHiddenEnabled {
             surface?.alwaysHiddenLength = Self.alwaysHiddenSeparatorLength(revealed: alwaysHiddenRevealed)

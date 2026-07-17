@@ -86,6 +86,14 @@ final class MenuBarManagerTests: XCTestCase {
 
         manager.setDividerLineVisible(false)
         XCTAssertEqual(surface.dividerVisible, false)
+
+        // Expanded, the revealed slot is full width only when the line shows;
+        // hidden it shrinks to ~0 so there's no blank gap.
+        manager.expand()
+        manager.setDividerLineVisible(true)
+        XCTAssertEqual(surface.separatorLength, MenuBarManager.expandedLength)
+        manager.setDividerLineVisible(false)
+        XCTAssertEqual(surface.separatorLength, MenuBarManager.hiddenSeparatorLength)
     }
 
     func testDisplaysIncludeNotchFromTopSafeAreaInset() {
@@ -119,7 +127,7 @@ final class MenuBarManagerTests: XCTestCase {
 
         manager.toggle()
         XCTAssertFalse(manager.isCollapsed)
-        XCTAssertEqual(fake.separatorLength, MenuBarManager.expandedLength)
+        XCTAssertEqual(fake.separatorLength, MenuBarManager.hiddenSeparatorLength)
         XCTAssertEqual(fake.lastChevronCollapsed, false)
 
         manager.toggle()
@@ -156,7 +164,7 @@ final class MenuBarManagerTests: XCTestCase {
         fake.chevronRightOfSeparator = false
         manager.collapse()
         XCTAssertFalse(manager.isCollapsed, "must stay expanded when the chevron isn't right of the separator")
-        XCTAssertEqual(fake.separatorLength, MenuBarManager.expandedLength)
+        XCTAssertEqual(fake.separatorLength, MenuBarManager.hiddenSeparatorLength)
 
         // Once the arrangement is valid again, collapse proceeds.
         fake.chevronRightOfSeparator = true
@@ -204,7 +212,7 @@ final class MenuBarManagerTests: XCTestCase {
 
         fake.onOptionToggle?()
         XCTAssertFalse(manager.isCollapsed)
-        XCTAssertEqual(fake.separatorLength, MenuBarManager.expandedLength)
+        XCTAssertEqual(fake.separatorLength, MenuBarManager.hiddenSeparatorLength)
         XCTAssertEqual(fake.alwaysHiddenLength, MenuBarManager.expandedLength, "always-hidden zone revealed too")
     }
 
@@ -275,7 +283,7 @@ final class MenuBarManagerTests: XCTestCase {
         // Reveal-then-remove: both zones open before the items drop, so nothing
         // stays hidden after the tool is disabled.
         XCTAssertFalse(manager.isCollapsed)
-        XCTAssertEqual(fake.separatorLength, MenuBarManager.expandedLength)
+        XCTAssertEqual(fake.separatorLength, MenuBarManager.hiddenSeparatorLength)
         XCTAssertEqual(fake.alwaysHiddenLength, MenuBarManager.expandedLength)
         XCTAssertTrue(fake.removed)
     }
