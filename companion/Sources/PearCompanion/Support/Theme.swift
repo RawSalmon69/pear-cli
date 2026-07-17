@@ -71,6 +71,36 @@ final class ThemeStore {
     }
 }
 
+/// Opens the shared `NSColorPanel` bound to `ThemeStore.custom`. This exists
+/// because a SwiftUI ColorPicker can't do the job from the settings popover:
+/// the popover is transient, so the color panel taking key dismisses it and
+/// unmounts the picker — severing the binding mid-pick — and from Pear's
+/// nonactivating panel the color panel could order in behind the frontmost
+/// app. This target lives on the singleton, so picks keep applying live for
+/// as long as the color panel is open, no matter what the popover does.
+@MainActor
+final class AccentColorPanelTarget: NSObject {
+    static let shared = AccentColorPanelTarget()
+
+    func open() {
+        let panel = NSColorPanel.shared
+        panel.showsAlpha = false
+        panel.isContinuous = true
+        panel.color = NSColor(ThemeStore.shared.color)
+        panel.setTarget(self)
+        panel.setAction(#selector(colorChanged(_:)))
+        // Accessory app + nonactivating panel: without an explicit activation
+        // the color panel appears behind whatever app is frontmost (or not at
+        // all, visually) — the reported "doesn't work."
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func colorChanged(_ sender: NSColorPanel) {
+        ThemeStore.shared.custom = Color(nsColor: sender.color)
+    }
+}
+
 /// Design tokens. Type scale is 3:4 (11 · 13 · 15 · 17 · 22); spacing is a
 /// 4-based scale where section gaps (20) dominate intra-section gaps (8) so
 /// whitespace, not rules, carries the hierarchy.

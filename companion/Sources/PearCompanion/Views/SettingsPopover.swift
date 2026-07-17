@@ -66,15 +66,30 @@ struct SettingsPopover: View {
                         ThemeStore.shared.preset = preset
                     }
                 }
-                ColorPicker(
-                    "Custom accent",
-                    selection: Binding(
-                        get: { ThemeStore.shared.color },
-                        set: { ThemeStore.shared.custom = $0 }
-                    ),
-                    supportsOpacity: false
-                )
-                .labelsHidden()
+                // Not a SwiftUI ColorPicker: its well can't survive this spot.
+                // The settings popover is transient — the color panel taking
+                // key dismisses it, unmounting the picker and severing its
+                // binding — and from the nonactivating panel the color panel
+                // could open behind the frontmost app. The AppKit target below
+                // outlives the popover, so picks keep applying live.
+                Button {
+                    AccentColorPanelTarget.shared.open()
+                } label: {
+                    Circle()
+                        .fill(AngularGradient(
+                            colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red],
+                            center: .center))
+                        .frame(width: 20, height: 20)
+                        .overlay {
+                            if ThemeStore.shared.custom != nil {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .focusable(false)
                 .help("Custom color")
             }
         }
