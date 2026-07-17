@@ -47,7 +47,7 @@ struct KeyCluOverlayView: View {
                     Text(shortcut.title).font(Theme.body)
                     Spacer(minLength: 12)
                     Text(shortcut.glyph)
-                        .font(.system(.body, design: .monospaced))
+                        .font(.system(size: 13, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -88,6 +88,7 @@ final class KeyCluOverlayController {
 
         let host = NSHostingView(rootView: KeyCluOverlayView(
             appName: appName, appIcon: appIcon, groups: groups))
+        host.sizingOptions = []
         let size = host.fittingSize
 
         let panel = KeyCluPanel(
