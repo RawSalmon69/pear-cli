@@ -17,7 +17,10 @@ struct LiveMenuAXProvider: MenuAXProviding {
         return node(from: bar)
     }
 
-    private func node(from element: AXUIElement) -> AXNode {
+    // ponytail: depth cap guards against cyclic AX trees; real menus are shallow (<~5).
+    private static let maxDepth = 20
+
+    private func node(from element: AXUIElement, depth: Int = 0) -> AXNode {
         DockAX.capTimeout(element)
         let title = DockAX.string(element, kAXTitleAttribute) ?? ""
         let enabled = DockAX.bool(element, kAXEnabledAttribute) ?? true
@@ -29,11 +32,17 @@ struct LiveMenuAXProvider: MenuAXProviding {
         // A menu-bar item / submenu parent holds its items inside one AXMenu
         // child. Flatten that so `children` are the items themselves.
         var children: [AXNode] = []
-        for child in DockAX.elements(element, kAXChildrenAttribute) ?? [] {
-            if DockAX.string(child, kAXRoleAttribute) == kAXMenuRole {
-                children += (DockAX.elements(child, kAXChildrenAttribute) ?? []).map { node(from: $0) }
-            } else {
-                children.append(node(from: child))
+        if depth < Self.maxDepth {
+            for child in DockAX.elements(element, kAXChildrenAttribute) ?? [] {
+                if DockAX.string(child, kAXRoleAttribute) == kAXMenuRole {
+                    DockAX.capTimeout(child)
+                    children +=
+                        (DockAX.elements(child, kAXChildrenAttribute) ?? []).map {
+                            node(from: $0, depth: depth + 1)
+                        }
+                } else {
+                    children.append(node(from: child, depth: depth + 1))
+                }
             }
         }
 
