@@ -1,78 +1,72 @@
-# PearCompanion v2.3 — QoL & Refinement Session Prompt
+# PearCompanion — Next Session (Round 10) Orchestrator Prompt
 
 Paste this to start the next clean session.
 
 ---
 
-You are the Fable orchestrator for PearCompanion v2.3 (QoL + refinement round). Orchestrate: keep architecture, integration, safety review, and verification in your own Fable main loop; spawn **opus** subagents in isolated git worktrees for parallel or self-contained work. Adversarially verify every agent result — read the diff line-by-line, run swift build (zero warnings, on a NON-incremental build — incremental masks warnings) + swift test, and for shippable work do a dev launch + footprint check (≤80 MB idle / ~0% CPU) before merging. Commit per feature, push main when verified. Ship via companion-v* tags only on the maintainer's explicit channel confirmation.
+You are the Fable orchestrator for PearCompanion round 10. Orchestrate: keep architecture, integration, safety review, and verification in your own Fable main loop; spawn **opus** subagents in isolated git worktrees for parallel or self-contained work. Adversarially verify every agent result — read the diff line-by-line, run `swift build` (zero warnings, NON-incremental — `rm -rf .build` twice, incremental masks warnings) + `swift test`, and for shippable work do `./build.sh` → launch the assembled .app → status-item + footprint check (≤80 MB idle / ~0% CPU) before merging. Commit per feature, push main when verified. Release automatically once fully verified per the standing rule — do NOT wait for per-release confirmation (channels: GitHub release + appcast).
 
-Invoke the ponytail skill and keep it active all session — laziest solution that works, fewest files, shortest diff. "Lazy" means adopt upstream code that already works rather than rebuild it, not "hand-roll a minimal version."
+Invoke the **ponytail** skill and keep it active — laziest solution that works, fewest files, shortest diff. "Lazy" = adopt upstream code that already works, not hand-roll a minimal version.
 
-Read FIRST: the memory at /Users/raws/.claude/projects/-Users-raws-Documents-Github-pear-cli/memory/ (project state, every gotcha — especially the v2.2 entries: Bundle.pearResources, measurement pitfalls, dead-agent rules), then the app under companion/Sources/PearCompanion/.
+Read FIRST: memory at `/Users/raws/.claude/projects/-Users-raws-Documents-Github-pear-cli/memory/` (every gotcha — especially the macOS-26 NSHostingView toast crash and the lldb technique), then the app under `companion/Sources/PearCompanion/`. Current tip: **companion-v2.6.4** (CFBundleVersion 20, next build is 21). 296 tests, ~15 MB bundle, ~68 MB idle.
 
-## Where things stand
+## Standing rules (owner, unchanged)
+- **A. Copy what works** — vendor upstream UI/logic verbatim where better (GPL/Apache/MIT fine for F&F; provenance headers + license texts in `Resources/Licenses/`).
+- **B. Everything toggleable + richly customizable, applied LIVE** — a Settings toggle + options section is part of definition-of-done for every feature.
+- **Release when verified** — see `[[release-when-verified]]` memory.
 
-companion-v2.2.1 shipped 2026-07-16 (notarized, launch-verified, appcast live, auto-updated owner's Macs). 198 tests green, ~58 MB idle / 0% CPU, 9 MB bundle. On main: live tool toggles + rebindable hotkeys (no relaunch), Loop's real radial ring + display-synced snap animation, all 25 RunCat runners + grid picker, Monitor section toggles/refresh/history charts, Radix sunburst zoom/pan + treemap tooltips, Esc-everywhere, DockDoor hover-preview v1 (static thumbnails, on by default), CI launch-smoke crash guard.
+## Hard gotchas — do NOT rediscover
+- **macOS 26: NEVER host a SwiftUI `NSHostingView` as a small floating NSPanel's contentView with glass/material content** — it enters an unbreakable AppKit constraint-invalidation runaway (`updateWindowContentSizeExtremaIfNecessary → invalidateTransform → re-mark`) and crashes. Use **plain AppKit** (NSVisualEffectView + NSTextField, explicit frames) for tiny toast/HUD panels. This burned 4 release attempts; the fix is in `ColorToast.swift`.
+- **Diagnostic for redacted crashes**: `xcrun lldb -s cmds` with `break set -E objc` + a breakpoint command printing `po (id)$arg1` / `po [(id)$arg1 reason]` / `bt` / `continue` — freezes at the throw and prints the real reason BEFORE AppKit converts it to a crash. `.ips` reasons are `<private>`; `-NSApplicationCrashOnExceptions NO` does NOT suppress it. Isolated repros may not reproduce the positive — the real app context is required.
+- **`Bundle.pearResources`** for every resource load, NEVER `Bundle.module` (crash-looped 2.2.0).
+- **Dead-agent flake**: agents that spawn with 0 tool uses (instant exit) are dead — spawn FRESH, never resume (a resume writes into the main tree). This session one slot died 3× in a row; keep respawning or do the task inline if small.
+- **Every worktree agent's first action**: `git rebase main` + verify HEAD. `git status` before any `git add -A` while agents are in flight.
+- **NO private APIs** (the DockDoor line held all session): no `_AX*` brute force, no CoreDock*, no SkyLight. If a feature needs one, flag it and let the owner decide; don't sneak it in.
+- Swift 6 strict: @Observable stored props are computed → `@ObservationIgnored` for deinit-touched; AXUIElement/CGEvent/NSStatusItem not Sendable; no `@unchecked Sendable` without written justification.
+- Menu-bar / any status item: seed a right-edge "NSStatusItem Preferred Position" on first run or it spawns under the notch on a crowded bar; keep the self-hide guard.
+- Release: bump BOTH CFBundleShortVersionString and CFBundleVersion; appcast `sparkle:version` = build integer; shipped-zip gauntlet (spctl + stapler + **direct-exec launch**) is mandatory; notes via `gh release edit` (never create).
+- Size gate: 20 MB (companion-release.yml). Keep the bundle lean.
 
-Standing rules (owner, unchanged): **A. Copy what works** — vendor upstream UI verbatim where better (GPL/Apache/MIT fine for F&F; provenance headers + license texts in Resources/Licenses/). **B. Everything toggleable + richly customizable, applied LIVE** — toggle + settings section is part of definition-of-done for every feature.
+## Round 10 work list
 
-## Owner feedback round 6 (2026-07-16, post-2.2.1) — the work list, in priority order
+### 1. DockDoor hover reliability (investigate first — root-cause, owner priority)
+Owner: "dock preview still only works on hover for SOME apps, and sometimes I have to click the app first (which activates it) and THEN the preview shows up." This is the key bug. Hypothesis: a non-frontmost app's AX window list can come back empty until the app is activated, so the first hover finds nothing; clicking activates it → AX populates → next hover works. Investigate `DockWindows.enumerate` / `DockAX`: does AX need the app frontmost? Is there a public way to enumerate a background app's windows reliably (CGWindowList across the app's pids as a pre-warm, retry-after-delay, or a lightweight AX poke that doesn't steal focus)? The 2.6.0/2.6.3 work already widened subroles + fullscreen + floating windows; this is the ACTIVATION-STATE gap. Public APIs only; document any hard limit honestly. This is a diagnosis-heavy slice — the orchestrator should reproduce/reason carefully, maybe with a scouted DockDoor upstream comparison (re-clone github.com/ejbills/DockDoor).
 
-For EVERY item below, check what open source already has before hand-building (owner: "use what works and copy-overable from opensource first"): Radix's discard pile for the disk staging, dwarvesf/hidden (MIT) for the menu-bar chevron model, DockDoor upstream for the switcher and window enumeration. Scout the upstream first, vendor with provenance, hand-build only where nothing good exists.
+### 2. DockDoor preview: keep-after-focus-lost toggle
+Owner wants a Rule-B setting: whether the hover preview panel stays up after focus is lost, or dismisses. Add to DockDoorSettings + DockDoorSettingsView, live-applied.
 
-**Reliability first (owner: "lots of the time clicking on each button still doesn't work, doesn't show anything"):**
+### 3. Scratchpad: swipe-to-new-note + hyperlink support (Antinote parity)
+- **Swipe to create a new note** like Antinote (github.com/uwaisalim/antinote or the known Antinote app — scout the gesture UX). Scratchpad is currently a single autosaving note; add multi-note with a swipe gesture to create/switch. Keep autosave per note.
+- **Link/hyperlink support**: detect URLs and make them clickable (open in browser), and/or allow inserting a hyperlink. NSTextView data-detection or an attributed-string link pass — keep it simple, plain AppKit/SwiftUI text.
+Files: `Tools/Scratchpad/`.
 
-1. **Panel tiles frequently dead on click.** Clicking tiles often shows nothing. Root-cause this before polishing anything — owner expects root-cause fixes, not workarounds. Leads: tile `.popover` attachment inside the MenuBarExtra window (only one popover can be up; a stale `activePopoverID` may block the next), first-click-after-open focus issues, non-activating panel key handling. Reproduce first (PanelView.swift ToolsSection, activePopoverID state), then fix the mechanism, not the symptom.
+### 4. "Switches" tool — OWNER-LOCKED subset of OneSwitch (jaywcjlove/OneSwitch, open source)
+Build a new **Switches** tool (its own tile, a grid; each switch individually on/off in Settings per Rule B; system-mutating ones default OFF). Scout the repo for the exact current implementation of each, but build ONLY these eight owner-approved **clean, public-API** switches — nothing private (no CoreBrightness Night Shift/True Tone, no private BT AirPods), nothing destructive (no Empty Trash):
+1. **Keep Awake** — IOKit power assertion (prevent display/system sleep).
+2. **Hide Desktop Icons** — `defaults write com.apple.finder CreateDesktop` + relaunch Finder (or a covering window; pick the cleaner).
+3. **Show Hidden Files** — `defaults write com.apple.finder AppleShowAllFiles` + relaunch Finder.
+4. **Screen Saver** — start it immediately.
+5. **Lock Screen** — instant lock.
+6. **Mute** — system volume mute toggle.
+7. **Big Cursor** — accessibility pointer size.
+8. **Screen Test** — full-screen solid-color cycle for dead-pixel checks (self-contained).
+Any switch that shells to `defaults`/Finder relaunch or `osascript` needs a `PEAR_TEST`-style guard or mock so `swift test` never mutates the real system (repo rule). No private APIs.
 
-2. **Grey rectangular focus box around the MAC section on open** (owner: "like I clicked on it, I hate that" — screenshot on file). The Mac stats row is a tappable button (opens Monitor) and takes first-responder focus when the panel opens. Kill the ring (focusEffectDisabled/focusable(false) or defaultFocus elsewhere) — sweep the whole panel for open-time focus artifacts while there.
+### 5. "Clean Mode" — black screen + keyboard lock (OWNER-LOCKED; SAFETY-CRITICAL)
+Owner wants a wipe-the-Mac mode (like OneSwitch's clean mode): black out all displays and lock the keyboard so wiping the screen/keys triggers nothing. **Design that CANNOT lock the user out (mandatory):**
+- Full-screen black borderless window on EVERY display (high window level, `canJoinAllSpaces`). Pure AppKit, self-contained.
+- **Keyboard** swallowed via a session-scoped CGEventTap (the existing `Tools/Windows/KeySwallowTap.swift` pattern — public API, created on enter / invalidated on exit, keyDown+keyUp). **MOUSE STAYS LIVE** — do NOT swallow mouse events.
+- Exit is bulletproof and mouse-driven: a visible **"Done" button** on the black overlay (clickable because the mouse isn't locked), PLUS an auto-timeout (e.g. 60 s) and a graceful fallback if the tap can't be created (then don't lock the keyboard at all, just black the screen with the Done button). Never leave the user with no way out.
+- Orchestrator: review this one LINE-BY-LINE and actually smoke it (the failure mode is locking yourself out — verify Done + timeout + tap-teardown before merge). Rule-B toggle; default off (system-mutating). Ships with the Switches tool or as its own tile — your call.
 
-**Tool UX fixes:**
+### 6. Icon search tool — svgl + IconBuddy (OWNER-APPROVED; network dependency accepted)
+Owner: "useful enough." A tool to search/browse icons → copy SVG / drag out. Owner has ACCEPTED the network dependency (a departure from the offline/no-live-deps posture — noted and approved for this tool). Use **svgl's public API (svgl.app/api)** first — open, no auth, no telemetry; cache results; treat IconBuddy (iconbuddy.com) similarly only if it has a clean public API, else skip it. Behind an explicit tool toggle (Rule B). Keep it dependency-light: URLSession + the app's existing Thumbnail/drag-out plumbing, no new SPM packages. No credentials, no analytics, fail gracefully offline (show "needs internet" rather than hang).
 
-3. **Color Picker flow is broken UX.** Today: tile → popover → Pick color → sample → popover closed, no feedback, result only visible by reopening. Owner wants: pick → **hex lands on the clipboard immediately** + a confirmation pop-up/toast (+ the copy sound). The hotkey path already does copy-hex (ColorStore.pickColor(copyingHex:)) — make the tile/popover path do the same and add visible confirmation (small toast near cursor; keep it sleek). Rule B: make the copied format (HEX/RGB/HSL) a setting if trivial.
-
-4. **Default cat runner renders way too small** next to the gallery runners. Legacy cat/parrot/horse are 32×32 squares scaled to 18 pt height; gallery frames are 36 px tall and wider. Normalize perceived size (RunnerStyle.scaledSize in Tools/RunCat/RunnerStyle.swift) — scale legacy sets to match the gallery's visual weight or swap the default to the gallery's classic-cat. Owner compares side by side; make them consistent in the menu bar AND the picker grid.
-
-5. **Windows popover overflows.** After opening the Windows tile, content doesn't fit: the snap-animation controls and everything below are cut off / out of bounds (WindowsView grew past the popover in v2.2). Restructure: bounded ScrollView, tighter sections, or split zones grid vs settings — dense, no clipped controls. Sweep other popovers for the same overflow while there.
-
-6. **? help sheet: uneven row colors** — some rows render a different "blackness" than others (glassCard/material inconsistency in HelpView rows). Make them uniform.
-
-**Disk (two-phase delete + fixes):**
-
-7. **Right-click context menu** on disk items (bars/sunburst/treemap rows) with Delete.
-8. **Staged deletion instead of instant:** deleting marks the item into a visible "Pending deletion" section; each pending item can be restored/cancelled (right-click or button); a single explicit "Delete all" button then moves everything to Trash at once. **Vendor Radix's discard-pile UI for this** — Radix (clone: colinvkim/Radix, MIT, scouted at commit 6c694377) has exactly this staging model and the v2.2 adoption deliberately skipped it as out-of-scope; it is now the scope. Keep every hard rule: single NSWorkspace.recycle sink, DiskDeletion.canTrash home-guard, Trash-only, reviewed line-by-line. Two-phase becomes the only path (replaces instant delete).
-9. **Bug: after a delete, the whole chart greys out** and stays that way. Root-cause (likely rescan/hover/selection state after mutation in DiskChartView/DiskScanModel).
-
-**Screenshot / markup (CleanShot parity round):**
-
-10. **Markup editor: add crop** (top ask), plus whatever CleanShot-basics are cheap once crop's in. Views/MarkupEditor.swift + MarkupModel.swift.
-11. **Screenshot preview overhaul:** sleeker look; a real swipe-away animation (it currently just disappears); and **multiple previews stacking** that persist until each is manually swiped away (CleanShot behavior) — today it's one preview with a 6 s auto-timeout. Views/ScreenshotPreviewWindow.swift. This is the owner's daily-driver surface; study CleanShot's actual feel.
-
-**Dock Preview (v1 → real):**
-
-12. **Panel appears UNDER the Dock** — z-order/level bug (DockPreviewPanel level vs the Dock's window level; also verify anchoring math per Dock side). Fix so it floats above.
-13. **Only works for some apps** — diagnose coverage: multi-instance apps take first instance only, minimized/off-space windows have no SCK match, some apps may fail AX enumeration. Widen enumeration (DockDoor upstream handles these — port more of their window-listing; clone is gone, re-clone github.com/ejbills/DockDoor, commit 78b0862f was the scouted baseline).
-14. **Menu Bar hider: always-visible chevron + always-hidden zone** (owner-confirmed design, replaces the single-item length trick). Today one status item is both chevron and hider, so collapsing pushes its own chevron off-screen. Move to the proven multi-item model — vendor from Hidden Bar (github.com/dwarvesf/hidden, MIT): (a) a fixed-width chevron toggle item that ALWAYS stays visible — click expands/collapses, chevron direction flips with state; (b) a separate stretch-separator to its left doing the 10,000 pt hide trick; (c) an optional THIRD separator further left creating an "always hidden" zone — items dragged past it never show even when expanded (Hidden Bar offers ⌥-hold/expand-all reveal; mirror it). Auto-rehide keeps working (collapse + chevron flip after the interval; the generation-guard pattern in MenuBarManager stays). Keep the hard guard: Pear's own MenuBarExtra icon must never end up left of a separator (the 2.1.0 self-hiding incident); tool stays defaultEnabled=false since it still mutates the bar on launch. Rich settings per Rule B: auto-rehide interval (exists), always-hidden zone on/off, ⌥-reveal toggle. Dock Preview settings note: owner confirmed their current location in the tile popover is fine — no discoverability work needed there.
-15. **⌥-tab switcher: not built** (v1 deliberately shipped hover-only). Owner asked where it is. Build it as the next DockDoor slice: upstream's switcher, Accessibility-gated, own settings, live toggle. Also consider upgrading static thumbnails → live SCStream previews (the `// ponytail:` marker in DockThumbnailer.swift is the upgrade point).
-
-## Hard-won gotchas — do NOT rediscover (cumulative, all real)
-
-- **Bundle.module is FORBIDDEN in app code** — CI's Xcode emits an accessor that never checks Contents/Resources; v2.2.0 shipped crash-looping because of it. Use `Bundle.pearResources` (Support/ResourceBundle.swift) for every resource load. The CI launch-smoke step now guards this class.
-- Never resume a dead agent (0 tool uses) — spawn fresh; its worktree is gone and a resume writes into the main tree. BUT: agents killed by "session limit" auto-resume in their worktrees after reset — TaskStop them before assuming dead, and never assume a failed command chain's later steps ran.
-- Every worktree agent's first action: `git rebase main` + verify log (worktrees spawn from session-start snapshot).
-- `git status` before any `git add -A` while agents are in flight.
-- Swift 6 strict: @Observable stored props are computed → nonisolated deinit can't touch them (@ObservationIgnored); AXUIElement/CGEvent/NSStatusItem aren't Sendable; no @unchecked Sendable without written justification.
-- Deletion is sacred: single NSWorkspace.recycle sink, DiskDeletion.canTrash home guard, confirmed, Trash-only, line-by-line review. Never removeItem/unlink/rm.
-- AX calls: AXUIElementSetMessagingTimeout ~0.5 s on every element created (6 s default froze the app once).
-- Sparkle releases: bump BOTH CFBundleShortVersionString and CFBundleVersion (next build is 10); appcast sparkle:version = build integer; minimumSystemVersion read from LSMinimumSystemVersion; nested Sparkle XPCs signed inside-out in build.sh.
-- Measurement on this box: `ps -axo args | grep` silently drops matches under rtk — use `pgrep -fl`; top/ps %CPU are decayed averages — use cputime deltas over 30 s; dev builds share the owner's real UserDefaults (runnerEnabled=1 makes idle CPU look ~7% — that's the cat animating; override via `open --args -runnerEnabled 0`, never mutate his defaults); `git diff | git apply` breaks under rtk (compacted) — use `rtk proxy git diff` for raw patches.
-- gh run watch masks failures — poll `gh run view <id> --json conclusion`.
-- Release verification MUST include launching the downloaded shipped zip binary directly (this caught 2.2.0; spctl/stapler/appcast all passed on the broken build).
-- Tools with system-MUTATING launch behavior default OFF (menu-bar hider lesson); observers that never prompt (DockDoor) may default ON.
+### 7. Screen recording — STILL OWNER-PENDING (do not build until greenlit)
+Owner hasn't decided yet. Recommendation stands: worth it, fits Capture parity, SCK groundwork exists (SCStream video + AVAssetWriter + start/stop control + region/window/full pick + preview handoff), but it's a medium-large **dedicated slice** — do NOT bundle with the above. If the owner greenlights in-session, run it as its own agent; otherwise leave parked.
 
 ## Verification (every change)
+`rm -rf .build; rm -rf .build; swift build` zero warnings + `swift test` green; shippable → `./build.sh` + launch + footprint + smoke the changed behavior. Commit per feature, no AI attribution. Release: confirm nothing (auto per standing rule), bump both version keys, tag `companion-v*`, poll `gh run view --json conclusion`, shipped-zip gauntlet, notes via `gh release edit`.
 
-swift build zero warnings (non-incremental) + swift test green; for shippable changes ./build.sh + launch the assembled .app + cputime-delta footprint (≤80 MB idle / ~0% CPU) + smoke the actual behavior changed. Commit per feature, no AI attribution trailers. Full release flow (owner says "release"): confirm channels (GitHub release + appcast), bump both version keys, tag companion-v*, verify conclusion via gh run view, download shipped zip → spctl + stapler + **direct-exec launch test** → notes via gh release edit (never create).
-
-## Success criteria
-
-Every tile click works, every time; no focus box on open; color pick = instant clipboard hex + visible confirmation; runner sizes consistent; Windows popover fits; help rows uniform; disk deletes are two-phase (Radix-style pending pile → restore or Trash-all) with context menus and no grey-out bug; markup has crop; screenshot previews stack, persist, and swipe away with animation; menu-bar hider has an always-visible flipping chevron plus an always-hidden zone (Hidden Bar model); Dock Preview floats above the Dock, covers effectively every app, and gains the ⌥-tab switcher; footprint held; all upstream provenance intact. Release only on the maintainer's explicit channel confirmation.
+## Still-pending owner smoke (carried over)
+⌥-tab switcher (opt-in, never verified live), fullscreen Dock hover, the notch guidance tip, and the new Dock placement setting.
