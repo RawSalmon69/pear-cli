@@ -31,7 +31,7 @@ final class HotKeyManager {
         actions[id] = action
 
         var ref: EventHotKeyRef?
-        RegisterEventHotKey(
+        let status = RegisterEventHotKey(
             UInt32(keyCode),
             UInt32(modifiers),
             EventHotKeyID(signature: hotKeySignature, id: id),
@@ -39,7 +39,14 @@ final class HotKeyManager {
             0,
             &ref
         )
-        if let ref { refs[id] = ref }
+        // A failed registration (chord claimed system-wide, bad code) keeps
+        // the action out of the table so a later reuse of the Carbon id can't
+        // fire the wrong tool; the token stays valid to unregister (no-op).
+        if status != noErr || ref == nil {
+            actions[id] = nil
+        } else if let ref {
+            refs[id] = ref
+        }
         return Token(id: id)
     }
 

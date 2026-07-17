@@ -67,7 +67,11 @@ final class HotkeyRecorderModel {
         message = nil
         isRecording = true
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handle(event, registry: registry, id: id)
+            // Fail OPEN if the model died without teardown (SwiftUI can skip
+            // onDisappear on abrupt popover teardown): a leaked monitor that
+            // kept returning nil would eat every keyDown in the app forever.
+            guard let self else { return event }
+            self.handle(event, registry: registry, id: id)
             return nil // swallow: the key must not type into whatever is focused
         }
     }

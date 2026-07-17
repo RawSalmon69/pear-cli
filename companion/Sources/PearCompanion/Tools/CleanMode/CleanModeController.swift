@@ -56,6 +56,11 @@ final class CleanModeController {
     private(set) var state: State = .idle
     var isActive: Bool { if case .active = state { return true } else { return false } }
 
+    /// Whether ANY Clean Mode session is active — other input features
+    /// (the radial ring) consult this so they never act behind the blackout.
+    /// Static because the consumers have no path to the tool's controller.
+    private(set) static var isAnyActive = false
+
     private let keyboard: CleanModeKeyboardLocking
     private let blanker: CleanModeScreenBlanking
     private let defaults: UserDefaults
@@ -115,6 +120,7 @@ final class CleanModeController {
         }
 
         state = .active(keyboardLocked: keyboardLocked)
+        Self.isAnyActive = true
     }
 
     /// The single exit path. Idempotent: a no-op unless currently active, so a
@@ -123,6 +129,7 @@ final class CleanModeController {
     func exit() {
         guard isActive else { return }
         state = .idle // flip first so any re-entrant callback sees idle
+        Self.isAnyActive = false
         teardown()
     }
 

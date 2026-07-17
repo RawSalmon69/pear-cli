@@ -72,6 +72,14 @@ final class KeySwallowTap {
         machPort = nil
     }
 
+    /// Safety net: the callback holds `self` unretained, so a tap dropped
+    /// WITHOUT invalidate() would dangle on the next event. Every current
+    /// owner invalidates explicitly; this covers the future one that forgets.
+    /// (Owners are all main-actor, so deallocation happens on the main thread.)
+    deinit {
+        MainActor.assumeIsolated { invalidate() }
+    }
+
     private func shouldSwallow(type: CGEventType, cgEvent: CGEvent) -> Bool {
         // The system disables a tap that stalls; re-enable and pass through.
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {

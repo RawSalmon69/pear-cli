@@ -43,6 +43,7 @@ final class ScratchpadWindowController {
     // MARK: - Swipe to switch / create notes
 
     private func installScrollMonitor() {
+        guard scrollMonitor == nil else { return }
         swipe = SwipeAccumulator()
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             self?.handleScroll(event) ?? event

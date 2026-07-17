@@ -193,6 +193,9 @@ final class RadialTrigger {
 
     private func activate() {
         guard session == nil, WindowEngine.isTrusted else { return }
+        // Never pop the ring over Clean Mode's blackout (with keyboard lock
+        // off the flagsChanged monitors still see the trigger key).
+        guard !CleanModeController.isAnyActive else { return }
 
         let origin = NSEvent.mouseLocation
         session = Session(origin: origin, target: WindowEngine.snapTarget())
@@ -210,6 +213,10 @@ final class RadialTrigger {
         guard let session else { return }
         let selection = session.selection
         teardown()
+        // A session that was open when Clean Mode entered must not snap a
+        // window invisibly behind the blackout (the watchdog still sees the
+        // hardware key release even while the Clean Mode tap eats events).
+        guard !CleanModeController.isAnyActive else { return }
         if let selection { WindowEngine.apply(selection) }
     }
 
