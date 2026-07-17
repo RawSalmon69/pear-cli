@@ -61,6 +61,7 @@ final class DockHoverController {
 
     private var showTask: Task<Void, Never>?
     private var hideTask: Task<Void, Never>?
+    private var clickMonitors: [Any] = []
 
     /// Grace period before hiding, so the cursor can cross the gap between the
     /// Dock icon and the panel (which cancels the hide) without a flicker.
@@ -76,6 +77,7 @@ final class DockHoverController {
     func stop() {
         showTask?.cancel(); showTask = nil
         hideTask?.cancel(); hideTask = nil
+        removeClickMonitors()
         observer.stop()
         panel.hide()
         panel.model.onHoverChange = nil
@@ -99,7 +101,10 @@ final class DockHoverController {
     private func hoverChanged(_ target: DockHoverTarget?) {
         switch Self.action(hoveredPID: target?.app.pid, shownPID: panel.shownPID) {
         case .hide:
-            scheduleHide()
+            // Keep-open mode: leaving the icon doesn't dismiss — the panel
+            // stays until Esc, a tile click, or a click anywhere else (the
+            // click-outside monitors installed in `present`).
+            if !DockDoorSettings.keepPanelOpen() { scheduleHide() }
         case .keep:
             cancelHide()
         case .show:
@@ -110,7 +115,11 @@ final class DockHoverController {
     }
 
     private func panelHoverChanged(_ inside: Bool) {
-        if inside { cancelHide() } else { scheduleHide() }
+        if inside {
+            cancelHide()
+        } else if !DockDoorSettings.keepPanelOpen() {
+            scheduleHide()
+        }
     }
 
     // MARK: - Show / hide
@@ -125,9 +134,26 @@ final class DockHoverController {
         }
     }
 
+    /// Cold-AX retry budget: a never-activated app's window list can read empty
+    /// until its AX server wakes (the first query wakes it) or, for
+    /// Chromium/Electron, until the AXManualAccessibility poke takes effect
+    /// (`DockWindows.appendAXWindows`). Retrying only while the list is empty
+    /// costs nothing visible — the panel had nothing to show anyway — and the
+    /// show task is cancelled the moment the cursor moves on, so retries never
+    /// outlive the hover. 5 × 250 ms comfortably covers an Electron tree build.
+    private static let emptyRetryAttempts = 5
+    private static let emptyRetryDelay: Duration = .milliseconds(250)
+
     private func present(_ target: DockHoverTarget) async {
         let app = target.app
-        let windows = DockWindows.enumerate(app: app)
+        var windows = DockWindows.enumerate(app: app)
+        var attempt = 0
+        while windows.isEmpty, attempt < Self.emptyRetryAttempts {
+            try? await Task.sleep(for: Self.emptyRetryDelay)
+            guard !Task.isCancelled else { return }
+            windows = DockWindows.enumerate(app: app)
+            attempt += 1
+        }
         guard !windows.isEmpty else { hideNow(); return }
 
         let maxDimension = DockDoorSettings.previewSize().maxDimension
@@ -142,6 +168,8 @@ final class DockHoverController {
                 self?.hideNow()
             }
         )
+
+        if DockDoorSettings.keepPanelOpen() { installClickMonitors() }
 
         guard DockThumbnailer.canCapture else { return }
         let targets = windows.map { DockCaptureTarget(index: $0.id, frame: $0.frame) }
@@ -168,6 +196,49 @@ final class DockHoverController {
     private func hideNow() {
         showTask?.cancel(); showTask = nil
         cancelHide()
+        removeClickMonitors()
         panel.hide()
+    }
+
+    // MARK: - Keep-open dismissal (click anywhere outside)
+
+    /// Whether a mouse-down at `location` (AppKit screen coordinates) should
+    /// dismiss a kept-open panel: any click outside the panel's frame. Pure —
+    /// unit-tested without a live panel.
+    static func clickDismisses(location: CGPoint, panelFrame: CGRect?) -> Bool {
+        guard let panelFrame else { return false }
+        return !panelFrame.contains(location)
+    }
+
+    /// While keep-open is active, the hover-exit hides are disabled, so the
+    /// panel needs another way out: a click anywhere that isn't the panel.
+    /// One global monitor (clicks in other apps — read-only, delivered after
+    /// the target app gets the event) plus one local (clicks on Pear's own
+    /// windows). Installed only while the panel is visible; `hideNow` removes
+    /// them, so a disabled tool leaves no monitors behind.
+    private func installClickMonitors() {
+        guard clickMonitors.isEmpty else { return }
+        let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] _ in
+            self?.dismissIfClickedOutside()
+        }) {
+            clickMonitors.append(global)
+        }
+        let local = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            self?.dismissIfClickedOutside()
+            return event
+        }
+        if let local { clickMonitors.append(local) }
+    }
+
+    private func removeClickMonitors() {
+        for monitor in clickMonitors { NSEvent.removeMonitor(monitor) }
+        clickMonitors.removeAll()
+    }
+
+    private func dismissIfClickedOutside() {
+        if Self.clickDismisses(location: NSEvent.mouseLocation, panelFrame: panel.panelFrame) {
+            hideNow()
+        }
     }
 }

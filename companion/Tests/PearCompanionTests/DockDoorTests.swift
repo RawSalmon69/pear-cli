@@ -243,6 +243,38 @@ final class DockDoorTests: XCTestCase {
         XCTAssertEqual(DockDoorSettings.previewGap(defaults), 0) // lower bound
     }
 
+    func testKeepOpenDefaultsOffAndRoundTrips() {
+        let defaults = suite("dockdoor-keepopen")
+        defer { defaults.removePersistentDomain(forName: "dockdoor-keepopen") }
+
+        XCTAssertFalse(DockDoorSettings.keepPanelOpen(defaults))
+        defaults.set(true, forKey: DockDoorSettings.Key.keepOpen)
+        XCTAssertTrue(DockDoorSettings.keepPanelOpen(defaults))
+    }
+
+    // MARK: - Keep-open click-outside dismissal
+
+    func testClickInsidePanelDoesNotDismiss() {
+        let frame = CGRect(x: 100, y: 100, width: 300, height: 200)
+        XCTAssertFalse(DockHoverController.clickDismisses(
+            location: CGPoint(x: 250, y: 200), panelFrame: frame))
+    }
+
+    func testClickOutsidePanelDismisses() {
+        let frame = CGRect(x: 100, y: 100, width: 300, height: 200)
+        XCTAssertTrue(DockHoverController.clickDismisses(
+            location: CGPoint(x: 50, y: 50), panelFrame: frame))
+        XCTAssertTrue(DockHoverController.clickDismisses(
+            location: CGPoint(x: 500, y: 200), panelFrame: frame))
+    }
+
+    func testClickWithHiddenPanelNeverDismisses() {
+        // nil frame = panel not visible; the monitors shouldn't be installed
+        // then, but the decision is safe regardless.
+        XCTAssertFalse(DockHoverController.clickDismisses(
+            location: CGPoint(x: 50, y: 50), panelFrame: nil))
+    }
+
     // MARK: - Hover-intent decision
 
     func testHoverActionHideWhenNothingHovered() {
@@ -351,9 +383,23 @@ final class DockDoorTests: XCTestCase {
         ))
     }
 
-    func testShouldShowDropsSizelessNonMinimizedWindow() {
-        XCTAssertFalse(DockWindows.shouldShow(
+    func testShouldShowKeepsWindowWhoseSizeReadFailed() {
+        // Activation-state gap: a background app's cross-Space geometry read
+        // can FAIL (nil) until the app is activated — the window is real, so
+        // it is kept as an icon tile instead of the app showing "no windows".
+        XCTAssertTrue(DockWindows.shouldShow(
             subrole: standardSubrole, minimized: false, fullScreen: false, size: nil
+        ))
+    }
+
+    func testShouldShowStillDropsDegenerateMeasuredSize() {
+        // A SUCCESSFUL read of a junk size keeps falling to the > 1 pt gate.
+        XCTAssertFalse(DockWindows.shouldShow(
+            subrole: standardSubrole, minimized: false, fullScreen: false,
+            size: CGSize(width: 1, height: 1)
+        ))
+        XCTAssertFalse(DockWindows.shouldShow(
+            subrole: standardSubrole, minimized: false, fullScreen: false, size: .zero
         ))
     }
 

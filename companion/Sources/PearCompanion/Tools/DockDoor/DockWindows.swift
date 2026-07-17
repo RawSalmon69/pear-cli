@@ -38,6 +38,14 @@
 //     the window sat on a non-zero CG layer — missed by the fallback too (the
 //     fallback only runs when the AX union is empty AND only keeps layer-0
 //     windows), i.e. no preview at all.
+//   • never-activated apps (the activation-state gap): a background app's AX
+//     window list can read empty until its AX server wakes, Chromium/Electron
+//     build the tree lazily until an assistive client opts in, and cross-Space
+//     geometry reads can fail — all three made the first hover find nothing
+//     until the app was clicked once. Covered by (1) the "AXManualAccessibility"
+//     poke in `appendAXWindows`, (2) keeping nil-size (read-failed) windows in
+//     `shouldShow`, and (3) the hover controller's retry-while-hovering loop
+//     (upstream DockDoor/alt-tab-macos retry `.cannotComplete` the same way).
 // Click-to-raise uses only the public kAXRaiseAction + NSRunningApplication.activate
 // (DockDoor's private SkyLight _SLPSSetFrontProcessWithOptions is skipped).
 //
@@ -227,7 +235,21 @@ enum DockWindows {
         let appElement = AXUIElementCreateApplication(pid)
         DockAX.capTimeout(appElement)
 
-        guard let axWindows = DockAX.elements(appElement, kAXWindowsAttribute) else { return }
+        guard let axWindows = DockAX.elements(appElement, kAXWindowsAttribute), !axWindows.isEmpty else {
+            // Activation-state gap, prong 1: Chromium/Electron apps build their
+            // AX tree lazily, so a never-activated app's window list reads empty
+            // (or fails) until the user clicks it once — "hover shows nothing
+            // until I click the app first." Electron's documented opt-in for
+            // assistive clients is setting the app-level "AXManualAccessibility"
+            // attribute (public AXUIElementSetAttributeValue + stable literal,
+            // the "AXFullScreen" pattern above). Non-Electron apps return an
+            // error, deliberately ignored. The tree builds asynchronously, so
+            // the hover controller's retry-while-hovering picks the windows up
+            // on a later attempt.
+            AXUIElementSetAttributeValue(
+                appElement, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+            return
+        }
 
         for axWindow in axWindows {
             DockAX.capTimeout(axWindow) // per-element
@@ -263,11 +285,17 @@ enum DockWindows {
     /// geometry read can return nothing, yet it is still a real window worth a
     /// tile (falling back to icon + title, like a minimized one). Fullscreen
     /// bypasses the size gate, never the subrole allow-list.
+    ///
+    /// A nil size (the READ failed) is also kept: a background app's windows on
+    /// another Space can fail the geometry read until the app is activated —
+    /// the same activation-state gap as fullscreen, and previously the reason a
+    /// hover showed nothing until the app was clicked once. Junk windows report
+    /// a SUCCESSFUL degenerate size and still fall to the `> 1` gate.
     static func shouldShow(subrole: String?, minimized: Bool, fullScreen: Bool, size: CGSize?) -> Bool {
         if let subrole, !shownSubroles.contains(subrole) { return false }
         if minimized || fullScreen { return true }
-        guard let size, size.width > 1, size.height > 1 else { return false }
-        return true
+        guard let size else { return true }
+        return size.width > 1 && size.height > 1
     }
 
     // MARK: - CGWindowList fallback (public API)

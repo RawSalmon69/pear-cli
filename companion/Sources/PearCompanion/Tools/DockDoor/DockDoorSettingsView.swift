@@ -27,6 +27,8 @@ struct DockDoorSettingsView: View {
     private var previewGap = DockDoorSettings.defaultPreviewGap
     @AppStorage(DockDoorSettings.Key.showTitles)
     private var showTitles = DockDoorSettings.defaultShowTitles
+    @AppStorage(DockDoorSettings.Key.keepOpen)
+    private var keepOpen = DockDoorSettings.defaultKeepOpen
     @AppStorage(DockDoorSettings.Key.switcherEnabled)
     private var switcherEnabled = DockDoorSettings.defaultSwitcherEnabled
     @AppStorage(DockDoorSettings.Key.switcherScope)
@@ -92,6 +94,8 @@ struct DockDoorSettingsView: View {
                 }
                 .font(Theme.body)
                 Toggle("Show window titles", isOn: $showTitles)
+                    .font(Theme.body)
+                Toggle("Keep open until you click away", isOn: $keepOpen)
                     .font(Theme.body)
             }
 

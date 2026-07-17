@@ -11,6 +11,7 @@ enum DockDoorSettings {
         static let previewPlacement = "dockdoor.previewPlacement"
         static let previewGap = "dockdoor.previewGap"
         static let showTitles = "dockdoor.showTitles"
+        static let keepOpen = "dockdoor.keepOpen"
         static let switcherEnabled = "dockdoor.switcher.enabled"
         static let switcherScope = "dockdoor.switcher.scope"
     }
@@ -26,6 +27,11 @@ enum DockDoorSettings {
     /// the prior behavior exactly.
     static let defaultPreviewGap: Double = 8
     static let defaultShowTitles = true
+    /// Off = classic hover behavior (panel follows the cursor away). On, the
+    /// panel stays up after the cursor leaves the icon and panel, dismissing
+    /// on Esc, a tile click, hovering a different icon, or a click anywhere
+    /// else.
+    static let defaultKeepOpen = false
     /// The ⌥-tab switcher is opt-in (off by default): turning it on registers a
     /// global ⌥-tab Carbon hotkey that claims the chord system-wide, so Pear
     /// only takes it once the user asks for it. The live toggle flips it on.
@@ -68,6 +74,12 @@ enum DockDoorSettings {
         store.object(forKey: Key.showTitles) == nil
             ? defaultShowTitles
             : store.bool(forKey: Key.showTitles)
+    }
+
+    static func keepPanelOpen(_ store: UserDefaults = .standard) -> Bool {
+        store.object(forKey: Key.keepOpen) == nil
+            ? defaultKeepOpen
+            : store.bool(forKey: Key.keepOpen)
     }
 
     static func switcherEnabled(_ store: UserDefaults = .standard) -> Bool {

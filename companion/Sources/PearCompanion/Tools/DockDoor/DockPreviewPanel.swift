@@ -32,6 +32,13 @@ final class DockPreviewPanel {
 
     var isVisible: Bool { panel?.isVisible ?? false }
 
+    /// Panel frame in screen coordinates while visible, nil when hidden — the
+    /// keep-open mode's click-outside test needs it.
+    var panelFrame: CGRect? {
+        guard let panel, panel.isVisible else { return nil }
+        return panel.frame
+    }
+
     func show(
         app: DockApp,
         iconRectAX: CGRect,
