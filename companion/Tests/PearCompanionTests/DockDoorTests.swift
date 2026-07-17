@@ -385,6 +385,27 @@ final class DockDoorTests: XCTestCase {
         ))
     }
 
+    func testShouldShowKeepsFloatingWindow() {
+        // 2.6.3 widening: utility / tool / inspector windows report a floating
+        // subrole and are now shown (with a real size), not dropped.
+        XCTAssertTrue(DockWindows.shouldShow(
+            subrole: kAXFloatingWindowSubrole as String, minimized: false, fullScreen: false,
+            size: CGSize(width: 300, height: 500)
+        ))
+        XCTAssertTrue(DockWindows.shouldShow(
+            subrole: kAXSystemFloatingWindowSubrole as String, minimized: false, fullScreen: false,
+            size: CGSize(width: 300, height: 500)
+        ))
+    }
+
+    func testShouldShowStillDropsSheetSubrole() {
+        // The widening did not open the gate to sheets / other transient surfaces.
+        XCTAssertFalse(DockWindows.shouldShow(
+            subrole: "AXSheet", minimized: false, fullScreen: false,
+            size: CGSize(width: 300, height: 500)
+        ))
+    }
+
     // MARK: - Switcher cycle order
 
     func testSwitcherOpenIndexForwardPicksNext() {

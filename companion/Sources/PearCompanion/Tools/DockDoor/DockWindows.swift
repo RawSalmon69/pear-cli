@@ -30,9 +30,30 @@
 //   • zero-AX apps: when the AX union is empty, fall back to the public
 //     `CGWindowListCopyWindowInfo` (DockDoor's "AX + CGS fallback" idea, public
 //     APIs only). CG-only windows have no AX handle, so clicking one activates
-//     the owning app rather than raising that exact window.
+//     the owning app rather than raising that exact window,
+//   • floating-window apps (2.6.3): the subrole allow-list (`shownSubroles`) now
+//     admits `kAXFloatingWindowSubrole` / `kAXSystemFloatingWindowSubrole`, so
+//     apps whose only windows are floating/utility windows get a preview with
+//     real click-to-raise. Before, they were dropped by the allow-list and — if
+//     the window sat on a non-zero CG layer — missed by the fallback too (the
+//     fallback only runs when the AX union is empty AND only keeps layer-0
+//     windows), i.e. no preview at all.
 // Click-to-raise uses only the public kAXRaiseAction + NSRunningApplication.activate
 // (DockDoor's private SkyLight _SLPSSetFrontProcessWithOptions is skipped).
+//
+// Honest public-API limits that remain (not worked around; no private API can
+// fix them from here):
+//   • windows owned by a DIFFERENTLY-BUNDLED helper process. The pid union
+//     (`pids(for:)`) covers same-bundle-id siblings only; if the Dock tile's app
+//     and the window's owner have different bundle ids (some agent/XPC-hosted
+//     UIs), neither the AX pass nor the pid-filtered CG fallback sees the window.
+//   • an app that exposes NOTHING to AX whose windows are also off the current
+//     Space or on a non-zero CG layer: the CG fallback is on-screen + layer-0
+//     only, so there is nothing left to recover.
+//   • off-Space windows in general: both SCK capture and the on-screen CG list
+//     see the CURRENT Space only, so a window on an unfocused Space shows (at
+//     best) as an icon tile with no thumbnail, and if AX also returns nothing
+//     for it there is no public way to list it.
 
 import AppKit
 import ApplicationServices
@@ -102,11 +123,21 @@ struct DockSwitcherEntry: Identifiable {
 /// Cache-free AX window enumeration for one app, on the main actor.
 @MainActor
 enum DockWindows {
-    /// Standard, on-a-desktop windows we show. Sheets, popovers, and tooltips
-    /// have other subroles and are skipped.
+    /// Top-level windows we show. The four AX window subroles that represent a
+    /// real, user-facing window: standard, dialog, and the two floating-window
+    /// subroles (utility / tool / inspector / palette windows some apps use as
+    /// their primary surface — e.g. Font Book's font window, media tools). Only
+    /// the floating pair was widened here (2.6.3): a floating-window-only app was
+    /// dropped by the allow-list and, when its window sat on a non-standard CG
+    /// layer, missed by the fallback too, so it got no preview at all. Sheets
+    /// (`AXSheet`), popovers, and unknown transient surfaces are still excluded,
+    /// so no tooltip / popover noise; a nil subrole (read failed) is tolerated by
+    /// `shouldShow`, not filtered.
     private static let shownSubroles: Set<String> = [
         kAXStandardWindowSubrole as String,
         kAXDialogSubrole as String,
+        kAXFloatingWindowSubrole as String,
+        kAXSystemFloatingWindowSubrole as String,
     ]
 
     /// AX window attribute for the native-fullscreen state. There is no public
