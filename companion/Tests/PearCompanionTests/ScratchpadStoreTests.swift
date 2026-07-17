@@ -26,6 +26,27 @@ final class ScratchpadStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.currentNote.text, "hello world")
     }
 
+    func testCorruptFileIsPreservedAndSeedsOneBlankNote() throws {
+        let url = tempFileURL()
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // Garbage bytes where valid JSON is expected.
+        try Data("this is not json {[".utf8).write(to: url)
+
+        let store = ScratchpadStore(fileURL: url)
+        // A failed decode seeds exactly one blank note (never the corrupt data).
+        XCTAssertEqual(store.notes.count, 1)
+        XCTAssertEqual(store.currentNote.text, "")
+
+        // The garbage was renamed aside, not silently dropped, so the user's
+        // notes could still be recovered.
+        let dir = url.deletingLastPathComponent()
+        let siblings = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        XCTAssertTrue(
+            siblings.contains { $0.hasPrefix("notes.json.corrupt-") },
+            "a corrupt notes.json must be preserved under a .corrupt-* sibling")
+    }
+
     func testSaveNowCreatesMissingParentDirectory() {
         let url = tempFileURL()
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path))

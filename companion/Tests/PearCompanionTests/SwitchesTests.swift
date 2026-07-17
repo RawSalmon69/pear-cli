@@ -216,7 +216,9 @@ final class SwitchesTests: XCTestCase {
     // MARK: - Model command-line assertions (mock runner)
 
     func testSetHideDesktopOnRunsWriteThenKillall() async {
-        let runner = MockCommandRunner()
+        // Writes succeed, so no reconciling re-read runs and the optimistic
+        // state stands — recorded commands are exactly the write + killall.
+        let runner = MockCommandRunner { _ in .success(Data()) }
         let model = makeModel(runner: runner)
         await model.setHideDesktop(true)
         XCTAssertEqual(runner.recorded, SwitchCommands.hideDesktop(true))
@@ -224,7 +226,7 @@ final class SwitchesTests: XCTestCase {
     }
 
     func testSetHideDesktopOffRunsWriteThenKillall() async {
-        let runner = MockCommandRunner()
+        let runner = MockCommandRunner { _ in .success(Data()) }
         let model = makeModel(runner: runner)
         await model.setHideDesktop(false)
         XCTAssertEqual(runner.recorded, SwitchCommands.hideDesktop(false))
@@ -232,7 +234,7 @@ final class SwitchesTests: XCTestCase {
     }
 
     func testSetShowHiddenRunsExactCommands() async {
-        let runner = MockCommandRunner()
+        let runner = MockCommandRunner { _ in .success(Data()) }
         let model = makeModel(runner: runner)
         await model.setShowHidden(true)
         XCTAssertEqual(runner.recorded, SwitchCommands.showHidden(true))
@@ -240,11 +242,25 @@ final class SwitchesTests: XCTestCase {
     }
 
     func testSetBigCursorRunsExactCommand() async {
-        let runner = MockCommandRunner()
+        let runner = MockCommandRunner { _ in .success(Data()) }
         let model = makeModel(runner: runner)
         await model.setBigCursor(true)
         XCTAssertEqual(runner.recorded, SwitchCommands.bigCursor(true))
         XCTAssertTrue(model.bigCursorOn)
+    }
+
+    func testFailedWriteReReadsAndSelfCorrects() async {
+        // The write "fails"; the reconciling read reports the switch is really
+        // off, so the optimistic on-toggle must snap back to reality.
+        let runner = MockCommandRunner { command in
+            command == SwitchCommands.hideDesktopRead ? success("1") /* icons shown = off */ : .failed
+        }
+        let model = makeModel(runner: runner)
+        await model.setHideDesktop(true)
+        XCTAssertFalse(model.hideDesktopOn, "a failed write must reconcile with the re-read state")
+        XCTAssertEqual(
+            runner.recorded.last, SwitchCommands.hideDesktopRead,
+            "the last thing run is the reconciling read")
     }
 
     func testLaunchScreenSaverRunsOpen() async {

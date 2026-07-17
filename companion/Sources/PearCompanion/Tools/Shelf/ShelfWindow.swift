@@ -84,7 +84,7 @@ final class ShelfWindowController {
                   event.modifierFlags.contains(.command) else { return event }
             switch event.charactersIgnoringModifiers?.lowercased() {
             case "v":
-                self.store.ingest(from: .general)
+                Task { @MainActor in await self.store.ingest(from: .general) }
                 return nil
             case "c":
                 return self.store.copyHovered(to: .general) ? nil : event

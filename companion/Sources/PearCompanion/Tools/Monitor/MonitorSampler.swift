@@ -10,11 +10,13 @@ actor MonitorSampler {
     private var prevCPUTicks: [UInt32]?
     private var prevNet: (rx: UInt64, tx: UInt64, at: Date)?
 
-    // Outer optional = "have we tried to open the SMC yet"; inner = the
-    // connection (nil when the machine/OS refused the open).
-    private var smcResolved = false
     private var smc: SMCConnection?
     private var sensorKeys: ResolvedSensorKeys?
+    // How many times we've tried to resolve the sensor key set. The open or the
+    // first probe can transiently answer nothing, so retry for a few ticks
+    // before accepting an empty set as final (see `sampleSensors`).
+    private var smcResolveAttempts = 0
+    private static let maxSMCResolveAttempts = 3
 
     /// One pass over the requested sections. A hidden section's sampler is
     /// never called — the guard is the "zero cost when hidden" guarantee, not
@@ -62,9 +64,13 @@ actor MonitorSampler {
     }
 
     private func sampleSensors() -> SensorSample? {
-        if !smcResolved {
-            smcResolved = true
-            smc = SMCConnection()
+        // Resolve lazily, retrying while we have nothing: a single transient
+        // miss (empty key set) must not blank the Sensors card for the whole
+        // session. Once a non-empty set resolves — or we've exhausted the
+        // attempts — we stop probing and read only what exists.
+        if (sensorKeys?.isEmpty ?? true), smcResolveAttempts < Self.maxSMCResolveAttempts {
+            smcResolveAttempts += 1
+            if smc == nil { smc = SMCConnection() }
             if let smc { sensorKeys = SensorSampler.resolve(smc) }
         }
         guard let smc, let keys = sensorKeys, !keys.isEmpty else { return nil }

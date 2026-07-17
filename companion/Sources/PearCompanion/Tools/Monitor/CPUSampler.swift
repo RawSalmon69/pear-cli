@@ -7,6 +7,12 @@ import Darwin
 //
 // Adapted from Stats (MIT) — `Modules/CPU/readers.swift` `LoadReader.read()`.
 enum CPUSampler {
+    // mach_host_self() adds a host-port send right on every call; leaving each
+    // one undeallocated leaks a port right per sample tick. Cache a single
+    // right for the process lifetime and reuse it. (mach_task_self_ is a global
+    // that needs no such handling, so the vm_deallocate below is unchanged.)
+    private static let hostPort: mach_port_t = mach_host_self()
+
     /// A flattened `[core0.user, core0.system, core0.idle, core0.nice, …]`
     /// array (length = cores × 4), or nil if the host call failed.
     static func readTicks() -> [UInt32]? {
@@ -15,7 +21,7 @@ enum CPUSampler {
         var infoCount: mach_msg_type_number_t = 0
 
         let result = host_processor_info(
-            mach_host_self(), PROCESSOR_CPU_LOAD_INFO, &cpuCount, &info, &infoCount)
+            hostPort, PROCESSOR_CPU_LOAD_INFO, &cpuCount, &info, &infoCount)
         guard result == KERN_SUCCESS, let info else { return nil }
         defer {
             vm_deallocate(

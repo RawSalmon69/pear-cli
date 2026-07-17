@@ -23,11 +23,21 @@ struct ProcessRunner: CommandRunner {
 
             let pipe = Pipe()
             process.standardOutput = pipe
-            process.standardError = Pipe()
+            let errPipe = Pipe()
+            process.standardError = errPipe
+
+            // Drain stderr concurrently and discard it. Otherwise a child that
+            // writes more than the ~64 KB pipe buffer to stderr blocks on that
+            // write while we block on stdout's readDataToEndOfFile below — a
+            // deadlock that only breaks when the watchdog kills the process.
+            errPipe.fileHandleForReading.readabilityHandler = { handle in
+                if handle.availableData.isEmpty { handle.readabilityHandler = nil }
+            }
 
             do {
                 try process.run()
             } catch {
+                errPipe.fileHandleForReading.readabilityHandler = nil
                 return .failed
             }
 
@@ -46,6 +56,7 @@ struct ProcessRunner: CommandRunner {
             let output = pipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
             watchdog?.cancel()
+            errPipe.fileHandleForReading.readabilityHandler = nil
 
             if process.terminationStatus == 0 {
                 return .success(output)

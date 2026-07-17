@@ -70,6 +70,13 @@ final class ScreenshotService {
         }
 
         present(data: data, at: savedURL)
+
+        // With auto-save on, persist() wrote the real copy and the preview/send
+        // point at it, so the capture temp is now dead weight — remove it. When
+        // auto-save is off, savedURL == tempURL and the preview still needs it.
+        if savedURL != tempURL {
+            try? FileManager.default.removeItem(at: tempURL)
+        }
     }
 
     /// Shows the floating preview for `data` saved at `fileURL`, wiring copy,

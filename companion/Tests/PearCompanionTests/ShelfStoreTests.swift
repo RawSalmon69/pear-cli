@@ -26,7 +26,7 @@ final class ShelfStoreTests: XCTestCase {
         return url
     }
 
-    func testAddCopiesAndPersistsAcrossReload() throws {
+    func testAddCopiesAndPersistsAcrossReload() async throws {
         let root = try makeTempRoot()
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -34,7 +34,7 @@ final class ShelfStoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: source) }
 
         let store = ShelfStore(root: root)
-        store.add(source)
+        await store.add(source)
 
         XCTAssertEqual(store.items.count, 1)
         let added = try XCTUnwrap(store.items.first)
@@ -54,7 +54,7 @@ final class ShelfStoreTests: XCTestCase {
         XCTAssertEqual(restored.storedPath, added.storedPath)
     }
 
-    func testCollidingNamesGetUniqueSuffix() throws {
+    func testCollidingNamesGetUniqueSuffix() async throws {
         let root = try makeTempRoot()
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -66,8 +66,8 @@ final class ShelfStoreTests: XCTestCase {
         }
 
         let store = ShelfStore(root: root)
-        store.add(a)
-        store.add(b)
+        await store.add(a)
+        await store.add(b)
 
         XCTAssertEqual(store.items.count, 2)
         let storedNames = Set(store.items.map { $0.url.lastPathComponent })
@@ -142,14 +142,14 @@ final class ShelfStoreTests: XCTestCase {
         XCTAssertTrue(ShelfStore.ingestSources(from: makePasteboard()).isEmpty)
     }
 
-    func testIngestCopiesTextIntoShelfAndCleansTemp() throws {
+    func testIngestCopiesTextIntoShelfAndCleansTemp() async throws {
         let root = try makeTempRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let pb = makePasteboard()
         pb.setString("hello from clipboard", forType: .string)
 
         let store = ShelfStore(root: root)
-        let added = store.ingest(from: pb)
+        let added = await store.ingest(from: pb)
 
         XCTAssertEqual(added, 1)
         let item = try XCTUnwrap(store.items.first)
@@ -160,14 +160,14 @@ final class ShelfStoreTests: XCTestCase {
 
     // MARK: - Copy-out
 
-    func testCopyPutsFileURLOnPasteboard() throws {
+    func testCopyPutsFileURLOnPasteboard() async throws {
         let root = try makeTempRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let source = try makeSourceFile(named: "notes.txt", contents: "x")
         defer { try? FileManager.default.removeItem(at: source) }
 
         let store = ShelfStore(root: root)
-        store.add(source)
+        await store.add(source)
         let entry = try XCTUnwrap(store.items.first)
 
         let pb = makePasteboard()
@@ -180,7 +180,7 @@ final class ShelfStoreTests: XCTestCase {
         XCTAssertTrue(images?.isEmpty ?? true)
     }
 
-    func testCopyImageAlsoVendsImageData() throws {
+    func testCopyImageAlsoVendsImageData() async throws {
         let root = try makeTempRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let dir = FileManager.default.temporaryDirectory
@@ -191,7 +191,7 @@ final class ShelfStoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let store = ShelfStore(root: root)
-        store.add(source)
+        await store.add(source)
         let entry = try XCTUnwrap(store.items.first)
 
         let pb = makePasteboard()
@@ -203,7 +203,7 @@ final class ShelfStoreTests: XCTestCase {
         XCTAssertFalse(images.isEmpty)
     }
 
-    func testCopyHoveredFallsBackToTopItem() throws {
+    func testCopyHoveredFallsBackToTopItem() async throws {
         let root = try makeTempRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let a = try makeSourceFile(named: "a.txt", contents: "a")
@@ -213,8 +213,8 @@ final class ShelfStoreTests: XCTestCase {
             try? FileManager.default.removeItem(at: b)
         }
         let store = ShelfStore(root: root)
-        store.add(a)
-        store.add(b) // b is now on top
+        await store.add(a)
+        await store.add(b) // b is now on top
 
         // No hover → top item copied.
         let pb = makePasteboard()
@@ -228,5 +228,51 @@ final class ShelfStoreTests: XCTestCase {
         XCTAssertTrue(store.copyHovered(to: pb2))
         let hovered = try XCTUnwrap((pb2.readObjects(forClasses: [NSURL.self]) as? [URL])?.first)
         XCTAssertEqual(hovered.lastPathComponent, "a.txt")
+    }
+
+    // MARK: - Cap + corrupt index
+
+    func testAddEvictsOldestAtCap() async throws {
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let store = ShelfStore(root: root)
+        // One past the cap so exactly the oldest item is evicted.
+        for i in 0...ShelfStore.maxItems {
+            let source = try makeSourceFile(named: "f\(i).txt", contents: "\(i)")
+            defer { try? FileManager.default.removeItem(at: source.deletingLastPathComponent()) }
+            await store.add(source)
+        }
+
+        XCTAssertEqual(store.items.count, ShelfStore.maxItems, "the shelf never exceeds the cap")
+        XCTAssertFalse(
+            store.items.contains { $0.originalName == "f0.txt" },
+            "the oldest (first-added) item is the one evicted")
+        XCTAssertTrue(
+            store.items.contains { $0.originalName == "f\(ShelfStore.maxItems).txt" },
+            "the newest item is retained")
+    }
+
+    func testCorruptIndexIsPreservedNotClobbered() throws {
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // Garbage bytes where index.json is expected.
+        let indexURL = root.appendingPathComponent("index.json")
+        try Data("this is not json {[".utf8).write(to: indexURL)
+
+        // Loading over a corrupt index yields an empty shelf, and the corrupt
+        // bytes are renamed aside so the next save() can't clobber the only
+        // record of the on-disk copies.
+        let store = ShelfStore(root: root)
+        XCTAssertTrue(store.items.isEmpty)
+
+        let siblings = try FileManager.default.contentsOfDirectory(atPath: root.path)
+        XCTAssertTrue(
+            siblings.contains { $0.hasPrefix("index.json.corrupt-") },
+            "a corrupt index.json must be preserved under a .corrupt-* sibling")
+        XCTAssertFalse(
+            siblings.contains("index.json"),
+            "the corrupt index.json is moved aside, not left in place")
     }
 }

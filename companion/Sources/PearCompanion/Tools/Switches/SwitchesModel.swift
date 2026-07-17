@@ -67,9 +67,10 @@ enum SwitchCommands {
     // KNOWN RISK: com.apple.universalaccess is a TCC-gated domain and the
     // pointer size is owned by universalaccessd, so a plain `defaults write`
     // from a third-party app may be rejected or may not apply live (it can need
-    // a re-login or a nudge in System Settings › Accessibility › Pointer). The
-    // model surfaces `bigCursorNeedsSystemSettingsHint` so the UI can say so
-    // rather than pretend it worked. 1.0 = normal, 3.0 = large.
+    // a re-login or a nudge in System Settings › Accessibility › Pointer).
+    // `SwitchesView` shows a static hint line saying exactly that, so the UI is
+    // honest about it rather than pretending the write always applies live.
+    // 1.0 = normal, 3.0 = large.
 
     static let bigCursorNormalSize = "1"
     static let bigCursorLargeSize = "3"
@@ -138,9 +139,14 @@ final class SwitchesModel {
     func refresh() async {
         keepAwakeOn = power.isActive
         muteOn = audio.isMuted()
-        hideDesktopOn = SwitchCommands.hideDesktopIsOn(fromRead: await read(SwitchCommands.hideDesktopRead))
-        showHiddenOn = SwitchCommands.showHiddenIsOn(fromRead: await read(SwitchCommands.showHiddenRead))
-        bigCursorOn = SwitchCommands.bigCursorIsOn(fromRead: await read(SwitchCommands.bigCursorRead))
+        // The three `defaults read`s are independent, so spawn them together
+        // rather than paying three sequential process round-trips on open.
+        async let hideDesktop = read(SwitchCommands.hideDesktopRead)
+        async let showHidden = read(SwitchCommands.showHiddenRead)
+        async let bigCursor = read(SwitchCommands.bigCursorRead)
+        hideDesktopOn = SwitchCommands.hideDesktopIsOn(fromRead: await hideDesktop)
+        showHiddenOn = SwitchCommands.showHiddenIsOn(fromRead: await showHidden)
+        bigCursorOn = SwitchCommands.bigCursorIsOn(fromRead: await bigCursor)
     }
 
     // MARK: - Toggles
@@ -157,17 +163,25 @@ final class SwitchesModel {
 
     func setHideDesktop(_ on: Bool) async {
         hideDesktopOn = on
-        await run(SwitchCommands.hideDesktop(on))
+        if await run(SwitchCommands.hideDesktop(on)) == false {
+            // The write didn't take — reconcile the optimistic toggle with the
+            // switch's real state instead of leaving a lie on screen.
+            hideDesktopOn = SwitchCommands.hideDesktopIsOn(fromRead: await read(SwitchCommands.hideDesktopRead))
+        }
     }
 
     func setShowHidden(_ on: Bool) async {
         showHiddenOn = on
-        await run(SwitchCommands.showHidden(on))
+        if await run(SwitchCommands.showHidden(on)) == false {
+            showHiddenOn = SwitchCommands.showHiddenIsOn(fromRead: await read(SwitchCommands.showHiddenRead))
+        }
     }
 
     func setBigCursor(_ on: Bool) async {
         bigCursorOn = on
-        await run(SwitchCommands.bigCursor(on))
+        if await run(SwitchCommands.bigCursor(on)) == false {
+            bigCursorOn = SwitchCommands.bigCursorIsOn(fromRead: await read(SwitchCommands.bigCursorRead))
+        }
     }
 
     // MARK: - Momentary actions
@@ -189,10 +203,19 @@ final class SwitchesModel {
 
     // MARK: - Internals
 
-    private func run(_ commands: [ShellCommand]) async {
+    /// Runs each command in order. Returns false if any command reported
+    /// anything other than success, so a toggle can reconcile itself.
+    @discardableResult
+    private func run(_ commands: [ShellCommand]) async -> Bool {
+        var ok = true
         for command in commands {
-            _ = await commandRunner.run(binary: command.binary, arguments: command.arguments, timeout: 8)
+            if case .success = await commandRunner.run(
+                binary: command.binary, arguments: command.arguments, timeout: 8) {
+                continue
+            }
+            ok = false
         }
+        return ok
     }
 
     private func read(_ command: ShellCommand) async -> String? {

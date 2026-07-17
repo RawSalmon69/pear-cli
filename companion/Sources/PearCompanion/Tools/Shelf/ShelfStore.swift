@@ -42,6 +42,10 @@ final class ShelfStore {
     @ObservationIgnored private let root: URL
     @ObservationIgnored private var indexURL: URL { root.appendingPathComponent("index.json") }
 
+    /// Hard cap on held items. Adding past it evicts the oldest (trash-routed,
+    /// like `remove`), so the shelf can't grow without bound.
+    static let maxItems = 100
+
     static var defaultRoot: URL {
         let base = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -58,24 +62,35 @@ final class ShelfStore {
 
     /// Copies `source` into the shelf directory and adds it to the top of the
     /// list. The copy is what makes items survive the source being deleted.
-    func add(_ source: URL) {
+    ///
+    /// The copy (which can be multi-GB) and the thumbnail decode run off the
+    /// main actor so the UI never blocks; only the finished entry is appended
+    /// back on the main actor.
+    func add(_ source: URL) async {
         guard source.isFileURL else { return }
-        let preferred = root.appendingPathComponent(source.lastPathComponent)
-        let dest = Self.uniqueDestination(for: preferred)
-        do {
-            try FileManager.default.copyItem(at: source, to: dest)
-        } catch {
-            NSLog("Shelf: copy failed for \(source.lastPathComponent) — \(error)")
-            return
-        }
+        let originalName = source.lastPathComponent
+        let root = self.root
+        let prepared = await Task.detached(priority: .userInitiated) { () -> PreparedEntry? in
+            let dest = Self.uniqueDestination(for: root.appendingPathComponent(originalName))
+            do {
+                try FileManager.default.copyItem(at: source, to: dest)
+            } catch {
+                NSLog("Shelf: copy failed for \(originalName) — \(error)")
+                return nil
+            }
+            return PreparedEntry(storedURL: dest, thumbnail: Self.thumbnail(for: dest))
+        }.value
+        guard let prepared else { return }
+
         let entry = ShelfEntry(
             id: UUID(),
-            storedPath: dest.path,
-            originalName: source.lastPathComponent,
+            storedPath: prepared.storedURL.path,
+            originalName: originalName,
             addedAt: Date(),
-            thumbnail: Self.thumbnail(for: dest)
+            thumbnail: prepared.thumbnail
         )
         items.insert(entry, at: 0)
+        enforceCap()
         save()
     }
 
@@ -85,6 +100,23 @@ final class ShelfStore {
         items.removeAll { $0.id == entry.id }
         try? FileManager.default.trashItem(at: entry.url, resultingItemURL: nil)
         save()
+    }
+
+    /// Trims the shelf to `maxItems` by evicting the oldest items — routed
+    /// through `remove`, so their copies go to the Trash rather than a bare
+    /// delete on user data. Items are newest-first, so the oldest is last.
+    private func enforceCap() {
+        while items.count > Self.maxItems, let oldest = items.last {
+            remove(oldest)
+        }
+    }
+
+    /// Off-actor result of a copy: the stored URL plus its decoded thumbnail.
+    /// The thumbnail is decoded once, off the main actor, and never mutated,
+    /// so ferrying the (non-Sendable) `NSImage` across the hop is safe here.
+    private struct PreparedEntry: @unchecked Sendable {
+        let storedURL: URL
+        let thumbnail: NSImage?
     }
 
     // MARK: - Paste in / copy out
@@ -101,11 +133,11 @@ final class ShelfStore {
     /// data and plain text are written to a temp file first so they flow
     /// through `add` exactly like a dropped file. Returns the count added.
     @discardableResult
-    func ingest(from pasteboard: NSPasteboard = .general) -> Int {
+    func ingest(from pasteboard: NSPasteboard = .general) async -> Int {
         let sources = Self.ingestSources(from: pasteboard)
         for source in sources {
-            add(source.url)
-            // `add` copies, so the temp original can go once it is in.
+            await add(source.url)
+            // `add` has finished copying, so the temp original can go now.
             if source.isTemporary {
                 try? FileManager.default.removeItem(at: source.url.deletingLastPathComponent())
             }
@@ -207,9 +239,16 @@ final class ShelfStore {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: indexURL),
-              let index = try? JSONDecoder().decode(PersistedIndex.self, from: data)
-        else { return }
+        guard let data = try? Data(contentsOf: indexURL) else { return }
+        guard let index = try? JSONDecoder().decode(PersistedIndex.self, from: data) else {
+            // The index exists but doesn't decode. Preserve it under a
+            // timestamped sibling so a later save() can't clobber the only
+            // record of the copies (leaving orphaned files with no way back).
+            let corrupt = indexURL.deletingLastPathComponent()
+                .appendingPathComponent("index.json.corrupt-\(Int(Date().timeIntervalSince1970))")
+            try? FileManager.default.moveItem(at: indexURL, to: corrupt)
+            return
+        }
         // Drop entries whose stored copy has vanished so the list stays honest.
         items = index.items.compactMap { record in
             let url = URL(fileURLWithPath: record.storedPath)
@@ -226,7 +265,7 @@ final class ShelfStore {
 
     // MARK: - Helpers
 
-    private static func thumbnail(for url: URL) -> NSImage? {
+    private nonisolated static func thumbnail(for url: URL) -> NSImage? {
         guard let type = UTType(filenameExtension: url.pathExtension),
               type.conforms(to: .image) else { return nil }
         // 64 px long side — rows are ~32 pt, so this stays crisp @2x without
@@ -236,7 +275,7 @@ final class ShelfStore {
 
     /// Finder-style "name (1)", "name (2)" suffix resolver.
     /// Adapted from Dropshit (MIT), `Conversion/UniqueDestination.swift`.
-    private static func uniqueDestination(for preferred: URL) -> URL {
+    private nonisolated static func uniqueDestination(for preferred: URL) -> URL {
         let fm = FileManager.default
         guard fm.fileExists(atPath: preferred.path) else { return preferred }
         let dir = preferred.deletingLastPathComponent()

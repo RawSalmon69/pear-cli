@@ -5,8 +5,16 @@ import SwiftUI
 /// desktops drop the battery card and machines without readable sensors drop
 /// the sensors card, with no error surfaced.
 struct MonitorView: View {
-    @State private var model = MonitorModel()
+    @State private var model: MonitorModel
     @State private var showSettings = false
+
+    /// The model is injected (by `MonitorWindowController`) so the controller
+    /// can drive the same `stop()` from `windowWillClose` that `.onDisappear`
+    /// calls — a hosted SwiftUI view's `onDisappear` isn't guaranteed to fire
+    /// when the AppKit window closes.
+    init(model: MonitorModel) {
+        _model = State(initialValue: model)
+    }
 
     private var snap: MonitorSnapshot { model.snapshot }
     private var visible: Set<MonitorSection> { model.prefs.visibleSections }

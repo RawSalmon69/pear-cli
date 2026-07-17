@@ -50,7 +50,7 @@ struct ShelfView: View {
             }
             Spacer()
             GlyphButton(symbol: "doc.on.clipboard", help: "Paste from clipboard") {
-                store.ingest(from: .general)
+                Task { await store.ingest(from: .general) }
             }
             GlyphButton(symbol: "xmark", help: "Close", action: onClose)
         }
@@ -114,7 +114,7 @@ struct ShelfView: View {
             handled = true
             _ = provider.loadObject(ofClass: URL.self) { [store] url, _ in
                 guard let url, url.isFileURL else { return }
-                Task { @MainActor in store.add(url) }
+                Task { @MainActor in await store.add(url) }
             }
         }
         return handled

@@ -48,13 +48,19 @@ final class CleanerRunner {
         process.standardOutput = pipe
         process.standardError = pipe
 
+        // Partial-read carry-over. The pipe invokes the handler serially on its
+        // own queue, so single-threaded access to `data` is guaranteed;
+        // @unchecked Sendable documents that this closure is its sole owner.
+        let carry = StreamBuffer()
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             if data.isEmpty {
                 handle.readabilityHandler = nil
                 return
             }
-            guard let chunk = String(data: data, encoding: .utf8) else { return }
+            carry.data.append(data)
+            let chunk = CleanerRunner.decodeStreaming(buffer: &carry.data)
+            guard !chunk.isEmpty else { return }
             Task { @MainActor [weak self] in self?.append(chunk) }
         }
 
@@ -86,6 +92,34 @@ final class CleanerRunner {
         transcript += Self.stripControl(chunk)
     }
 
+    /// Decodes the longest valid UTF-8 prefix of `buffer`, leaving any trailing
+    /// bytes of an incomplete multibyte sequence behind for the next read. A
+    /// codepoint split across a read boundary would otherwise make
+    /// `String(data:encoding:)` reject the whole chunk and silently drop real
+    /// CLI output (e.g. a "✓" whose 3 bytes land in two reads).
+    nonisolated static func decodeStreaming(buffer: inout Data) -> String {
+        if let whole = String(data: buffer, encoding: .utf8) {
+            buffer.removeAll(keepingCapacity: true)
+            return whole
+        }
+        // The full buffer failed. A UTF-8 codepoint is at most 4 bytes, so an
+        // incomplete trailing sequence is at most 3 bytes: trim from the end
+        // until a valid prefix decodes, keeping the tail for the next read.
+        let maxTail = min(3, buffer.count)
+        for drop in 1...maxTail {
+            let cut = buffer.count - drop
+            if let decoded = String(data: Data(buffer.prefix(cut)), encoding: .utf8) {
+                buffer.removeFirst(cut)
+                return decoded
+            }
+        }
+        // Not a boundary split — the leading bytes are genuinely invalid.
+        // Decode lossily and clear so the stream can never stall on them.
+        let salvaged = String(decoding: buffer, as: UTF8.self)
+        buffer.removeAll(keepingCapacity: true)
+        return salvaged
+    }
+
     /// NO_COLOR removes colors, but belt-and-braces strip any remaining ANSI
     /// escapes and carriage-return rewrites so the transcript stays readable.
     nonisolated static func stripControl(_ text: String) -> String {
@@ -94,4 +128,12 @@ final class CleanerRunner {
         cleaned = cleaned.replacingOccurrences(of: "\r", with: "\n")
         return cleaned
     }
+}
+
+/// Carries partial-read bytes between successive `readabilityHandler` calls.
+/// The pipe invokes the handler serially on a single queue, so the handler is
+/// the only accessor; `@unchecked Sendable` records that we rely on that serial
+/// contract rather than a lock.
+private final class StreamBuffer: @unchecked Sendable {
+    var data = Data()
 }

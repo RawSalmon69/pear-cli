@@ -91,12 +91,21 @@ final class ScratchpadStore {
         guard let data = try? JSONEncoder().encode(notes) else { return }
         try? FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: fileURL)
+        try? data.write(to: fileURL, options: .atomic)
     }
 
     private static func load(from url: URL) -> [ScratchpadNote] {
         guard let data = try? Data(contentsOf: url) else { return [] }
-        return (try? JSONDecoder().decode([ScratchpadNote].self, from: data)) ?? []
+        if let notes = try? JSONDecoder().decode([ScratchpadNote].self, from: data) {
+            return notes
+        }
+        // The file exists but doesn't decode. Preserve it under a timestamped
+        // sibling before seeding a blank note — otherwise the next autosave
+        // silently overwrites (and destroys) the user's real notes.
+        let corrupt = url.deletingLastPathComponent()
+            .appendingPathComponent("\(url.lastPathComponent).corrupt-\(Int(Date().timeIntervalSince1970))")
+        try? FileManager.default.moveItem(at: url, to: corrupt)
+        return []
     }
 
     static var defaultFileURL: URL {

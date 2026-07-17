@@ -122,6 +122,11 @@ final class RunnerModel {
     @ObservationIgnored private var animateTask: Task<Void, Never>?
     @ObservationIgnored private var sampleTask: Task<Void, Never>?
 
+    // Sleep/wake watchers so the loops don't animate (and burn CPU, which then
+    // feeds its own cadence) while the Mac is asleep. Held only while enabled.
+    @ObservationIgnored private var sleepObserver: NSObjectProtocol?
+    @ObservationIgnored private var wakeObserver: NSObjectProtocol?
+
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let defaultsKey: String
     @ObservationIgnored private let styleKey: String
@@ -151,10 +156,29 @@ final class RunnerModel {
         self.currentFrame = built.first ?? NSImage(size: RunnerStyle.placeholderSize)
     }
 
-    /// Starts sampling + animating if enabled. Idempotent — a second call while
+    /// Starts sampling + animating if enabled, and begins watching for system
+    /// sleep so the loops pause while asleep. Idempotent — a second call while
     /// already running is a no-op, so `.onAppear`/launch can call it freely.
     func start() {
-        guard isEnabled, animateTask == nil else { return }
+        guard isEnabled else { return }
+        observeSleepWake()
+        startLoops()
+    }
+
+    /// Stops both loops, drops the sleep/wake watchers, and parks on the first
+    /// frame. Called on disable/deinit.
+    func stop() {
+        removeSleepWakeObservers()
+        cancelLoops()
+        cpuPercent = nil
+        frameIndex = 0
+        currentFrame = frames[frameIndex]
+    }
+
+    /// Spins up the two loops if not already running. Split out of `start()` so
+    /// wake can resume without re-registering the sleep/wake observers.
+    private func startLoops() {
+        guard animateTask == nil else { return }
         frameIndex = 0
         interval = RunnerCadence.idleInterval
         currentFrame = frames[frameIndex]
@@ -162,15 +186,41 @@ final class RunnerModel {
         startAnimating()
     }
 
-    /// Stops both loops and parks on the first frame. Called on disable/deinit.
-    func stop() {
+    private func cancelLoops() {
         animateTask?.cancel()
         animateTask = nil
         sampleTask?.cancel()
         sampleTask = nil
-        cpuPercent = nil
-        frameIndex = 0
-        currentFrame = frames[frameIndex]
+    }
+
+    /// System is going to sleep: stop both loops but keep `isEnabled` and the
+    /// observers, so wake resumes automatically. Not `stop()` — that tears down
+    /// the observers and we'd never come back.
+    private func pauseForSleep() {
+        cancelLoops()
+    }
+
+    private func observeSleepWake() {
+        guard sleepObserver == nil else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        sleepObserver = center.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pauseForSleep() }
+        }
+        wakeObserver = center.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { guard let self, self.isEnabled else { return }; self.startLoops() }
+        }
+    }
+
+    private func removeSleepWakeObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        if let sleepObserver { center.removeObserver(sleepObserver) }
+        if let wakeObserver { center.removeObserver(wakeObserver) }
+        sleepObserver = nil
+        wakeObserver = nil
     }
 
     /// Re-renders the frame set for the current style and parks on its first

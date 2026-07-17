@@ -81,25 +81,61 @@ protocol AudioMuting: AnyObject {
 
 @MainActor
 final class CoreAudioMuteController: AudioMuting {
+    /// The per-channel mute elements to fall back to when a device exposes no
+    /// master mute (common on USB / HDMI / aggregate outputs). Element 0 is the
+    /// master; 1 and 2 are the left/right channels.
+    private static let channelElements: [AudioObjectPropertyElement] = [1, 2]
+
     func isMuted() -> Bool {
         guard let device = defaultOutputDevice() else { return false }
-        var address = muteAddress()
-        guard AudioObjectHasProperty(device, &address) else { return false }
-        var muted = UInt32(0)
-        var size = UInt32(MemoryLayout<UInt32>.size)
-        let status = AudioObjectGetPropertyData(device, &address, 0, nil, &size, &muted)
-        return status == noErr && muted != 0
+        // Prefer the master element; fall back to per-channel when the device
+        // has no master mute.
+        if let master = readMute(device, element: kAudioObjectPropertyElementMain) {
+            return master
+        }
+        let channels = Self.channelElements.compactMap { readMute(device, element: $0) }
+        guard !channels.isEmpty else { return false }
+        // Muted only when every present channel is muted.
+        return channels.allSatisfy { $0 }
     }
 
     func setMuted(_ muted: Bool) {
         guard !SwitchTestGuard.isRunningTests else { return }
         guard let device = defaultOutputDevice() else { return }
-        var address = muteAddress()
-        guard AudioObjectHasProperty(device, &address) else { return }
+        // Master when present; otherwise write every present channel.
+        if writeMute(device, element: kAudioObjectPropertyElementMain, muted: muted) { return }
+        for element in Self.channelElements {
+            _ = writeMute(device, element: element, muted: muted)
+        }
+    }
+
+    /// Reads the mute flag for one element, or nil when the element is absent
+    /// or unreadable.
+    private func readMute(_ device: AudioDeviceID, element: AudioObjectPropertyElement) -> Bool? {
+        var address = muteAddress(element: element)
+        guard AudioObjectHasProperty(device, &address) else { return nil }
+        var muted = UInt32(0)
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &muted) == noErr else {
+            return nil
+        }
+        return muted != 0
+    }
+
+    /// Writes the mute flag for one element. Returns true only when the element
+    /// exists, is settable, and the write succeeded — so the caller can tell
+    /// whether the master path worked before falling back to channels.
+    @discardableResult
+    private func writeMute(_ device: AudioDeviceID, element: AudioObjectPropertyElement, muted: Bool) -> Bool {
+        var address = muteAddress(element: element)
+        guard AudioObjectHasProperty(device, &address) else { return false }
         var settable = DarwinBoolean(false)
-        guard AudioObjectIsPropertySettable(device, &address, &settable) == noErr, settable.boolValue else { return }
+        guard AudioObjectIsPropertySettable(device, &address, &settable) == noErr, settable.boolValue else {
+            return false
+        }
         var value: UInt32 = muted ? 1 : 0
-        _ = AudioObjectSetPropertyData(device, &address, 0, nil, UInt32(MemoryLayout<UInt32>.size), &value)
+        return AudioObjectSetPropertyData(
+            device, &address, 0, nil, UInt32(MemoryLayout<UInt32>.size), &value) == noErr
     }
 
     private func defaultOutputDevice() -> AudioDeviceID? {
@@ -116,11 +152,11 @@ final class CoreAudioMuteController: AudioMuting {
         return status == noErr && device != 0 ? device : nil
     }
 
-    private func muteAddress() -> AudioObjectPropertyAddress {
+    private func muteAddress(element: AudioObjectPropertyElement) -> AudioObjectPropertyAddress {
         AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyMute,
             mScope: kAudioObjectPropertyScopeOutput,
-            mElement: kAudioObjectPropertyElementMain
+            mElement: element
         )
     }
 }

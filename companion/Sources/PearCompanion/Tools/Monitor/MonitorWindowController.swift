@@ -6,8 +6,11 @@ import AppKit
 /// detail view (and it stays put when focus shifts, unlike a popover). The
 /// model inside samples only while the window is visible.
 @MainActor
-final class MonitorWindowController {
+final class MonitorWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
+    /// Owned here (not just inside the view) so `windowWillClose` can stop
+    /// sampling; the window is reused across opens, so the model persists too.
+    private let model = MonitorModel()
 
     func show() {
         if let window {
@@ -24,12 +27,21 @@ final class MonitorWindowController {
         )
         window.title = "Monitor"
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: MonitorView())
+        window.contentView = NSHostingView(rootView: MonitorView(model: model))
+        window.delegate = self
         window.setFrameAutosaveName("PearMonitorWindow")
         if !window.setFrameUsingName("PearMonitorWindow") { window.center() }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = window
+    }
+
+    /// Backstop for the view's `.onDisappear` stop: `onDisappear` isn't
+    /// guaranteed to fire when the AppKit window closes, so stop sampling here
+    /// too. `stop()` is idempotent, and `.onAppear` restarts it on the next
+    /// open, so double-stopping is harmless.
+    func windowWillClose(_ notification: Notification) {
+        model.stop()
     }
 }
 

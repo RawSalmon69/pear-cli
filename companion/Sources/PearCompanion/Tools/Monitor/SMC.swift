@@ -112,7 +112,10 @@ final class SMCConnection {
     private func decode(_ val: SMCValue) -> Double? {
         let b = val.bytes
         func u16() -> Double { Double(UInt16(b[0]) << 8 | UInt16(b[1])) }
-        func s16() -> Double { Double(Int(b[0]) * 256 + Int(b[1])) }
+        // Sign-extend: these SMC types are signed 16-bit fixed-point, so the
+        // high bit must carry. `Int(b[0]) * 256 + Int(b[1])` never goes
+        // negative and mis-reads the top of the range.
+        func s16() -> Double { Double(Int16(bitPattern: UInt16(b[0]) << 8 | UInt16(b[1]))) }
         switch val.dataType {
         case "ui8 ": return Double(b[0])
         case "ui16": return Double(UInt16(b[0]) << 8 | UInt16(b[1]))

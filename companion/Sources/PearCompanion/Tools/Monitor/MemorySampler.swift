@@ -5,6 +5,10 @@ import Darwin
 //
 // Adapted from Stats (MIT) — `Modules/RAM/readers.swift` `UsageReader`.
 enum MemorySampler {
+    // mach_host_self() adds a host-port send right on every call; caching a
+    // single right for the process lifetime avoids leaking one per sample tick.
+    private static let hostPort: mach_port_t = mach_host_self()
+
     static func sample() -> MemorySample? {
         guard let total = totalMemory() else { return nil }
 
@@ -13,7 +17,7 @@ enum MemorySampler {
             MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
         let result = withUnsafeMutablePointer(to: &stats) {
             $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+                host_statistics64(hostPort, HOST_VM_INFO64, $0, &count)
             }
         }
         guard result == KERN_SUCCESS else { return nil }
@@ -21,7 +25,7 @@ enum MemorySampler {
         // `vm_page_size` is a mutable C global (not concurrency-safe); query the
         // page size through the host port instead.
         var pageSize: vm_size_t = 0
-        guard host_page_size(mach_host_self(), &pageSize) == KERN_SUCCESS, pageSize > 0 else {
+        guard host_page_size(hostPort, &pageSize) == KERN_SUCCESS, pageSize > 0 else {
             return nil
         }
         let page = UInt64(pageSize)
@@ -49,7 +53,7 @@ enum MemorySampler {
             MemoryLayout<host_basic_info_data_t>.size / MemoryLayout<integer_t>.size)
         let result = withUnsafeMutablePointer(to: &info) {
             $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_info(mach_host_self(), HOST_BASIC_INFO, $0, &count)
+                host_info(hostPort, HOST_BASIC_INFO, $0, &count)
             }
         }
         guard result == KERN_SUCCESS, info.max_mem > 0 else { return nil }
