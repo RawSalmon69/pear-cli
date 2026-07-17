@@ -103,12 +103,13 @@ jobs:
           APP="companion/build/PearCompanion.app"
           SIZE_MB=$(( $(du -sk "$APP" | cut -f1) / 1024 ))
           echo "Bundle size: ${SIZE_MB} MB"
-          # Lightweightness is still the pitch, but the bundled pear CLI
-          # (scripts + two stripped arm64 Go helpers, ~9 MB) ships inside the
-          # app as of 2.5.0 so it works on Macs with no installed pear. 25 MB
-          # leaves the same headroom over the ~19 MB it produces.
-          if [ "$SIZE_MB" -gt 25 ]; then
-            echo "::error::Bundle ${SIZE_MB} MB exceeds the 25 MB budget"
+          # Lightweightness is still the pitch. The bundled pear CLI (scripts +
+          # lib + the one stripped arm64 helper analyze-go, for `analyze --json`)
+          # ships inside the app so it works on Macs with no installed pear;
+          # status-go was dropped as unused (stats are native). ~15 MB result,
+          # 20 MB leaves headroom without letting it creep.
+          if [ "$SIZE_MB" -gt 20 ]; then
+            echo "::error::Bundle ${SIZE_MB} MB exceeds the 20 MB budget"
             exit 1
           fi
 

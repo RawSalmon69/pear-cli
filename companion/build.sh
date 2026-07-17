@@ -54,9 +54,13 @@ mkdir -p "$CLI_DEST/bin"
 cp ../pear "$CLI_DEST/pear"
 cp -R ../lib "$CLI_DEST/lib"
 cp ../bin/*.sh "$CLI_DEST/bin/"
-echo "Building bundled CLI helpers (analyze-go, status-go)..."
+# The app drives clean/optimize (shell) and `analyze --json` (analyze-go). It
+# never invokes `pear status` — stats are computed natively in Swift — so the
+# status-go Go binary (~3.8 MB) is not bundled; drop its now-binaryless wrapper
+# so the embedded CLI has no broken command.
+rm -f "$CLI_DEST/bin/status.sh"
+echo "Building bundled CLI helper (analyze-go)..."
 (cd .. && go build -ldflags "-s -w" -o "companion/$CLI_DEST/bin/analyze-go" ./cmd/analyze)
-(cd .. && go build -ldflags "-s -w" -o "companion/$CLI_DEST/bin/status-go" ./cmd/status)
 
 # Embed the Developer ID provisioning profile that authorizes the CloudKit and
 # push entitlements. Without it a hardened, entitled build will not launch.
@@ -87,12 +91,10 @@ if [[ -n "${IDENTITY:-}" ]]; then
         sign "$FW"
     fi
 
-    # The bundled CLI's Go helpers are Mach-O and notarization checks them
+    # The bundled CLI's Go helper is Mach-O and notarization checks it
     # individually; shell scripts need no signature.
-    for helper in "$APP/Contents/Resources/pear-cli/bin/analyze-go" \
-        "$APP/Contents/Resources/pear-cli/bin/status-go"; do
-        if [[ -f "$helper" ]]; then sign "$helper"; fi
-    done
+    ANALYZE_GO="$APP/Contents/Resources/pear-cli/bin/analyze-go"
+    if [[ -f "$ANALYZE_GO" ]]; then sign "$ANALYZE_GO"; fi
 
     # Main app last, over the already-signed nested code.
     codesign --force --options runtime --timestamp \
