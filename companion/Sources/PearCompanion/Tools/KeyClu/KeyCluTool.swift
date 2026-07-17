@@ -24,6 +24,8 @@ final class KeyCluTool: Tool {
 
     func hotkeyFired() { show() }
 
+    func stop() { overlay.hide() }
+
     private func show() {
         if overlay.isVisible {
             overlay.hide()
