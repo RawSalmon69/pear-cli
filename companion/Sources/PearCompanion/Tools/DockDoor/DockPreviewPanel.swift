@@ -86,15 +86,19 @@ final class DockPreviewPanel {
 
     /// Anchors the panel to the hovered icon: flip the AX (top-left) icon rect
     /// into AppKit space, pick the screen it sits on, derive the Dock edge from
-    /// that screen's insets, then place and clamp via `DockGeometry`.
+    /// that screen's insets, resolve the user's placement setting against that
+    /// edge, then place and clamp via `DockGeometry`. Placement and gap are read
+    /// live, so a settings change applies on the next hover with no relaunch.
     private func frame(forIconRectAX iconRectAX: CGRect, panelSize: CGSize) -> CGRect {
         let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
         let iconAppKit = DockGeometry.flipToAppKit(iconRectAX, primaryMaxY: primaryMaxY)
         let screen = screenContaining(iconAppKit) ?? NSScreen.main ?? NSScreen.screens.first
         let visible = screen?.visibleFrame ?? .zero
         let side = DockGeometry.side(frame: screen?.frame ?? .zero, visibleFrame: visible)
+        let placement = DockGeometry.resolvedPlacement(DockDoorSettings.previewPlacement(), side: side)
         let origin = DockGeometry.panelOrigin(
-            iconRect: iconAppKit, panelSize: panelSize, side: side, visibleFrame: visible
+            iconRect: iconAppKit, panelSize: panelSize, placement: placement,
+            visibleFrame: visible, gap: DockDoorSettings.previewGap()
         )
         return CGRect(origin: origin, size: panelSize)
     }

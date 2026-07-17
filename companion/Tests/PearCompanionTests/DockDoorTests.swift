@@ -51,10 +51,15 @@ final class DockDoorTests: XCTestCase {
 
     private let panelSize = CGSize(width: 200, height: 120)
 
+    // Auto placement reproduces the per-Dock-side default (the default that
+    // bottom-Dock users must keep). `resolvedPlacement(.auto, side:)` maps the
+    // detected edge to an anchor, then `panelOrigin` places it.
+
     func testPanelAboveBottomDockIcon() {
         let icon = CGRect(x: 100, y: 10, width: 50, height: 50) // AppKit y-up
+        let placement = DockGeometry.resolvedPlacement(.auto, side: .bottom)
         let origin = DockGeometry.panelOrigin(
-            iconRect: icon, panelSize: panelSize, side: .bottom, visibleFrame: screen
+            iconRect: icon, panelSize: panelSize, placement: placement, visibleFrame: screen
         )
         // Centered on icon.midX (125) − width/2 (100); above icon.maxY (60) + gap (8).
         XCTAssertEqual(origin, CGPoint(x: 25, y: 68))
@@ -62,8 +67,9 @@ final class DockDoorTests: XCTestCase {
 
     func testPanelRightOfLeftDockIcon() {
         let icon = CGRect(x: 5, y: 400, width: 50, height: 50)
+        let placement = DockGeometry.resolvedPlacement(.auto, side: .left)
         let origin = DockGeometry.panelOrigin(
-            iconRect: icon, panelSize: panelSize, side: .left, visibleFrame: screen
+            iconRect: icon, panelSize: panelSize, placement: placement, visibleFrame: screen
         )
         // Right of icon.maxX (55) + gap (8); vertically centered on midY (425).
         XCTAssertEqual(origin, CGPoint(x: 63, y: 365))
@@ -71,8 +77,9 @@ final class DockDoorTests: XCTestCase {
 
     func testPanelLeftOfRightDockIcon() {
         let icon = CGRect(x: 1385, y: 400, width: 50, height: 50)
+        let placement = DockGeometry.resolvedPlacement(.auto, side: .right)
         let origin = DockGeometry.panelOrigin(
-            iconRect: icon, panelSize: panelSize, side: .right, visibleFrame: screen
+            iconRect: icon, panelSize: panelSize, placement: placement, visibleFrame: screen
         )
         // Left of icon.minX (1385) − width (200) − gap (8); centered on midY.
         XCTAssertEqual(origin, CGPoint(x: 1177, y: 365))
@@ -81,7 +88,7 @@ final class DockDoorTests: XCTestCase {
     func testPanelClampsToVisibleFrameRightEdge() {
         let icon = CGRect(x: 1430, y: 10, width: 50, height: 50) // pushed off the right
         let origin = DockGeometry.panelOrigin(
-            iconRect: icon, panelSize: panelSize, side: .bottom, visibleFrame: screen
+            iconRect: icon, panelSize: panelSize, placement: .above, visibleFrame: screen
         )
         // maxX (1440) − width (200) − margin (8) = 1232.
         XCTAssertEqual(origin.x, 1232)
@@ -90,10 +97,63 @@ final class DockDoorTests: XCTestCase {
     func testPanelClampsToVisibleFrameLeftEdge() {
         let icon = CGRect(x: -40, y: 10, width: 50, height: 50)
         let origin = DockGeometry.panelOrigin(
-            iconRect: icon, panelSize: panelSize, side: .bottom, visibleFrame: screen
+            iconRect: icon, panelSize: panelSize, placement: .above, visibleFrame: screen
         )
         // minX (0) + margin (8) = 8.
         XCTAssertEqual(origin.x, 8)
+    }
+
+    // MARK: - Manual placement overrides
+
+    func testResolvedPlacementAutoFollowsDockSide() {
+        XCTAssertEqual(DockGeometry.resolvedPlacement(.auto, side: .bottom), .above)
+        XCTAssertEqual(DockGeometry.resolvedPlacement(.auto, side: .left), .right)
+        XCTAssertEqual(DockGeometry.resolvedPlacement(.auto, side: .right), .left)
+    }
+
+    func testResolvedPlacementOverrideIgnoresDockSide() {
+        // A manual choice forces that anchor whatever edge the Dock is on.
+        for side in [DockSide.bottom, .left, .right] {
+            XCTAssertEqual(DockGeometry.resolvedPlacement(.above, side: side), .above)
+            XCTAssertEqual(DockGeometry.resolvedPlacement(.below, side: side), .below)
+            XCTAssertEqual(DockGeometry.resolvedPlacement(.left, side: side), .left)
+            XCTAssertEqual(DockGeometry.resolvedPlacement(.right, side: side), .right)
+        }
+    }
+
+    func testRightDockAboveOverrideLandsAboveIcon() {
+        // The owner's case: a right-side Dock whose auto panel sits over content
+        // (auto would be `.left` → left of the icon, vertically centered at y 365).
+        // The "Above" override lifts it above the icon instead: maxY (450) + gap
+        // (8) = 458. Centering a 200-wide panel on a right-edge icon overflows the
+        // screen, so x clamps inside the frame (1440 − 200 − 8 = 1232) — still
+        // above the icon, never left of it.
+        let icon = CGRect(x: 1385, y: 400, width: 50, height: 50)
+        let placement = DockGeometry.resolvedPlacement(.above, side: .right)
+        let origin = DockGeometry.panelOrigin(
+            iconRect: icon, panelSize: panelSize, placement: placement, visibleFrame: screen
+        )
+        XCTAssertEqual(origin, CGPoint(x: 1232, y: 458))
+    }
+
+    func testPanelBelowOverride() {
+        let icon = CGRect(x: 100, y: 400, width: 50, height: 50)
+        let origin = DockGeometry.panelOrigin(
+            iconRect: icon, panelSize: panelSize, placement: .below, visibleFrame: screen
+        )
+        // Centered on midX (125) − 100 = 25; below minY (400) − height (120) − gap (8) = 272.
+        XCTAssertEqual(origin, CGPoint(x: 25, y: 272))
+    }
+
+    func testPanelGapPushesFurtherOffIcon() {
+        // A larger gap moves the panel further from the icon (the owner's ask:
+        // push it off window content). Left placement subtracts width + gap.
+        let icon = CGRect(x: 1385, y: 400, width: 50, height: 50)
+        let origin = DockGeometry.panelOrigin(
+            iconRect: icon, panelSize: panelSize, placement: .left, visibleFrame: screen, gap: 40
+        )
+        // minX (1385) − width (200) − gap (40) = 1145.
+        XCTAssertEqual(origin.x, 1145)
     }
 
     // MARK: - Settings round-trip (dockdoor.*)
@@ -142,6 +202,45 @@ final class DockDoorTests: XCTestCase {
     func testPreviewSizeDimensionsIncrease() {
         XCTAssertLessThan(DockPreviewSize.small.maxDimension, DockPreviewSize.medium.maxDimension)
         XCTAssertLessThan(DockPreviewSize.medium.maxDimension, DockPreviewSize.large.maxDimension)
+    }
+
+    func testPlacementAndGapDefaultsWhenUnset() {
+        let defaults = suite("dockdoor-placement-defaults")
+        defer { defaults.removePersistentDomain(forName: "dockdoor-placement-defaults") }
+
+        // Default is .auto with the former hard-coded gap, so bottom-Dock users
+        // are unaffected.
+        XCTAssertEqual(DockDoorSettings.previewPlacement(defaults), .auto)
+        XCTAssertEqual(DockDoorSettings.previewGap(defaults), 8)
+    }
+
+    func testPlacementAndGapRoundTrip() {
+        let defaults = suite("dockdoor-placement-roundtrip")
+        defer { defaults.removePersistentDomain(forName: "dockdoor-placement-roundtrip") }
+
+        defaults.set(DockPreviewPlacement.above.rawValue, forKey: DockDoorSettings.Key.previewPlacement)
+        defaults.set(32.0, forKey: DockDoorSettings.Key.previewGap)
+        XCTAssertEqual(DockDoorSettings.previewPlacement(defaults), .above)
+        XCTAssertEqual(DockDoorSettings.previewGap(defaults), 32)
+    }
+
+    func testGarbagePlacementFallsBackToAuto() {
+        let defaults = suite("dockdoor-placement-garbage")
+        defer { defaults.removePersistentDomain(forName: "dockdoor-placement-garbage") }
+
+        defaults.set("sideways", forKey: DockDoorSettings.Key.previewPlacement)
+        XCTAssertEqual(DockDoorSettings.previewPlacement(defaults), .auto)
+    }
+
+    func testPreviewGapClampsOutOfRange() {
+        let defaults = suite("dockdoor-gap-clamp")
+        defer { defaults.removePersistentDomain(forName: "dockdoor-gap-clamp") }
+
+        defaults.set(9999.0, forKey: DockDoorSettings.Key.previewGap)
+        XCTAssertEqual(DockDoorSettings.previewGap(defaults), 80) // upper bound
+
+        defaults.set(-50.0, forKey: DockDoorSettings.Key.previewGap)
+        XCTAssertEqual(DockDoorSettings.previewGap(defaults), 0) // lower bound
     }
 
     // MARK: - Hover-intent decision

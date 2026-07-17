@@ -52,18 +52,35 @@ enum DockGeometry {
         CGRect(x: rect.minX, y: primaryMaxY - rect.maxY, width: rect.width, height: rect.height)
     }
 
+    /// Resolves a user placement setting into a concrete anchor. `.auto` follows
+    /// the detected Dock side (bottom → above, left → right of the icon, right →
+    /// left of the icon); every other case is returned unchanged, forcing that
+    /// anchor regardless of where the Dock sits. Never returns `.auto`. Pure, so
+    /// the auto-vs-override decision is unit-testable without a live Dock.
+    static func resolvedPlacement(_ placement: DockPreviewPlacement, side: DockSide) -> DockPreviewPlacement {
+        guard placement == .auto else { return placement }
+        switch side {
+        case .bottom: return .above
+        case .left: return .right
+        case .right: return .left
+        }
+    }
+
     /// Panel origin (AppKit bottom-left) that anchors a `panelSize` preview to a
-    /// hovered dock `iconRect` (both in AppKit y-up space), sitting just off the
-    /// Dock edge with `gap` points of breathing room, then clamped fully inside
-    /// `visibleFrame` with a `margin`.
+    /// hovered dock `iconRect` (both in AppKit y-up space), sitting `gap` points
+    /// off the icon on the `placement` side, then clamped fully inside
+    /// `visibleFrame` with a `margin`. `placement` is expected already resolved
+    /// via `resolvedPlacement`; `.auto` is folded into `.above` defensively so
+    /// the switch stays total.
     ///
-    /// - bottom Dock → panel above the icon, horizontally centered on it.
-    /// - left Dock → panel to the icon's right, vertically centered.
-    /// - right Dock → panel to the icon's left, vertically centered.
+    /// - above → panel above the icon, horizontally centered on it.
+    /// - below → panel below the icon, horizontally centered on it.
+    /// - right → panel to the icon's right, vertically centered.
+    /// - left → panel to the icon's left, vertically centered.
     static func panelOrigin(
         iconRect: CGRect,
         panelSize: CGSize,
-        side: DockSide,
+        placement: DockPreviewPlacement,
         visibleFrame: CGRect,
         gap: CGFloat = 8,
         margin: CGFloat = 8
@@ -71,14 +88,17 @@ enum DockGeometry {
         var x: CGFloat
         var y: CGFloat
 
-        switch side {
-        case .bottom:
+        switch placement {
+        case .auto, .above:
             x = iconRect.midX - panelSize.width / 2
             y = iconRect.maxY + gap
-        case .left:
+        case .below:
+            x = iconRect.midX - panelSize.width / 2
+            y = iconRect.minY - panelSize.height - gap
+        case .right:
             x = iconRect.maxX + gap
             y = iconRect.midY - panelSize.height / 2
-        case .right:
+        case .left:
             x = iconRect.minX - panelSize.width - gap
             y = iconRect.midY - panelSize.height / 2
         }

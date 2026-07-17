@@ -21,6 +21,10 @@ struct DockDoorSettingsView: View {
     private var hoverDelay = DockDoorSettings.defaultHoverDelay
     @AppStorage(DockDoorSettings.Key.previewSize)
     private var previewSize = DockDoorSettings.defaultPreviewSize.rawValue
+    @AppStorage(DockDoorSettings.Key.previewPlacement)
+    private var previewPlacement = DockDoorSettings.defaultPreviewPlacement.rawValue
+    @AppStorage(DockDoorSettings.Key.previewGap)
+    private var previewGap = DockDoorSettings.defaultPreviewGap
     @AppStorage(DockDoorSettings.Key.showTitles)
     private var showTitles = DockDoorSettings.defaultShowTitles
     @AppStorage(DockDoorSettings.Key.switcherEnabled)
@@ -69,6 +73,23 @@ struct DockDoorSettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .font(Theme.body)
+                Picker("Placement", selection: $previewPlacement) {
+                    ForEach(DockPreviewPlacement.allCases) { placement in
+                        Text(placement.label).tag(placement.rawValue)
+                    }
+                }
+                .font(Theme.body)
+                Stepper(value: $previewGap, in: DockDoorSettings.previewGapRange, step: 4) {
+                    HStack {
+                        Text("Gap")
+                        Spacer()
+                        Text("\(Int(previewGap)) pt")
+                            .font(Theme.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 .font(Theme.body)
                 Toggle("Show window titles", isOn: $showTitles)
                     .font(Theme.body)
