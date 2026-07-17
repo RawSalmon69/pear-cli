@@ -49,6 +49,10 @@ struct LinkTextView: NSViewRepresentable {
         if textView.string != text {
             textView.string = text
             textView.font = Self.editorFont
+            // A programmatic swap (note switch) must not leave the old note's
+            // ops on the undo stack — ⌘Z afterwards would replay the previous
+            // note's text into the current one via textDidChange.
+            textView.undoManager?.removeAllActions()
             if detectLinks { textView.checkTextInDocument(nil) }
         }
     }

@@ -25,6 +25,12 @@ final class ScratchpadTool: Tool {
         toggle()
     }
 
+    /// Live-disable: close the panel (which saves and removes the scroll
+    /// monitor) so a disabled tool leaves no window or event monitor behind.
+    func stop() {
+        window?.hide()
+    }
+
     private func toggle() {
         let controller = window ?? ScratchpadWindowController()
         window = controller
