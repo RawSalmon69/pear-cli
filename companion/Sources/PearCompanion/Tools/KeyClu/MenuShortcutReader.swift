@@ -112,6 +112,14 @@ struct MenuShortcutReader {
         }
         return out
     }
+
+    /// Production entry: read the app's menu bar via the injected provider, then
+    /// run the pure walk. Empty when there is no provider or no menu bar.
+    @MainActor
+    func groups(forPID pid: pid_t) -> [MenuGroup] {
+        guard let menuBar = provider?.menuBar(forPID: pid) else { return [] }
+        return groups(from: menuBar)
+    }
 }
 
 /// Supplies a menu-bar `AXNode` tree for a running app. Main-actor because AX
