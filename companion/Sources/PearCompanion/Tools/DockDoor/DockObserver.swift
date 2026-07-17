@@ -6,9 +6,13 @@
 // macOS fires as the highlighted (hovered) icon changes. DockDoor's DockObserver
 // also installs an always-on CGEventTap for dock-click / scroll gestures
 // (setupEventTap) — that entire path is deliberately NOT ported, so this feature
-// has ZERO CGEvent taps. Dock-restart recovery is event-driven (NSWorkspace app
-// launch) plus a lazy re-subscribe on the next hover, instead of DockDoor's 5 s
-// health-check Timer — nothing polls while idle.
+// has ZERO CGEvent taps. Recovery is event-driven instead of DockDoor's 5 s
+// health-check Timer — nothing polls while idle: a Dock relaunch (NSWorkspace
+// app-launch notification) and a screen-parameter change (display attach /
+// Dock position or size change — both rebuild the Dock's AX hierarchy and
+// orphan the old AXList subscription) each trigger a re-subscribe, with a short
+// retry ladder because a freshly (re)launched Dock's AX tree is not queryable
+// for the first few hundred milliseconds.
 
 import AppKit
 import ApplicationServices
@@ -56,6 +60,7 @@ final class DockObserver {
     private var dockPID: pid_t?
     private var subscribedList: AXUIElement?
     private var launchObserver: NSObjectProtocol?
+    private var screenObserver: NSObjectProtocol?
 
     /// Installs the Dock AXObserver (only if already trusted — never prompts)
     /// and an event-driven Dock-relaunch watcher. Safe to call when untrusted:
@@ -74,6 +79,20 @@ final class DockObserver {
                 MainActor.assumeIsolated { self?.resubscribe() }
             }
         }
+        if screenObserver == nil {
+            // A display attach/detach or a Dock position/size change rebuilds
+            // the Dock's AX hierarchy WITHOUT relaunching the process; the old
+            // AXList element goes stale and the subscription silently dies.
+            // Both also change some screen's visibleFrame, so this notification
+            // is the event-driven recovery hook.
+            screenObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didChangeScreenParametersNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.resubscribe() }
+            }
+        }
         guard AXIsProcessTrusted(), axObserver == nil else { return }
         subscribe()
     }
@@ -85,6 +104,10 @@ final class DockObserver {
         if let launchObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(launchObserver)
             self.launchObserver = nil
+        }
+        if let screenObserver {
+            NotificationCenter.default.removeObserver(screenObserver)
+            self.screenObserver = nil
         }
     }
 
@@ -99,9 +122,21 @@ final class DockObserver {
         subscribedList = nil
     }
 
-    private func resubscribe() {
+    /// Tear down and re-subscribe, retrying a few times: right after a Dock
+    /// relaunch (or mid-reconfiguration) the new AX tree is not queryable yet,
+    /// and a single immediate attempt would silently leave hover dead until the
+    /// next Dock restart. Each attempt is a fresh teardown+subscribe; the
+    /// ladder stops as soon as one sticks (or trust is missing).
+    private func resubscribe(attemptsLeft: Int = 3) {
         teardown()
+        guard AXIsProcessTrusted() else { return }
         subscribe()
+        guard axObserver == nil, attemptsLeft > 0 else { return }
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard let self, self.axObserver == nil else { return }
+            self.resubscribe(attemptsLeft: attemptsLeft - 1)
+        }
     }
 
     private func subscribe() {
@@ -148,15 +183,12 @@ final class DockObserver {
     /// Resolves the currently hovered Dock icon into a running-app target, or
     /// `nil` when nothing app-like is hovered.
     private func hoverTarget() -> DockHoverTarget? {
-        guard let dockPID else { return nil }
-        let dockElement = AXUIElementCreateApplication(dockPID)
-        DockAX.capTimeout(dockElement)
-
-        // The Dock application's first child is the icon list; its selected
-        // child is the hovered item.
-        guard let listChildren = DockAX.elements(dockElement, kAXChildrenAttribute),
-              let list = listChildren.first,
-              let selected = DockAX.elements(list, kAXSelectedChildrenAttribute),
+        // Read the selection off the SAME AXList the observer is subscribed to.
+        // Re-walking the tree and taking `children.first` (the old shape) can
+        // pick a different element than the by-role match `subscribe()` used —
+        // a latent dead-hover on any Dock layout where the list isn't first.
+        guard let list = subscribedList else { return nil }
+        guard let selected = DockAX.elements(list, kAXSelectedChildrenAttribute),
               let item = selected.first
         else {
             return nil

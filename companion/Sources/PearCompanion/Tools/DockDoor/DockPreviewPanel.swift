@@ -101,7 +101,10 @@ final class DockPreviewPanel {
         let iconAppKit = DockGeometry.flipToAppKit(iconRectAX, primaryMaxY: primaryMaxY)
         let screen = screenContaining(iconAppKit) ?? NSScreen.main ?? NSScreen.screens.first
         let visible = screen?.visibleFrame ?? .zero
-        let side = DockGeometry.side(frame: screen?.frame ?? .zero, visibleFrame: visible)
+        // iconRect lets the edge inference survive an auto-hidden Dock, which
+        // reserves no inset for the inset-based detection to see.
+        let side = DockGeometry.side(
+            frame: screen?.frame ?? .zero, visibleFrame: visible, iconRect: iconAppKit)
         let placement = DockGeometry.resolvedPlacement(DockDoorSettings.previewPlacement(), side: side)
         let origin = DockGeometry.panelOrigin(
             iconRect: iconAppKit, panelSize: panelSize, placement: placement,

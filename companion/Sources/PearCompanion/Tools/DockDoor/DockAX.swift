@@ -13,8 +13,13 @@ import ApplicationServices
 @MainActor
 enum DockAX {
     /// Cap the ~6 s default AX messaging timeout on an element we create, so a
-    /// beachballing target app can never freeze our main thread.
-    static func capTimeout(_ element: AXUIElement, _ seconds: Float = 0.5) {
+    /// beachballing target app can never freeze our main thread. 0.15 s: these
+    /// reads are synchronous on the main actor and a hover can issue dozens
+    /// (per pid, per window), so the per-call cap must be small enough that
+    /// even the worst case stays inside `DockWindows.enumerationBudget` —
+    /// 0.5 s per call let a few unresponsive helper pids stack into
+    /// multi-second beachballs per hover.
+    static func capTimeout(_ element: AXUIElement, _ seconds: Float = 0.15) {
         AXUIElementSetMessagingTimeout(element, seconds)
     }
 

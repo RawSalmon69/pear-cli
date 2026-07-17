@@ -278,17 +278,25 @@ final class DockDoorTests: XCTestCase {
     // MARK: - Hover-intent decision
 
     func testHoverActionHideWhenNothingHovered() {
-        XCTAssertEqual(DockHoverController.action(hoveredPID: nil, shownPID: nil), .hide)
-        XCTAssertEqual(DockHoverController.action(hoveredPID: nil, shownPID: 42), .hide)
+        XCTAssertEqual(DockHoverController.action(hoveredPID: nil, shownPID: nil, pendingPID: nil), .hide)
+        XCTAssertEqual(DockHoverController.action(hoveredPID: nil, shownPID: 42, pendingPID: nil), .hide)
+        XCTAssertEqual(DockHoverController.action(hoveredPID: nil, shownPID: nil, pendingPID: 42), .hide)
     }
 
     func testHoverActionShowForNewApp() {
-        XCTAssertEqual(DockHoverController.action(hoveredPID: 42, shownPID: nil), .show)
-        XCTAssertEqual(DockHoverController.action(hoveredPID: 42, shownPID: 7), .show)
+        XCTAssertEqual(DockHoverController.action(hoveredPID: 42, shownPID: nil, pendingPID: nil), .show)
+        XCTAssertEqual(DockHoverController.action(hoveredPID: 42, shownPID: 7, pendingPID: nil), .show)
+        XCTAssertEqual(DockHoverController.action(hoveredPID: 42, shownPID: nil, pendingPID: 7), .show)
     }
 
     func testHoverActionKeepForSameApp() {
-        XCTAssertEqual(DockHoverController.action(hoveredPID: 42, shownPID: 42), .keep)
+        XCTAssertEqual(DockHoverController.action(hoveredPID: 42, shownPID: 42, pendingPID: nil), .keep)
+    }
+
+    func testHoverActionKeepForPendingApp() {
+        // A cold app's retry loop is in flight (nothing shown yet): re-hovering
+        // the same icon must NOT restart the retry budget from zero.
+        XCTAssertEqual(DockHoverController.action(hoveredPID: 42, shownPID: nil, pendingPID: 42), .keep)
     }
 
     // MARK: - Sendable app snapshot
@@ -362,6 +370,71 @@ final class DockDoorTests: XCTestCase {
         let list = [cgEntry(pid: 501, layer: 0, x: 0, y: 0, w: 500, h: 400, name: nil)]
         let parsed = DockWindows.parseFallback(list, pids: [501])
         XCTAssertEqual(parsed.first?.title, "")
+    }
+
+    // MARK: - Auto-hidden Dock edge inference (icon-rect fallback)
+
+    func testSideInsetDetectionStillWinsWhenInsetPresent() {
+        let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let leftInset = CGRect(x: 70, y: 0, width: 1370, height: 875)
+        // Inset says left; a bottom-hugging icon rect must not override it.
+        let icon = CGRect(x: 700, y: 2, width: 50, height: 50)
+        XCTAssertEqual(DockGeometry.side(frame: frame, visibleFrame: leftInset, iconRect: icon), .left)
+    }
+
+    func testSideFallsBackToIconEdgeWhenAutoHidden() {
+        // Auto-hidden Dock: visibleFrame ≈ frame, no inset to detect.
+        let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let visible = CGRect(x: 0, y: 0, width: 1440, height: 875) // menu bar only
+
+        let leftIcon = CGRect(x: 4, y: 400, width: 50, height: 50)
+        XCTAssertEqual(DockGeometry.side(frame: frame, visibleFrame: visible, iconRect: leftIcon), .left)
+
+        let rightIcon = CGRect(x: 1386, y: 400, width: 50, height: 50)
+        XCTAssertEqual(DockGeometry.side(frame: frame, visibleFrame: visible, iconRect: rightIcon), .right)
+
+        let bottomIcon = CGRect(x: 700, y: 4, width: 50, height: 50)
+        XCTAssertEqual(DockGeometry.side(frame: frame, visibleFrame: visible, iconRect: bottomIcon), .bottom)
+
+        // No icon rect available → the old .bottom default.
+        XCTAssertEqual(DockGeometry.side(frame: frame, visibleFrame: visible), .bottom)
+    }
+
+    // MARK: - Switcher frame clamping
+
+    func testCenteredFrameCentersWhenItFits() {
+        let visible = CGRect(x: 0, y: 0, width: 1440, height: 875)
+        let frame = DockGeometry.centeredFrame(size: CGSize(width: 400, height: 300), in: visible)
+        XCTAssertEqual(frame.midX, visible.midX)
+        XCTAssertEqual(frame.midY, visible.midY)
+    }
+
+    func testCenteredFrameClampsTallGrid() {
+        // A grid taller than the screen used to hang off the top and bottom.
+        let visible = CGRect(x: 0, y: 0, width: 1440, height: 875)
+        let frame = DockGeometry.centeredFrame(size: CGSize(width: 400, height: 2000), in: visible)
+        XCTAssertEqual(frame.minY, visible.minY + 8) // pinned to the margin
+        XCTAssertEqual(frame.width, 400)
+    }
+
+    // MARK: - Thumbnail match ceiling
+
+    func testMatchDistanceIsL1CornerPlusSize() {
+        let a = CGRect(x: 0, y: 0, width: 100, height: 100)
+        let b = CGRect(x: 10, y: 20, width: 130, height: 140)
+        XCTAssertEqual(DockThumbnailer.matchDistance(a, b), 10 + 20 + 30 + 40)
+        XCTAssertEqual(DockThumbnailer.matchDistance(a, a), 0)
+    }
+
+    func testMatchCeilingRejectsZeroFrameTargetAgainstRealWindow() {
+        // A minimized/off-Space window's zero frame must never "closest-match"
+        // a real on-screen window and steal its thumbnail.
+        let zero = CGRect.zero
+        let real = CGRect(x: 200, y: 150, width: 900, height: 600)
+        XCTAssertGreaterThan(DockThumbnailer.matchDistance(zero, real), DockThumbnailer.maxMatchDistance)
+        // While a live window mid-move stays within it.
+        let drifted = real.offsetBy(dx: 24, dy: -18)
+        XCTAssertLessThanOrEqual(DockThumbnailer.matchDistance(real, drifted), DockThumbnailer.maxMatchDistance)
     }
 
     // MARK: - Window filter policy (shouldShow)

@@ -59,14 +59,14 @@ final class DockSwitcherPanel {
     }
 
     /// Centered on the screen under the cursor (falling back to main), clamped
-    /// inside its visible frame.
+    /// inside its visible frame — a tall many-window grid used to hang off the
+    /// top and bottom of the screen (the old comment claimed a clamp that
+    /// wasn't there; the pure geometry helper now actually does it).
     private func centeredFrame(size: CGSize) -> CGRect {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? NSScreen.screens.first
         let visible = screen?.visibleFrame ?? .zero
-        let x = visible.midX - size.width / 2
-        let y = visible.midY - size.height / 2
-        return CGRect(x: x, y: y, width: size.width, height: size.height)
+        return DockGeometry.centeredFrame(size: size, in: visible)
     }
 
     private func ensurePanel() -> NSPanel {

@@ -97,6 +97,26 @@ struct DockDoorSettingsView: View {
                     .font(Theme.body)
                 Toggle("Keep open until you click away", isOn: $keepOpen)
                     .font(Theme.body)
+                // Without Screen Recording the preview silently degrades to
+                // icon-only tiles (capture is skipped entirely, so SCK's own
+                // TCC prompt never fires) — say so instead of looking broken.
+                if !DockThumbnailer.canCapture {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Window thumbnails need Screen Recording access; tiles show app icons until it's granted.")
+                            .font(Theme.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Open Screen Recording Settings") {
+                            if let url = URL(
+                                string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+                            {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .font(Theme.caption)
+                    }
+                }
             }
 
             VStack(alignment: .leading, spacing: Theme.itemGap) {

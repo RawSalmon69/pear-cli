@@ -31,17 +31,47 @@ enum DockGeometry {
     /// its `visibleFrame`. The largest qualifying inset among bottom/left/right
     /// wins; the top inset is ignored because the menu bar also lives there and
     /// a top Dock is vanishingly rare (documented v1 limitation).
-    static func side(frame: CGRect, visibleFrame: CGRect) -> DockSide {
+    ///
+    /// An auto-hidden Dock reserves NO inset, so the inset test is blind to its
+    /// edge — that used to fall through to `.bottom` and misplace side-Dock
+    /// previews. When insets are ambiguous and the hovered icon's rect (AppKit
+    /// space, same as `frame`) is available, the edge the icon hugs decides.
+    static func side(frame: CGRect, visibleFrame: CGRect, iconRect: CGRect? = nil) -> DockSide {
         let bottom = visibleFrame.minY - frame.minY
         let left = visibleFrame.minX - frame.minX
         let right = frame.maxX - visibleFrame.maxX
 
         let best = max(bottom, max(left, right))
-        guard best >= minDockInset else { return .bottom }
+        guard best >= minDockInset else {
+            guard let iconRect else { return .bottom }
+            let iconLeft = iconRect.minX - frame.minX
+            let iconRight = frame.maxX - iconRect.maxX
+            let iconBottom = iconRect.minY - frame.minY
+            let nearest = min(iconBottom, min(iconLeft, iconRight))
+            if iconLeft == nearest { return .left }
+            if iconRight == nearest { return .right }
+            return .bottom
+        }
 
         if left == best { return .left }
         if right == best { return .right }
         return .bottom
+    }
+
+    /// A `size` rect centered in `visibleFrame` and clamped fully inside it —
+    /// the ⌥-tab switcher's frame. Extracted (and made honest: the old call
+    /// site documented clamping it never did) so a tall grid can't hang off
+    /// the top/bottom of the screen.
+    static func centeredFrame(size: CGSize, in visibleFrame: CGRect, margin: CGFloat = 8) -> CGRect {
+        let x = clamp(
+            visibleFrame.midX - size.width / 2,
+            min: visibleFrame.minX + margin, max: visibleFrame.maxX - size.width - margin
+        )
+        let y = clamp(
+            visibleFrame.midY - size.height / 2,
+            min: visibleFrame.minY + margin, max: visibleFrame.maxY - size.height - margin
+        )
+        return CGRect(x: x, y: y, width: size.width, height: size.height)
     }
 
     /// Reflects an AX rect (top-left origin, y-down) into AppKit space

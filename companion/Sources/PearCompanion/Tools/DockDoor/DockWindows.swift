@@ -155,16 +155,31 @@ enum DockWindows {
     /// uses for `"AXTrustedCheckOptionPrompt"`. No private AX functions involved.
     private static let axFullScreenAttribute = "AXFullScreen"
 
+    /// Hard wall-clock ceiling for one enumeration pass. Every AX read here is
+    /// synchronous on the main actor, so without a budget an app with several
+    /// unresponsive same-bundle-id helper pids could stack per-call timeouts
+    /// into a multi-second main-thread stall on a single hover. When the budget
+    /// runs out mid-pass, whatever was gathered so far is returned — the hover
+    /// controller's retry loop picks up the rest on a later attempt.
+    static let enumerationBudget: Duration = .milliseconds(400)
+
+    /// Pids already sent the AXManualAccessibility opt-in this session. The
+    /// poke is only needed once per process — repeating it on every retry
+    /// attempt just burns another capped AX call on an app that ignores it.
+    private static var pokedPIDs = Set<pid_t>()
+
     /// The hovered app's windows, newest AX order. Returns `[]` on any failure
     /// (app not answering, no windows, AX denied) so the caller degrades to
     /// hiding the panel rather than crashing.
     static func enumerate(app: DockApp) -> [DockWindow] {
+        let deadline = ContinuousClock.now + enumerationBudget
         var result: [DockWindow] = []
 
         // Multi-instance apps show one Dock icon for several processes sharing a
         // bundle id; enumerate every one, not just the pid the hover resolved.
         for pid in pids(for: app) {
-            appendAXWindows(pid: pid, appName: app.name, into: &result)
+            guard ContinuousClock.now < deadline else { break }
+            appendAXWindows(pid: pid, appName: app.name, deadline: deadline, into: &result)
         }
 
         // Zero-AX apps (some Electron/Java/Adobe surfaces expose no AX window
@@ -231,7 +246,9 @@ enum DockWindows {
 
     // MARK: - AX enumeration
 
-    private static func appendAXWindows(pid: pid_t, appName: String, into result: inout [DockWindow]) {
+    private static func appendAXWindows(
+        pid: pid_t, appName: String, deadline: ContinuousClock.Instant, into result: inout [DockWindow]
+    ) {
         let appElement = AXUIElementCreateApplication(pid)
         DockAX.capTimeout(appElement)
 
@@ -243,15 +260,21 @@ enum DockWindows {
             // assistive clients is setting the app-level "AXManualAccessibility"
             // attribute (public AXUIElementSetAttributeValue + stable literal,
             // the "AXFullScreen" pattern above). Non-Electron apps return an
-            // error, deliberately ignored. The tree builds asynchronously, so
-            // the hover controller's retry-while-hovering picks the windows up
-            // on a later attempt.
-            AXUIElementSetAttributeValue(
-                appElement, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+            // error, deliberately ignored. Once per pid per session: the tree
+            // builds asynchronously and the hover controller's
+            // retry-while-hovering picks the windows up on a later attempt, so
+            // repeating the poke each retry just burned another capped AX call.
+            if pokedPIDs.insert(pid).inserted {
+                AXUIElementSetAttributeValue(
+                    appElement, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+            }
             return
         }
 
         for axWindow in axWindows {
+            // ~6 capped reads per window; stop mid-list when the pass budget is
+            // spent rather than stalling through a long window list.
+            guard ContinuousClock.now < deadline else { return }
             DockAX.capTimeout(axWindow) // per-element
 
             let subrole = DockAX.string(axWindow, kAXSubroleAttribute)

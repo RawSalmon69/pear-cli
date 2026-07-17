@@ -68,9 +68,23 @@ enum DockThumbnailer {
         return images
     }
 
-    /// The unclaimed SCK window whose frame is closest to the target's
-    /// (corner + size L1 distance). SCK and AX report window frames in the same
-    /// top-left global point space, so an exact on-screen match scores ~0.
+    /// A match farther than this (L1 corner+size points) is no match at all.
+    /// Without a ceiling, "closest unclaimed" always returns SOMETHING — a
+    /// zero-frame (minimized/off-Space) target would claim a real window's
+    /// capture and show it on the wrong tile. Generous enough to absorb the
+    /// small AX↔SCK frame drift of a live window mid-move.
+    static let maxMatchDistance: CGFloat = 300
+
+    /// L1 corner + size distance between an AX target frame and an SCK window
+    /// frame — both in top-left global points, so an exact match scores ~0.
+    /// Pure, so the ceiling policy is unit-testable without SCK.
+    static func matchDistance(_ a: CGRect, _ b: CGRect) -> CGFloat {
+        abs(a.minX - b.minX) + abs(a.minY - b.minY)
+            + abs(a.width - b.width) + abs(a.height - b.height)
+    }
+
+    /// The unclaimed SCK window whose frame is closest to the target's, or nil
+    /// when even the closest is farther than `maxMatchDistance`.
     private static func bestMatch(
         for target: DockCaptureTarget,
         in windows: [SCWindow],
@@ -79,15 +93,13 @@ enum DockThumbnailer {
         var best: SCWindow?
         var bestDistance = CGFloat.greatestFiniteMagnitude
         for window in windows where !claimed.contains(window.windowID) {
-            let f = window.frame
-            let distance = abs(f.minX - target.frame.minX) + abs(f.minY - target.frame.minY)
-                + abs(f.width - target.frame.width) + abs(f.height - target.frame.height)
+            let distance = matchDistance(target.frame, window.frame)
             if distance < bestDistance {
                 bestDistance = distance
                 best = window
             }
         }
-        return best
+        return bestDistance <= maxMatchDistance ? best : nil
     }
 
     private static func captureImage(of window: SCWindow, maxDimension: CGFloat) async throws -> CGImage {

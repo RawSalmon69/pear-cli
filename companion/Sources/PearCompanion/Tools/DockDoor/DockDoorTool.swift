@@ -62,6 +62,8 @@ final class DockHoverController {
     private var showTask: Task<Void, Never>?
     private var hideTask: Task<Void, Never>?
     private var clickMonitors: [Any] = []
+    /// pid a scheduled/retrying show is in flight for; nil when idle or shown.
+    private var pendingShowPID: pid_t?
 
     /// Grace period before hiding, so the cursor can cross the gap between the
     /// Dock icon and the panel (which cancels the hide) without a flicker.
@@ -77,6 +79,7 @@ final class DockHoverController {
     func stop() {
         showTask?.cancel(); showTask = nil
         hideTask?.cancel(); hideTask = nil
+        pendingShowPID = nil
         removeClickMonitors()
         observer.stop()
         panel.hide()
@@ -85,21 +88,29 @@ final class DockHoverController {
 
     // MARK: - Hover intent (pure decision + scheduling)
 
-    /// What a hover event should do given the app under the cursor and the app
-    /// currently shown. Pure — unit-tested without a live Dock.
+    /// What a hover event should do given the app under the cursor, the app
+    /// currently shown, and the app a show (with its cold-AX retry loop) is
+    /// already in flight for. Pure — unit-tested without a live Dock.
+    ///
+    /// `pendingPID` matters for cold apps: during the retry loop nothing is
+    /// shown yet (`shownPID` nil), so without it a re-hover of the SAME icon
+    /// would read as `.show` and restart the retry budget from zero — jiggling
+    /// the cursor on a slow Electron icon could starve it forever.
     enum HoverAction: Equatable {
-        case show // an app icon, different from what's shown
-        case keep // the same app that's already shown
+        case show // an app icon, different from what's shown or pending
+        case keep // the app that's already shown or already being shown
         case hide // nothing app-like under the cursor
     }
 
-    static func action(hoveredPID: pid_t?, shownPID: pid_t?) -> HoverAction {
+    static func action(hoveredPID: pid_t?, shownPID: pid_t?, pendingPID: pid_t?) -> HoverAction {
         guard let hoveredPID else { return .hide }
-        return hoveredPID == shownPID ? .keep : .show
+        return (hoveredPID == shownPID || hoveredPID == pendingPID) ? .keep : .show
     }
 
     private func hoverChanged(_ target: DockHoverTarget?) {
-        switch Self.action(hoveredPID: target?.app.pid, shownPID: panel.shownPID) {
+        switch Self.action(
+            hoveredPID: target?.app.pid, shownPID: panel.shownPID, pendingPID: pendingShowPID
+        ) {
         case .hide:
             // Keep-open mode: leaving the icon doesn't dismiss — the panel
             // stays until Esc, a tile click, or a click anywhere else (the
@@ -110,6 +121,10 @@ final class DockHoverController {
         case .show:
             guard let target else { return }
             cancelHide()
+            // Different app: drop the old app's tiles NOW. Leaving them up
+            // while the new app's retry loop runs floated the previous app's
+            // windows over the wrong icon for up to ~1.5 s.
+            if panel.shownPID != nil { panel.hide() }
             scheduleShow(target)
         }
     }
@@ -126,11 +141,14 @@ final class DockHoverController {
 
     private func scheduleShow(_ target: DockHoverTarget) {
         showTask?.cancel()
+        pendingShowPID = target.app.pid
         let delayMs = Int(DockDoorSettings.hoverDelay())
         showTask = Task { [weak self] in
             if delayMs > 0 { try? await Task.sleep(for: .milliseconds(delayMs)) }
             guard !Task.isCancelled, let self else { return }
             await present(target)
+            // Clear only if a newer show hasn't already claimed the slot.
+            if self.pendingShowPID == target.app.pid { self.pendingShowPID = nil }
         }
     }
 
@@ -172,7 +190,14 @@ final class DockHoverController {
         if DockDoorSettings.keepPanelOpen() { installClickMonitors() }
 
         guard DockThumbnailer.canCapture else { return }
-        let targets = windows.map { DockCaptureTarget(index: $0.id, frame: $0.frame) }
+        // Only windows that can actually have an on-screen SCK image get a
+        // capture target: a minimized or geometry-less window's zero/stale
+        // frame would otherwise "closest-match" someone else's capture and put
+        // the wrong thumbnail on the wrong tile. Those tiles keep the icon.
+        let targets = windows
+            .filter { !$0.isMinimized && $0.frame.width > 1 && $0.frame.height > 1 }
+            .map { DockCaptureTarget(index: $0.id, frame: $0.frame) }
+        guard !targets.isEmpty else { return }
         let images = await DockThumbnailer.capture(app: app, targets: targets, maxDimension: maxDimension)
         // Drop stale results: a later hover may have swapped the shown app.
         guard !Task.isCancelled, panel.shownPID == app.pid else { return }
@@ -195,6 +220,7 @@ final class DockHoverController {
 
     private func hideNow() {
         showTask?.cancel(); showTask = nil
+        pendingShowPID = nil
         cancelHide()
         removeClickMonitors()
         panel.hide()
