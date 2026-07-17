@@ -43,4 +43,45 @@ final class KeyCluShortcutTests: XCTestCase {
         XCTAssertEqual(ShortcutFormatting.glyph(char: nil, virtualKey: kVK_Return, modifiers: 1), "⇧⌘↩")
         XCTAssertNil(ShortcutFormatting.glyph(char: nil, virtualKey: nil, modifiers: 0))
     }
+
+    // MARK: - Menu-tree walk
+
+    /// A menu bar with an Apple menu, a File menu (Open ⌘O, a separator, and a
+    /// disabled Close), and an Edit menu whose Find item has a Find submenu
+    /// (Find Next ⌘G).
+    private func sampleMenuBar() -> AXNode {
+        AXNode(children: [
+            AXNode(title: "Apple", children: [
+                AXNode(title: "About This Mac"),
+            ]),
+            AXNode(title: "File", children: [
+                AXNode(title: "Open", cmdChar: "o"),
+                AXNode(isSeparator: true),
+                AXNode(title: "Close", cmdChar: "w", isEnabled: false),
+                AXNode(title: "Print Preview"), // no shortcut
+            ]),
+            AXNode(title: "Edit", children: [
+                AXNode(title: "Find", children: [
+                    AXNode(title: "Find Next", cmdChar: "g"),
+                ]),
+            ]),
+        ])
+    }
+
+    func testGroupsExcludeAppleAndEmptyMenus() {
+        let groups = MenuShortcutReader().groups(from: sampleMenuBar())
+        XCTAssertEqual(groups.map(\.title), ["File", "Edit"])
+    }
+
+    func testGroupsSkipSeparatorsDisabledAndNoShortcut() {
+        let groups = MenuShortcutReader().groups(from: sampleMenuBar())
+        let file = groups.first { $0.title == "File" }
+        XCTAssertEqual(file?.shortcuts, [Shortcut(title: "Open", glyph: "⌘O")])
+    }
+
+    func testSubmenuShortcutsFoldIntoTopGroup() {
+        let groups = MenuShortcutReader().groups(from: sampleMenuBar())
+        let edit = groups.first { $0.title == "Edit" }
+        XCTAssertEqual(edit?.shortcuts, [Shortcut(title: "Find Next", glyph: "⌘G")])
+    }
 }

@@ -74,3 +74,49 @@ enum ShortcutFormatting {
         return modifierGlyphs(modifiers) + key
     }
 }
+
+/// Walks a menu-bar `AXNode` tree into display groups. The walk is pure over
+/// `AXNode`; a live `MenuAXProviding` (Task 3) supplies the tree in production.
+struct MenuShortcutReader {
+    /// nil in tests, which call `groups(from:)` directly with a hand-built tree.
+    var provider: (any MenuAXProviding)?
+
+    init(provider: (any MenuAXProviding)? = nil) {
+        self.provider = provider
+    }
+
+    /// Top menus → groups, skipping the system Apple menu and any menu with no
+    /// shortcuts. Submenu shortcuts fold into their top-level group.
+    func groups(from menuBar: AXNode) -> [MenuGroup] {
+        menuBar.children.compactMap { top in
+            guard top.title != "Apple" else { return nil }
+            let shortcuts = collect(top.children)
+            return shortcuts.isEmpty ? nil : MenuGroup(title: top.title, shortcuts: shortcuts)
+        }
+    }
+
+    /// Depth-first collection of displayable shortcuts, recursing into submenus.
+    private func collect(_ nodes: [AXNode]) -> [Shortcut] {
+        var out: [Shortcut] = []
+        for node in nodes {
+            if node.isSeparator || node.title.isEmpty { continue }
+            if node.isEnabled,
+               let glyph = ShortcutFormatting.glyph(
+                   char: node.cmdChar, virtualKey: node.cmdVirtualKey, modifiers: node.cmdModifiers)
+            {
+                out.append(Shortcut(title: node.title, glyph: glyph))
+            }
+            if !node.children.isEmpty {
+                out += collect(node.children)
+            }
+        }
+        return out
+    }
+}
+
+/// Supplies a menu-bar `AXNode` tree for a running app. Main-actor because AX
+/// reads run on the main actor; the live implementation is Task 3.
+@MainActor
+protocol MenuAXProviding {
+    func menuBar(forPID pid: pid_t) -> AXNode?
+}
