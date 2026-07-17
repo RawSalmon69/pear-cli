@@ -87,7 +87,7 @@ jobs:
           # companion-v2.2.0 shipped a launch-crash that spctl/stapler can't
           # catch (a toolchain-dependent Bundle.module lookup): run the built
           # app for 5 s and fail the release if the process dies.
-          companion/build/PearCompanion.app/Contents/MacOS/PearCompanion > smoke.log 2>&1 &
+          companion/build/Pear.app/Contents/MacOS/Pear > smoke.log 2>&1 &
           APP_PID=$!
           sleep 5
           if ! kill -0 "$APP_PID" 2> /dev/null; then
@@ -100,7 +100,7 @@ jobs:
       - name: Check bundle size budget
         run: |
           set -euo pipefail
-          APP="companion/build/PearCompanion.app"
+          APP="companion/build/Pear.app"
           SIZE_MB=$(( $(du -sk "$APP" | cut -f1) / 1024 ))
           echo "Bundle size: ${SIZE_MB} MB"
           # Lightweightness is still the pitch. The bundled pear CLI (scripts +
@@ -122,9 +122,9 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ steps.version.outputs.version }}"
-          APP="companion/build/PearCompanion.app"
-          ASSET_NAME="PearCompanion-${VERSION}.zip"
-          SUBMIT_ZIP="$RUNNER_TEMP/PearCompanion-submit.zip"
+          APP="companion/build/Pear.app"
+          ASSET_NAME="Pear-${VERSION}.zip"
+          SUBMIT_ZIP="$RUNNER_TEMP/Pear-submit.zip"
           FINAL_ZIP="$RUNNER_TEMP/${ASSET_NAME}"
 
           ditto -c -k --keepParent "$APP" "$SUBMIT_ZIP"

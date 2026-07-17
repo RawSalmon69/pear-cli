@@ -1,5 +1,5 @@
 #!/bin/bash
-# Assembles PearCompanion.app from the SPM build.
+# Assembles Pear.app from the SPM build.
 # Usage: ./build.sh [version]
 # Env: IDENTITY="Developer ID Application: ..." enables codesigning (skipped when unset).
 
@@ -8,15 +8,17 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 VERSION="${1:-$(git describe --tags --always 2> /dev/null | sed 's/^V//' || echo 0.1.0)}"
-APP="build/PearCompanion.app"
+APP="build/Pear.app"
 
-echo "Building PearCompanion ${VERSION}..."
+echo "Building Pear ${VERSION}..."
 swift build -c release
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-cp .build/release/PearCompanion "$APP/Contents/MacOS/PearCompanion"
+# SPM still builds the binary as "PearCompanion" (the module name is unchanged);
+# only the on-disk executable is renamed to Pear, matching CFBundleExecutable.
+cp .build/release/PearCompanion "$APP/Contents/MacOS/Pear"
 
 # SPM emits the executable's resources as PearCompanion_PearCompanion.bundle next
 # to the binary. Bundle.module resolves it via Bundle.main.resourceURL, so copy
@@ -31,7 +33,7 @@ SPARKLE_FRAMEWORK="$(find .build -maxdepth 3 -type d -name Sparkle.framework -pa
 if [[ -n "$SPARKLE_FRAMEWORK" ]]; then
     mkdir -p "$APP/Contents/Frameworks"
     cp -R "$SPARKLE_FRAMEWORK" "$APP/Contents/Frameworks/"
-    install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/PearCompanion"
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/Pear"
 fi
 
 cp Resources/Info.plist "$APP/Contents/Info.plist"
