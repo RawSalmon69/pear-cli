@@ -52,7 +52,7 @@ final class KeyCluShortcutTests: XCTestCase {
     private func sampleMenuBar() -> AXNode {
         AXNode(children: [
             AXNode(title: "Apple", children: [
-                AXNode(title: "About This Mac"),
+                AXNode(title: "Force Quit…", cmdVirtualKey: kVK_Escape, cmdModifiers: 2),
             ]),
             AXNode(title: "File", children: [
                 AXNode(title: "Open", cmdChar: "o"),
@@ -71,6 +71,7 @@ final class KeyCluShortcutTests: XCTestCase {
     func testGroupsExcludeAppleAndEmptyMenus() {
         let groups = MenuShortcutReader().groups(from: sampleMenuBar())
         XCTAssertEqual(groups.map(\.title), ["File", "Edit"])
+        XCTAssertFalse(groups.contains { $0.title == "Apple" })
     }
 
     func testGroupsSkipSeparatorsDisabledAndNoShortcut() {
