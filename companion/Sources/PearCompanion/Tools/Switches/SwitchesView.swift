@@ -18,8 +18,6 @@ struct SwitchesView: View {
     private var showScreenSaver = SystemSwitch.screenSaver.defaultVisible
     @AppStorage(SwitchesSettings.showKey(.lockScreen))
     private var showLockScreen = SystemSwitch.lockScreen.defaultVisible
-    @AppStorage(SwitchesSettings.showKey(.screenTest))
-    private var showScreenTest = SystemSwitch.screenTest.defaultVisible
     @AppStorage(SwitchesSettings.showKey(.hideDesktop))
     private var showHideDesktop = SystemSwitch.hideDesktop.defaultVisible
     @AppStorage(SwitchesSettings.showKey(.showHidden))
@@ -40,6 +38,10 @@ struct SwitchesView: View {
         }
         .padding(14)
         .frame(width: 300)
+        // The popover otherwise hands first-responder to the first control,
+        // drawing a focus ring on its toggle ("preselected") — same fix as the
+        // Mac-row focus box.
+        .focusEffectDisabled()
         .task { await model.refresh() }
     }
 
@@ -108,7 +110,6 @@ struct SwitchesView: View {
         case .mute: showMute
         case .screenSaver: showScreenSaver
         case .lockScreen: showLockScreen
-        case .screenTest: showScreenTest
         case .hideDesktop: showHideDesktop
         case .showHidden: showShowHidden
         case .bigCursor: showBigCursor
@@ -121,7 +122,6 @@ struct SwitchesView: View {
         case .mute: $showMute
         case .screenSaver: $showScreenSaver
         case .lockScreen: $showLockScreen
-        case .screenTest: $showScreenTest
         case .hideDesktop: $showHideDesktop
         case .showHidden: $showShowHidden
         case .bigCursor: $showBigCursor
@@ -160,11 +160,13 @@ private struct SwitchTile: View {
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .tint(Theme.accent)
+                .focusable(false)
         case .momentary:
             Button(toggle.actionLabel) { activate() }
                 .font(Theme.caption)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .focusable(false)
         }
     }
 
@@ -175,7 +177,7 @@ private struct SwitchTile: View {
         case .hideDesktop: model.hideDesktopOn
         case .showHidden: model.showHiddenOn
         case .bigCursor: model.bigCursorOn
-        case .screenSaver, .lockScreen, .screenTest: false
+        case .screenSaver, .lockScreen: false
         }
     }
 
@@ -189,7 +191,7 @@ private struct SwitchTile: View {
                 case .hideDesktop: Task { await model.setHideDesktop(newValue) }
                 case .showHidden: Task { await model.setShowHidden(newValue) }
                 case .bigCursor: Task { await model.setBigCursor(newValue) }
-                case .screenSaver, .lockScreen, .screenTest: break
+                case .screenSaver, .lockScreen: break
                 }
             }
         )
@@ -199,7 +201,6 @@ private struct SwitchTile: View {
         switch toggle {
         case .screenSaver: Task { await model.launchScreenSaver() }
         case .lockScreen: model.lockScreen()
-        case .screenTest: model.startScreenTest()
         default: break
         }
     }

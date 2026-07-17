@@ -1,8 +1,11 @@
 import Foundation
 
-/// The eight quick toggles the Switches grid offers. Owner-locked list — no
-/// more, no fewer. Each case carries its display metadata and whether it shows
-/// in the grid on a fresh install.
+/// The quick toggles the Switches grid offers. Owner-locked list — no more, no
+/// fewer. Each case carries its display metadata and whether it shows in the
+/// grid on a fresh install. (Screen Test was in the original list and was
+/// removed at the owner's order after it hard-locked a machine: its fullscreen
+/// key-window overlays never received keys/clicks from a non-activated
+/// accessory app, leaving no way to dismiss them.)
 ///
 /// `kind` splits stateful toggles (a live on/off the popover reads on open)
 /// from momentary actions (fire once, no persistent state).
@@ -11,7 +14,6 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
     case mute
     case screenSaver
     case lockScreen
-    case screenTest
     case hideDesktop
     case showHidden
     case bigCursor
@@ -28,7 +30,7 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
     var kind: Kind {
         switch self {
         case .keepAwake, .mute, .hideDesktop, .showHidden, .bigCursor: .toggle
-        case .screenSaver, .lockScreen, .screenTest: .momentary
+        case .screenSaver, .lockScreen: .momentary
         }
     }
 
@@ -38,7 +40,6 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
         case .mute: "Mute"
         case .screenSaver: "Screen Saver"
         case .lockScreen: "Lock Screen"
-        case .screenTest: "Screen Test"
         case .hideDesktop: "Hide Desktop"
         case .showHidden: "Show Hidden"
         case .bigCursor: "Big Cursor"
@@ -52,7 +53,6 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
         case .mute: "speaker.slash.fill"
         case .screenSaver: "sparkles"
         case .lockScreen: "lock.fill"
-        case .screenTest: "display"
         case .hideDesktop: "square.grid.2x2.fill"
         case .showHidden: "eye.fill"
         case .bigCursor: "cursorarrow"
@@ -64,7 +64,6 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
         switch self {
         case .screenSaver: "Start"
         case .lockScreen: "Lock"
-        case .screenTest: "Test"
         default: ""
         }
     }

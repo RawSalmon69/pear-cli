@@ -120,20 +120,17 @@ final class SwitchesModel {
     @ObservationIgnored private let power: PowerAssertioning
     @ObservationIgnored private let audio: AudioMuting
     @ObservationIgnored private let locker: ScreenLocking
-    @ObservationIgnored private let screenTest: ScreenTesting
 
     init(
         commandRunner: CommandRunner = ProcessRunner(),
         power: PowerAssertioning = IOKitPowerAssertion(),
         audio: AudioMuting = CoreAudioMuteController(),
-        locker: ScreenLocking = CGEventScreenLocker(),
-        screenTest: ScreenTesting = ScreenTestController()
+        locker: ScreenLocking = CGEventScreenLocker()
     ) {
         self.commandRunner = commandRunner
         self.power = power
         self.audio = audio
         self.locker = locker
-        self.screenTest = screenTest
     }
 
     // MARK: - Live state read (popover open)
@@ -183,16 +180,11 @@ final class SwitchesModel {
         locker.lock()
     }
 
-    func startScreenTest() {
-        screenTest.start()
-    }
-
-    /// Tool teardown mirror: release the power assertion and close any screen
-    /// test overlay when the tool is disabled or the app quits.
+    /// Tool teardown mirror: release the power assertion when the tool is
+    /// disabled or the app quits.
     func teardown() {
         power.release()
         keepAwakeOn = false
-        screenTest.stop()
     }
 
     // MARK: - Internals

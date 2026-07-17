@@ -1,10 +1,9 @@
 import SwiftUI
 
 /// Quick system toggles in a grid: Keep Awake, Mute, Screen Saver, Lock Screen,
-/// Screen Test, Hide Desktop, Show Hidden, Big Cursor. The tile only opens the
-/// grid; individual switches act only on a user tap, so the tool is safe to
-/// enable by default. `stop()` releases any held power assertion and closes a
-/// running screen test.
+/// Hide Desktop, Show Hidden, Big Cursor. The tile only opens the grid;
+/// individual switches act only on a user tap, so the tool is safe to enable
+/// by default. `stop()` releases any held power assertion.
 @MainActor
 final class SwitchesTool: Tool {
     let id = "switches"

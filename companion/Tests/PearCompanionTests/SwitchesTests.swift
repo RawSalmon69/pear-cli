@@ -64,25 +64,19 @@ private final class MockScreenLocking: ScreenLocking {
     func lock() { lockCount += 1 }
 }
 
-@MainActor
-private final class MockScreenTesting: ScreenTesting {
-    private(set) var startCount = 0
-    private(set) var stopCount = 0
-    func start() { startCount += 1 }
-    func stop() { stopCount += 1 }
-}
-
 private func success(_ string: String) -> CommandResult { .success(Data(string.utf8)) }
 
 @MainActor
 final class SwitchesTests: XCTestCase {
     // MARK: - SystemSwitch metadata
 
-    func testEightOwnerLockedSwitches() {
-        XCTAssertEqual(SystemSwitch.allCases.count, 8)
+    func testSevenOwnerLockedSwitches() {
+        // Was eight: Screen Test was removed at the owner's order (hard-locked
+        // a machine with undismissable fullscreen overlays).
+        XCTAssertEqual(SystemSwitch.allCases.count, 7)
         XCTAssertEqual(
             SystemSwitch.allCases.map(\.rawValue),
-            ["keepAwake", "mute", "screenSaver", "lockScreen", "screenTest", "hideDesktop", "showHidden", "bigCursor"]
+            ["keepAwake", "mute", "screenSaver", "lockScreen", "hideDesktop", "showHidden", "bigCursor"]
         )
     }
 
@@ -98,7 +92,7 @@ final class SwitchesTests: XCTestCase {
         XCTAssertFalse(SystemSwitch.hideDesktop.defaultVisible)
         XCTAssertFalse(SystemSwitch.showHidden.defaultVisible)
         XCTAssertFalse(SystemSwitch.bigCursor.defaultVisible)
-        for toggle in [SystemSwitch.keepAwake, .mute, .screenSaver, .lockScreen, .screenTest] {
+        for toggle in [SystemSwitch.keepAwake, .mute, .screenSaver, .lockScreen] {
             XCTAssertTrue(toggle.defaultVisible, "\(toggle.rawValue) should default shown")
         }
     }
@@ -134,17 +128,17 @@ final class SwitchesTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        // Defaults: the five transient switches, in owner-locked order.
+        // Defaults: the four transient switches, in owner-locked order.
         XCTAssertEqual(
             SwitchesSettings.visibleSwitches(defaults),
-            [.keepAwake, .mute, .screenSaver, .lockScreen, .screenTest]
+            [.keepAwake, .mute, .screenSaver, .lockScreen]
         )
 
         SwitchesSettings.setVisible(.hideDesktop, true, defaults)
         SwitchesSettings.setVisible(.keepAwake, false, defaults)
         XCTAssertEqual(
             SwitchesSettings.visibleSwitches(defaults),
-            [.mute, .screenSaver, .lockScreen, .screenTest, .hideDesktop]
+            [.mute, .screenSaver, .lockScreen, .hideDesktop]
         )
     }
 
@@ -335,61 +329,13 @@ final class SwitchesTests: XCTestCase {
         XCTAssertEqual(locker.lockCount, 1)
     }
 
-    func testStartScreenTestCallsController() {
-        let screenTest = MockScreenTesting()
-        let model = makeModel(screenTest: screenTest)
-        model.startScreenTest()
-        XCTAssertEqual(screenTest.startCount, 1)
-    }
-
-    func testTeardownReleasesAssertionAndStopsScreenTest() {
+    func testTeardownReleasesAssertion() {
         let power = MockPowerAssertion()
-        let screenTest = MockScreenTesting()
-        let model = makeModel(power: power, screenTest: screenTest)
+        let model = makeModel(power: power)
         model.setKeepAwake(true)
         model.teardown()
         XCTAssertGreaterThanOrEqual(power.releaseCount, 1)
         XCTAssertFalse(model.keepAwakeOn)
-        XCTAssertEqual(screenTest.stopCount, 1)
-    }
-
-    // MARK: - Screen Test color cycle (pure state machine)
-
-    func testCycleStartsAtWhite() {
-        let cycle = ScreenTestCycle()
-        XCTAssertEqual(cycle.current, .white)
-        XCTAssertFalse(cycle.isFinished)
-    }
-
-    func testColorOrderIsFiveColors() {
-        XCTAssertEqual(ScreenTestCycle.order, [.white, .black, .red, .green, .blue])
-    }
-
-    func testCycleAdvancesThroughOrder() {
-        var cycle = ScreenTestCycle()
-        let expected: [ScreenTestColor] = [.black, .red, .green, .blue]
-        for color in expected {
-            cycle.advance()
-            XCTAssertEqual(cycle.current, color)
-            XCTAssertFalse(cycle.isFinished)
-        }
-    }
-
-    func testCycleFinishesPastLastColor() {
-        var cycle = ScreenTestCycle()
-        for _ in 0..<4 { cycle.advance() } // reach blue (last)
-        XCTAssertEqual(cycle.current, .blue)
-        XCTAssertFalse(cycle.isFinished)
-        cycle.advance() // past last → finish
-        XCTAssertTrue(cycle.isFinished)
-    }
-
-    func testCycleFinishStopsAdvance() {
-        var cycle = ScreenTestCycle()
-        cycle.finish()
-        XCTAssertTrue(cycle.isFinished)
-        cycle.advance()
-        XCTAssertEqual(cycle.current, .white, "finished cycle must not advance")
     }
 
     // MARK: - Helpers
@@ -398,9 +344,8 @@ final class SwitchesTests: XCTestCase {
         runner: CommandRunner = MockCommandRunner(),
         power: PowerAssertioning = MockPowerAssertion(),
         audio: AudioMuting = MockAudioMuting(),
-        locker: ScreenLocking = MockScreenLocking(),
-        screenTest: ScreenTesting = MockScreenTesting()
+        locker: ScreenLocking = MockScreenLocking()
     ) -> SwitchesModel {
-        SwitchesModel(commandRunner: runner, power: power, audio: audio, locker: locker, screenTest: screenTest)
+        SwitchesModel(commandRunner: runner, power: power, audio: audio, locker: locker)
     }
 }
