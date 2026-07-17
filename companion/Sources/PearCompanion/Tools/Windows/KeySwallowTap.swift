@@ -11,9 +11,15 @@
 import AppKit
 import CoreGraphics
 
-/// A keyDown-only event tap that lets `handler` decide per-event whether to
-/// swallow. Lives on the main run loop, so the callback runs on the main
-/// thread and can safely touch main-actor state via `assumeIsolated`.
+/// A key event tap that lets `handler` decide per-event whether to swallow.
+/// Lives on the main run loop, so the callback runs on the main thread and can
+/// safely touch main-actor state via `assumeIsolated`.
+///
+/// `eventMask` defaults to keyDown-only, preserving the original behavior for
+/// the ring/switcher call sites; Clean Mode passes keyDown+keyUp+flagsChanged
+/// to swallow every keystroke while the screen is blanked. The mask alone
+/// decides which types reach `handler` — mouse events are never in any mask, so
+/// the pointer always stays live.
 @MainActor
 final class KeySwallowTap {
     private var machPort: CFMachPort?
@@ -22,11 +28,15 @@ final class KeySwallowTap {
     private let handler: (NSEvent) -> Bool
 
     /// nil when the tap can't be created (TCC denied mid-session, sandbox);
-    /// callers fall back to read-only monitors.
-    init?(handler: @escaping (NSEvent) -> Bool) {
+    /// callers fall back to read-only monitors (or, for Clean Mode, to leaving
+    /// the keyboard fully live).
+    init?(
+        eventMask: CGEventMask = 1 << CGEventType.keyDown.rawValue,
+        handler: @escaping (NSEvent) -> Bool
+    ) {
         self.handler = handler
 
-        let mask: CGEventMask = 1 << CGEventType.keyDown.rawValue
+        let mask = eventMask
         guard let port = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
@@ -68,7 +78,9 @@ final class KeySwallowTap {
             if let machPort { CGEvent.tapEnable(tap: machPort, enable: true) }
             return false
         }
-        guard type == .keyDown, let event = NSEvent(cgEvent: cgEvent) else {
+        // Any type the mask delivered (keyDown by default; also keyUp and
+        // flagsChanged when the caller asked for them) is handed to `handler`.
+        guard let event = NSEvent(cgEvent: cgEvent) else {
             return false
         }
         return handler(event)

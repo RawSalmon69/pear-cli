@@ -161,6 +161,10 @@ struct SettingsPopover: View {
                     .tint(Theme.accent)
                     HotkeyRecorderRow(id: tool.id)
                         .padding(.leading, 24)
+                    if tool.id == CleanModeTool.toolID {
+                        CleanModeSettingsView()
+                            .padding(.leading, 24)
+                    }
                 }
             }
         }
