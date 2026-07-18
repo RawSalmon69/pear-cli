@@ -138,6 +138,11 @@ final class ScreenshotService {
     private func copyToPasteboard(_ pngData: Data) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
+        // TIFF is the type most apps read for a Cmd+V image paste; PNG-only left
+        // some apps unable to paste. Offer both.
+        if let tiff = NSImage(data: pngData)?.tiffRepresentation {
+            pasteboard.setData(tiff, forType: .tiff)
+        }
         pasteboard.setData(pngData, forType: .png)
     }
 

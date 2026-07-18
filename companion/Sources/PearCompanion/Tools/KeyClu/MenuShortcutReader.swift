@@ -55,15 +55,38 @@ enum ShortcutFormatting {
         kVK_F9: "F9", kVK_F10: "F10", kVK_F11: "F11", kVK_F12: "F12",
     ]
 
-    /// The key portion: prefer a printable command char (uppercased); fall back
-    /// to the virtual-key table; nil if neither yields a displayable key. Emoji
-    /// key chars (the color 🎤 / 🌐 macOS reports for Start Dictation and
-    /// Emoji & Symbols) are rejected — they render as out-of-place color emoji
-    /// and aren't real typed shortcuts.
+    /// macOS reports arrow / function keys in a menu's cmd char as private-use
+    /// `NS*FunctionKey` scalars (U+F700…). Without mapping they render as
+    /// missing-glyph boxes, so translate the common ones here.
+    private static let functionKeyGlyphs: [UInt32: String] = [
+        0xF700: "↑", 0xF701: "↓", 0xF702: "←", 0xF703: "→",       // arrows
+        0xF704: "F1", 0xF705: "F2", 0xF706: "F3", 0xF707: "F4",
+        0xF708: "F5", 0xF709: "F6", 0xF70A: "F7", 0xF70B: "F8",
+        0xF70C: "F9", 0xF70D: "F10", 0xF70E: "F11", 0xF70F: "F12",
+        0xF728: "⌦",   // forward delete
+        0xF729: "↖",   // home
+        0xF72B: "↘",   // end
+        0xF72C: "⇞",   // page up
+        0xF72D: "⇟",   // page down
+    ]
+
+    /// The key portion: map macOS function-key chars (arrows, F-keys, nav) to
+    /// glyphs; otherwise a printable command char (uppercased); otherwise the
+    /// virtual-key table; nil if none yields a displayable key. Anything in the
+    /// U+F700+ private-use range that isn't a known function key — and emoji
+    /// (🎤 / 🌐 for Start Dictation / Emoji & Symbols) — is skipped rather than
+    /// shown as a missing-glyph box.
     static func keyGlyph(char: String?, virtualKey: Int?) -> String? {
-        if let char, !char.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           !char.unicodeScalars.contains(where: { $0.value >= 0x1F000 }) {
-            return char.uppercased()
+        if let char, let scalar = char.unicodeScalars.first,
+           !char.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let glyph = functionKeyGlyphs[scalar.value] {
+                return glyph
+            }
+            if scalar.value < 0xF700 {
+                return char.uppercased()
+            }
+            // U+F700+ (function-key private-use range) or emoji: not a typed
+            // character — fall through so it never renders as a box.
         }
         if let virtualKey, let glyph = virtualKeyGlyphs[virtualKey] {
             return glyph
