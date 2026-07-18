@@ -178,6 +178,9 @@ final class KeyCluOverlayController {
             maxColumns: maxColumns, scrollable: needsScroll))
         host.sizingOptions = []
         host.frame = NSRect(origin: .zero, size: size)
+        // Round the hosting view's backing to the card radius so no hairline
+        // "ghost border" leaks past the rounded glass (the shared panel idiom).
+        host.clipToCard(radius: 18)
 
         let panel = KeyCluPanel(
             contentRect: NSRect(origin: .zero, size: size),
