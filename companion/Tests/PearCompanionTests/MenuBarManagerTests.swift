@@ -160,15 +160,16 @@ final class MenuBarManagerTests: XCTestCase {
         manager.expand()
         XCTAssertFalse(manager.isCollapsed)
 
-        // Arrangement would push the chevron off-screen: collapse must be refused.
+        // Arrangement would push the chevron off-screen: collapse must be
+        // refused AND report failure (the launch retry loop polls on this).
         fake.chevronRightOfSeparator = false
-        manager.collapse()
+        XCTAssertFalse(manager.collapse(), "collapse() must report failure when refused")
         XCTAssertFalse(manager.isCollapsed, "must stay expanded when the chevron isn't right of the separator")
         XCTAssertEqual(fake.separatorLength, MenuBarManager.hiddenSeparatorLength)
 
-        // Once the arrangement is valid again, collapse proceeds.
+        // Once the arrangement is valid again, collapse proceeds and reports success.
         fake.chevronRightOfSeparator = true
-        manager.collapse()
+        XCTAssertTrue(manager.collapse(), "collapse() must report success once valid")
         XCTAssertTrue(manager.isCollapsed)
     }
 

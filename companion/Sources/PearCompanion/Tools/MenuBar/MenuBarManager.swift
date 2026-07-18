@@ -165,12 +165,19 @@ final class MenuBarManager {
 
     private func scheduleLaunchCollapse() {
         rehideGeneration &+= 1
+        let generation = rehideGeneration
         Task { @MainActor [weak self] in
-            // Let the status-item windows lay out so the position guard reads
-            // real geometry instead of nil frames (Hidden Bar defers its launch
-            // collapse for the same reason).
-            try? await Task.sleep(for: .milliseconds(250))
-            self?.collapse()
+            // Poll until the new status-item windows have laid out enough for the
+            // position guard to read real geometry, then collapse. A single fixed
+            // delay was unreliable on a live re-enable (the Settings popover's
+            // main-thread work delays layout past 250ms), so the guard refused
+            // and the tool stayed enabled-but-not-hiding. Bounded (~2s) so it
+            // can't spin; a newer show/hide (generation bump) cancels it.
+            for _ in 0..<20 {
+                try? await Task.sleep(for: .milliseconds(100))
+                guard let self, generation == self.rehideGeneration else { return }
+                if self.collapse() { return }
+            }
         }
     }
 
@@ -178,7 +185,9 @@ final class MenuBarManager {
 
     /// Single source of truth for the chevron click and the popover button, so
     /// the two surfaces stay in sync instead of fighting.
-    func toggle() { isCollapsed ? expand() : collapse() }
+    func toggle() {
+        if isCollapsed { expand() } else { collapse() }
+    }
 
     func expand() {
         isCollapsed = false
@@ -187,19 +196,23 @@ final class MenuBarManager {
         scheduleRehideIfNeeded()
     }
 
-    func collapse() {
+    /// Returns whether the collapse actually happened; the launch retry loop uses
+    /// this to poll until layout geometry is ready.
+    @discardableResult
+    func collapse() -> Bool {
         // Never hide the chevron: if the arrangement puts it left of the
         // separator, collapsing would push the only always-visible control
         // off-screen. Refuse and stay expanded (safe degrade). Port of Hidden
         // Bar's `isBtnSeparateValidPosition` guard — the strengthened self-hide
         // protection after 2.1.0 shipped an app that hid its own icon.
-        guard surface?.isChevronRightOfSeparator ?? true else { return }
+        guard surface?.isChevronRightOfSeparator ?? true else { return false }
         isCollapsed = true
         // Collapsing hides everything, including any peeked always-hidden zone.
         alwaysHiddenRevealed = false
         applyState()
         persistCollapsed()
         cancelRehide()
+        return true
     }
 
     /// ⌥-click: reveal everything, including the always-hidden zone. When the
