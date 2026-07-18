@@ -27,7 +27,7 @@ struct KeyCluOverlayView: View {
             header
             if groups.isEmpty {
                 Text("No shortcuts found")
-                    .font(.system(size: 13))
+                    .font(Theme.body)
                     .foregroundStyle(.secondary)
             } else if scrollable {
                 ScrollView(.vertical) { grid }
@@ -45,20 +45,28 @@ struct KeyCluOverlayView: View {
             if let appIcon {
                 Image(nsImage: appIcon).resizable().frame(width: 24, height: 24)
             }
-            Text(appName).font(.system(size: 16, weight: .semibold))
+            Text(appName).font(Theme.title)
             Spacer(minLength: 32)
-            Text("esc to close").font(.system(size: 12)).foregroundStyle(.tertiary)
+            Text("esc to close").font(Theme.rounded(12)).foregroundStyle(.tertiary)
         }
     }
 
     private var grid: some View {
         let cols = columns()
-        return HStack(alignment: .top, spacing: 18) {
+        return HStack(alignment: .top, spacing: 20) {
             ForEach(Array(cols.enumerated()), id: \.offset) { index, column in
                 columnStack(column)
-                if index < cols.count - 1 {
-                    Divider()
-                }
+                    .overlay(alignment: .trailing) {
+                        if index < cols.count - 1 {
+                            // A subtle full-column separator, drawn in the gap.
+                            // (A plain Divider collapses inside the fixed-size
+                            // panel, so use an explicit column-height rule.)
+                            Rectangle()
+                                .fill(Color.primary.opacity(0.10))
+                                .frame(width: 1)
+                                .offset(x: 10)
+                        }
+                    }
             }
         }
     }
@@ -75,19 +83,19 @@ struct KeyCluOverlayView: View {
     private func section(_ group: MenuGroup) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(group.title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(Theme.rounded(13, .semibold))
                 .foregroundStyle(Theme.accent)
                 .padding(.bottom, 4)
             ForEach(Array(group.shortcuts.enumerated()), id: \.offset) { _, shortcut in
                 HStack(spacing: 16) {
                     Text(shortcut.title)
-                        .font(.system(size: 13))
+                        .font(Theme.body)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text(shortcut.glyph)
-                        .font(.system(size: 13, design: .monospaced))
-                        .tracking(3)
+                        .font(Theme.body)
+                        .tracking(2)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -143,7 +151,10 @@ final class KeyCluOverlayController {
     func present(appName: String, appIcon: NSImage?, groups: [MenuGroup]) {
         hide()
 
-        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
+        // The active screen — where the frontmost app and menu bar are, i.e.
+        // where the user is looking. (Mouse-location screen drifted onto the
+        // wrong display in multi-monitor setups.)
+        let screen = NSScreen.main ?? NSScreen.screens.first
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
 
         // How many fixed-width columns fit the visible width (with side margins).
@@ -183,13 +194,12 @@ final class KeyCluOverlayController {
         panel.onCancel = { [weak self] in self?.hide() }
         panel.contentView = host
 
-        // Top-centered on the active screen: horizontally centered, anchored a
-        // little below the top (deterministic — a plain center drifted low on
-        // some screens). Clamp fully on-screen so no row renders off an edge.
-        let topInset = max(28, visible.height * 0.08)
+        // Centered on the active screen, nudged a little above the middle
+        // (KeyClu-like). Clamp fully on-screen so no row renders off an edge.
+        let centerY = visible.midY + visible.height * 0.06
         var origin = NSPoint(
             x: visible.midX - size.width / 2,
-            y: visible.maxY - topInset - size.height)
+            y: centerY - size.height / 2)
         origin.x = min(max(visible.minX + 8, origin.x), visible.maxX - size.width - 8)
         origin.y = min(max(visible.minY + 8, origin.y), visible.maxY - size.height - 8)
         panel.setFrameOrigin(origin)
