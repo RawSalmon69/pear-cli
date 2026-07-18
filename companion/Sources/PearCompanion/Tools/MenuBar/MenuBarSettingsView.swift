@@ -43,6 +43,11 @@ struct MenuBarSettingsView: View {
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 2)
+            Label("Can't see the Pear icon? Press ⌃⇧P to open this panel anytime.", systemImage: "keyboard")
+                .font(Theme.caption)
+                .foregroundStyle(Theme.accent)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2)
             if hasNotch { notchTip }
         }
         .padding(Theme.cardPadding)
@@ -106,24 +111,28 @@ struct MenuBarSettingsView: View {
 
     private var zonesCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Toggle("Always-hidden zone", isOn: alwaysHiddenBinding)
-                .font(Theme.body)
-                .toggleStyle(.switch)
-                .tint(Theme.accent)
-                .focusable(false)
-            Toggle("Reveal all with ⌥-click", isOn: optionRevealBinding)
-                .font(Theme.body)
-                .toggleStyle(.switch)
-                .tint(Theme.accent)
-                .focusable(false)
-            Toggle("Show divider line", isOn: dividerLineBinding)
-                .font(Theme.body)
-                .toggleStyle(.switch)
-                .tint(Theme.accent)
-                .focusable(false)
+            switchRow("Always-hidden zone", alwaysHiddenBinding)
+            switchRow("Reveal all with ⌥-click", optionRevealBinding)
+            switchRow("Show divider line", dividerLineBinding)
         }
         .padding(Theme.cardPadding)
         .glassCard()
+    }
+
+    /// A switch whose whole row toggles — a plain `Toggle("text", isOn:)` leaves
+    /// the gap between the label and the switch un-tappable, so a click there
+    /// does nothing. The expanding label + `contentShape` makes anywhere in the
+    /// row a hit target.
+    private func switchRow(_ title: String, _ binding: Binding<Bool>) -> some View {
+        Toggle(isOn: binding) {
+            Text(title)
+                .font(Theme.body)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .toggleStyle(.switch)
+        .tint(Theme.accent)
+        .focusable(false)
     }
 
     private var rehideBinding: Binding<Int> {
