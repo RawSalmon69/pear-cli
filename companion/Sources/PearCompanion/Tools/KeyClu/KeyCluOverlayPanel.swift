@@ -164,12 +164,14 @@ final class KeyCluOverlayController {
         let maxColumns = max(1, Int(available / columnStride))
 
         // Measure the natural (unbounded) content size at that column count.
+        // The measurer MUST keep default sizingOptions, or `fittingSize`
+        // under-reports and the panel ends up tiny + mis-positioned. Only the
+        // shown host disables sizing (macOS-26 rule) with an explicit frame.
         let measurer = NSHostingView(rootView: KeyCluOverlayView(
             appName: appName, appIcon: appIcon, groups: groups, maxColumns: maxColumns))
-        measurer.sizingOptions = []
         let natural = measurer.fittingSize
 
-        let maxHeight = max(200, visible.height - 40)
+        let maxHeight = max(200, visible.height - 60)
         let needsScroll = natural.height > maxHeight
         let size = NSSize(width: natural.width, height: min(natural.height, maxHeight))
 
@@ -196,16 +198,19 @@ final class KeyCluOverlayController {
         panel.isMovableByWindowBackground = true
         panel.onCancel = { [weak self] in self?.hide() }
         panel.contentView = host
+        panel.setContentSize(size)
 
-        // Centered on the active screen, nudged a little above the middle
-        // (KeyClu-like). Clamp fully on-screen so no row renders off an edge.
-        let centerY = visible.midY + visible.height * 0.06
-        var origin = NSPoint(
-            x: visible.midX - size.width / 2,
-            y: centerY - size.height / 2)
+        // Center horizontally, nudged a little above the middle (KeyClu-like).
+        let x = visible.minX + (visible.width - size.width) / 2
+        let y = visible.minY + (visible.height - size.height) * 0.56
+        var origin = NSPoint(x: x, y: y)
         origin.x = min(max(visible.minX + 8, origin.x), visible.maxX - size.width - 8)
         origin.y = min(max(visible.minY + 8, origin.y), visible.maxY - size.height - 8)
         panel.setFrameOrigin(origin)
+
+        NSLog("[KeyClu] vf=%@ natural=%@ size=%@ maxCols=%d scroll=%@ origin=%@",
+              NSStringFromRect(visible), NSStringFromSize(natural), NSStringFromSize(size),
+              maxColumns, needsScroll ? "Y" : "N", NSStringFromPoint(origin))
 
         panel.makeKeyAndOrderFront(nil)
         self.panel = panel
