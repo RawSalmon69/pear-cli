@@ -55,7 +55,7 @@ final class ScreenshotPreviewController {
     private var entries: [PreviewEntry] = [] // index 0 = newest, nearest edge
     private var scrollMonitor: Any?
 
-    private static let panelSize = NSSize(width: 280, height: 236)
+    private static let panelSize = NSSize(width: 216, height: 141)
     private static let margin: CGFloat = 20
     private static let gap: CGFloat = 12
 
@@ -109,7 +109,7 @@ final class ScreenshotPreviewController {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         let host = NSHostingView(rootView: content)
-        host.clipToCard(radius: 14)
+        host.clipToCard(radius: 12)
         panel.contentView = host
 
         let entry = PreviewEntry(id: id, panel: panel)
@@ -267,6 +267,8 @@ private final class NonActivatingPanel: NSPanel {
     override var canBecomeKey: Bool { true }
 }
 
+/// A sleek CleanShot-style card: just the thumbnail at rest; a slim icon-only
+/// action bar and close button fade in on hover.
 private struct ScreenshotPreviewView: View {
     let image: NSImage
     let canMarkup: Bool
@@ -281,87 +283,93 @@ private struct ScreenshotPreviewView: View {
     let onHoverChange: (Bool) -> Void
 
     @State private var drag: CGSize = .zero
+    @State private var hovering = false
     @State private var copied = false
     @State private var saved = false
 
-    var body: some View {
-        VStack(spacing: 10) {
-            // Fill a fixed rounded frame so the image meets the card's curve
-            // cleanly with no square corners or letterbox gaps.
-            RoundedRectangle(cornerRadius: 10)
-                .fill(.black.opacity(0.15))
-                .frame(width: 252, height: 150)
-                .overlay {
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 252, height: 150)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(.white.opacity(0.12), lineWidth: 1)
-                }
-                .shadow(color: .black.opacity(0.22), radius: 5, y: 2)
+    private static let thumbWidth: CGFloat = 200
+    private static let thumbHeight: CGFloat = 125
 
-            HStack(spacing: 6) {
-                PreviewAction(symbol: copied ? "checkmark" : "doc.on.doc",
-                              label: copied ? "Copied" : "Copy") {
-                    onCopy()
-                    withAnimation { copied = true }
-                }
-                if canSave {
-                    PreviewAction(symbol: saved ? "checkmark" : "square.and.arrow.down",
-                                  label: saved ? "Saved" : "Save") {
-                        onSave()
-                        withAnimation { saved = true }
-                    }
-                }
-                PreviewAction(symbol: "folder", label: "Reveal", action: onReveal)
-                if canMarkup {
-                    PreviewAction(symbol: "pencil.tip.crop.circle", label: "Markup", action: onMarkup)
-                }
-                if canSend {
-                    PreviewAction(symbol: "paperplane.fill", label: "Send",
-                                  tint: Theme.accent, action: onSend)
+    var body: some View {
+        Image(nsImage: image)
+            .resizable()
+            .scaledToFill()
+            .frame(width: Self.thumbWidth, height: Self.thumbHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 9))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9).strokeBorder(.white.opacity(0.12), lineWidth: 1)
+            }
+            .overlay(alignment: .bottom) { if hovering { toolbar } }
+            .overlay(alignment: .topTrailing) { if hovering { closeButton } }
+            .padding(8)
+            .glassCard(cornerRadius: 12)
+            // Swipe right to flick it away; the panel then slides off-screen
+            // with the content riding along, so the motion is continuous.
+            .offset(x: drag.width, y: drag.height)
+            .opacity(1.0 - min(Double(abs(drag.width)) / 240.0, 0.6))
+            .gesture(dragGesture)
+            .onHover { hovering in
+                withAnimation(.easeOut(duration: 0.14)) { self.hovering = hovering }
+                onHoverChange(hovering)
+            }
+    }
+
+    /// Icon-only actions in a floating capsule over the thumbnail's lower edge.
+    private var toolbar: some View {
+        HStack(spacing: 2) {
+            PreviewAction(symbol: copied ? "checkmark" : "doc.on.doc", help: "Copy") {
+                onCopy(); withAnimation { copied = true }
+            }
+            if canSave {
+                PreviewAction(symbol: saved ? "checkmark" : "square.and.arrow.down", help: "Save") {
+                    onSave(); withAnimation { saved = true }
                 }
             }
-        }
-        .padding(12)
-        .glassCard(cornerRadius: 14)
-        .overlay(alignment: .topTrailing) {
-            Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 15))
-                    .foregroundStyle(.secondary)
-                    .padding(6)
+            PreviewAction(symbol: "folder", help: "Reveal", action: onReveal)
+            if canMarkup {
+                PreviewAction(symbol: "pencil.tip.crop.circle", help: "Markup", action: onMarkup)
             }
-            .buttonStyle(.plain)
-            .opacity(0.7)
+            if canSend {
+                PreviewAction(symbol: "paperplane.fill", help: "Send", tint: Theme.accent, action: onSend)
+            }
         }
-        // Swipe right to flick it away; the panel then slides off-screen with
-        // the content riding along (kept offset), so the motion is continuous.
-        .offset(x: drag.width, y: drag.height)
-        .opacity(1.0 - min(Double(abs(drag.width)) / 240.0, 0.6))
-        .gesture(
-            DragGesture()
-                .onChanged { drag = $0.translation }
-                .onEnded { value in
-                    if value.translation.width > 90 {
-                        onDismiss() // keep the offset; the panel exit is seamless
-                    } else {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { drag = .zero }
-                    }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 1))
+        .padding(.bottom, 7)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+
+    private var closeButton: some View {
+        Button(action: onDismiss) {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(.white, .black.opacity(0.45))
+                .padding(5)
+        }
+        .buttonStyle(.plain)
+        .transition(.opacity)
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture()
+            .onChanged { drag = $0.translation }
+            .onEnded { value in
+                if value.translation.width > 90 {
+                    onDismiss() // keep the offset; the panel exit is seamless
+                } else {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { drag = .zero }
                 }
-        )
-        .onHover(perform: onHoverChange)
+            }
     }
 }
 
-/// Compact labeled icon button used in the preview action row.
+/// Compact icon-only button for the hover action bar; the label lives in the
+/// tooltip so the bar stays slim.
 private struct PreviewAction: View {
     let symbol: String
-    let label: String
+    let help: String
     var tint: Color = .primary
     let action: () -> Void
 
@@ -369,22 +377,15 @@ private struct PreviewAction: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 3) {
-                Image(systemName: symbol)
-                    .font(.system(size: 14, weight: .medium))
-                Text(label)
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-            }
-            .foregroundStyle(hovering ? Theme.accent : tint)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 9)
-                    .fill(hovering ? Theme.accentSoft : .clear)
-            )
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(hovering ? Theme.accent : tint)
+                .frame(width: 26, height: 24)
+                .background(RoundedRectangle(cornerRadius: 7).fill(hovering ? Theme.accentSoft : .clear))
         }
         .buttonStyle(.plain)
         .focusable(false)
+        .help(help)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
     }
