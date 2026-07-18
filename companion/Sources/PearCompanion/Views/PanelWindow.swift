@@ -228,11 +228,21 @@ final class PanelController: NSObject {
             )
         }
         origin.x = min(max(visible.minX + 8, origin.x), visible.maxX - size.width - 8)
-        origin.y = max(visible.minY + 8, origin.y)
+        origin.y = Self.clampedVerticalOrigin(desiredY: origin.y, height: size.height, visible: visible)
         let frame = NSRect(origin: origin, size: size)
         // Guarded so the setFrame → layout() → fit loop terminates.
         lastProgrammaticOrigin = frame.origin
         if panel.frame != frame { panel.setFrame(frame, display: true) }
+    }
+
+    /// Vertical origin (bottom-left, AppKit coords) for a panel of `height`
+    /// whose desired position is `desiredY`, clamped so neither the top nor the
+    /// bottom leaves `visible`. The top clamp comes first so a menu-bar-anchored
+    /// panel whose top would sit above the visible area (greeting clipped
+    /// off-screen) is pulled down; the bottom clamp then wins if the panel is
+    /// taller than the visible height. Pure, so it's testable without AppKit.
+    static func clampedVerticalOrigin(desiredY: CGFloat, height: CGFloat, visible: NSRect) -> CGFloat {
+        max(visible.minY + 8, min(desiredY, visible.maxY - height))
     }
 
     /// Whether a resign-key should close the panel. Pure so the guard — never
