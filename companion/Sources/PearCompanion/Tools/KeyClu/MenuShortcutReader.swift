@@ -56,9 +56,13 @@ enum ShortcutFormatting {
     ]
 
     /// The key portion: prefer a printable command char (uppercased); fall back
-    /// to the virtual-key table; nil if neither yields a displayable key.
+    /// to the virtual-key table; nil if neither yields a displayable key. Emoji
+    /// key chars (the color 🎤 / 🌐 macOS reports for Start Dictation and
+    /// Emoji & Symbols) are rejected — they render as out-of-place color emoji
+    /// and aren't real typed shortcuts.
     static func keyGlyph(char: String?, virtualKey: Int?) -> String? {
-        if let char, !char.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if let char, !char.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !char.unicodeScalars.contains(where: { $0.value >= 0x1F000 }) {
             return char.uppercased()
         }
         if let virtualKey, let glyph = virtualKeyGlyphs[virtualKey] {

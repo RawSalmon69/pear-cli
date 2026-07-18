@@ -37,6 +37,15 @@ final class KeyCluShortcutTests: XCTestCase {
         XCTAssertNil(ShortcutFormatting.keyGlyph(char: nil, virtualKey: 9999)) // unmapped
     }
 
+    func testKeyGlyphRejectsEmoji() {
+        // macOS reports 🎤 / 🌐 for Start Dictation and Emoji & Symbols; those
+        // render as out-of-place color emoji and aren't real typed shortcuts.
+        XCTAssertNil(ShortcutFormatting.keyGlyph(char: "🎤", virtualKey: nil))
+        XCTAssertNil(ShortcutFormatting.keyGlyph(char: "🌐", virtualKey: nil))
+        // An emoji char still falls back to a real virtual key if present.
+        XCTAssertEqual(ShortcutFormatting.keyGlyph(char: "🌐", virtualKey: kVK_Return), "↩")
+    }
+
     func testFullGlyph() {
         XCTAssertEqual(ShortcutFormatting.glyph(char: "c", virtualKey: nil, modifiers: 0), "⌘C")
         XCTAssertEqual(ShortcutFormatting.glyph(char: nil, virtualKey: kVK_LeftArrow, modifiers: 0), "⌘←")

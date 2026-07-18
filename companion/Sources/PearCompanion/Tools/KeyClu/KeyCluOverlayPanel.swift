@@ -21,6 +21,8 @@ struct KeyCluOverlayView: View {
     static let columnGap: CGFloat = 32
     /// Rough per-column row budget used to choose the column count.
     private static let rowsPerColumn = 22
+    /// Eye-catch tint for destructive shortcuts (Quit …).
+    private static let destructiveTint = Color(red: 0.93, green: 0.36, blue: 0.36)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -87,6 +89,7 @@ struct KeyCluOverlayView: View {
                 .foregroundStyle(Theme.accent)
                 .padding(.bottom, 4)
             ForEach(Array(group.shortcuts.enumerated()), id: \.offset) { _, shortcut in
+                let destructive = shortcut.title.lowercased().hasPrefix("quit")
                 HStack(spacing: 16) {
                     Text(shortcut.title)
                         .font(Theme.body)
@@ -96,7 +99,7 @@ struct KeyCluOverlayView: View {
                     Text(shortcut.glyph)
                         .font(Theme.body)
                         .tracking(2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(destructive ? Self.destructiveTint : Color.secondary)
                 }
             }
         }
@@ -207,10 +210,6 @@ final class KeyCluOverlayController {
         origin.x = min(max(visible.minX + 8, origin.x), visible.maxX - size.width - 8)
         origin.y = min(max(visible.minY + 8, origin.y), visible.maxY - size.height - 8)
         panel.setFrameOrigin(origin)
-
-        NSLog("[KeyClu] vf=%@ natural=%@ size=%@ maxCols=%d scroll=%@ origin=%@",
-              NSStringFromRect(visible), NSStringFromSize(natural), NSStringFromSize(size),
-              maxColumns, needsScroll ? "Y" : "N", NSStringFromPoint(origin))
 
         panel.makeKeyAndOrderFront(nil)
         self.panel = panel
