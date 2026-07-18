@@ -46,6 +46,7 @@ final class AppEnvironment {
         tools.offer(DockDoorTool())
         tools.offer(SwitchesTool())
         tools.offer(CleanModeTool())
+        tools.offer(KeyCluTool())
         tools.offer(PanelTool())
         self.tools = tools
 
