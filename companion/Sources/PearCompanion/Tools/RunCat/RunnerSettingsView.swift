@@ -12,7 +12,7 @@ struct RunnerSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
-            SectionLabel(text: "Menu bar")
+            SectionLabel(text: "Runner")
             Text("A little runner in the menu bar — faster as the CPU heats up.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
