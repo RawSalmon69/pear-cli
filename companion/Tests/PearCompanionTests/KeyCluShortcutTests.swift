@@ -37,6 +37,21 @@ final class KeyCluShortcutTests: XCTestCase {
         XCTAssertNil(ShortcutFormatting.keyGlyph(char: nil, virtualKey: 9999)) // unmapped
     }
 
+    func testKeyGlyphMapsFunctionKeyChars() {
+        // macOS reports arrow/function keys as U+F700-range private-use chars in
+        // the menu cmd char (e.g. ⌥⌘↑ for "Select Split Above"). Map them to
+        // glyphs instead of rendering a missing-glyph box.
+        XCTAssertEqual(ShortcutFormatting.keyGlyph(char: "\u{F700}", virtualKey: nil), "↑")
+        XCTAssertEqual(ShortcutFormatting.keyGlyph(char: "\u{F701}", virtualKey: nil), "↓")
+        XCTAssertEqual(ShortcutFormatting.keyGlyph(char: "\u{F702}", virtualKey: nil), "←")
+        XCTAssertEqual(ShortcutFormatting.keyGlyph(char: "\u{F703}", virtualKey: nil), "→")
+        XCTAssertEqual(ShortcutFormatting.keyGlyph(char: "\u{F704}", virtualKey: nil), "F1")
+        // An unmapped function-key char is skipped (not shown as a box), falling
+        // back to the virtual key when present, else nil.
+        XCTAssertNil(ShortcutFormatting.keyGlyph(char: "\u{F710}", virtualKey: nil))
+        XCTAssertEqual(ShortcutFormatting.keyGlyph(char: "\u{F710}", virtualKey: kVK_Return), "↩")
+    }
+
     func testKeyGlyphRejectsEmoji() {
         // macOS reports 🎤 / 🌐 for Start Dictation and Emoji & Symbols; those
         // render as out-of-place color emoji and aren't real typed shortcuts.
