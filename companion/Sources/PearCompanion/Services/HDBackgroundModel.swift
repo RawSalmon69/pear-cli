@@ -183,7 +183,14 @@ final class HDBackgroundModelManager {
             // MLModel itself isn't Sendable, so it must not cross the boundary.
             let built: RMBGModel? = await Task.detached(priority: .userInitiated) {
                 guard let url = try? MLModel.compileModel(at: dir) else { return nil }
-                let cfg = MLModelConfiguration(); cfg.computeUnits = .all
+                let cfg = MLModelConfiguration()
+                // CPU-only, deliberately. Measured on this model:
+                //  • .all         → Neural Engine compile takes MINUTES (hangs "Preparing…")
+                //  • .cpuAndGPU   → loads in ~5s but the GPU MISCOMPUTES this int8 model
+                //                   (garbage mask, background not removed)
+                //  • .cpuOnly     → ~4s load, ~2s inference, and CORRECT output
+                // CPU is the reference backend here: correct and fast.
+                cfg.computeUnits = .cpuOnly
                 guard let m = try? MLModel(contentsOf: url, configuration: cfg) else { return nil }
                 return RMBGModel(model: m)
             }.value
