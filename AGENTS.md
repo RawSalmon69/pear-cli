@@ -2,6 +2,10 @@
 
 This file is the shared source of truth for any AI agent working on this repo (Claude Code, Codex, etc.). `CLAUDE.md` is a symlink to this file. Put machine-specific or personal overrides in `AGENTS.local.md` / `CLAUDE.local.md`; both are gitignored.
 
+## Companion app (Pear.app)
+
+`companion/` holds **Pear.app** — a separate native macOS menu-bar utility (SwiftUI/AppKit Swift package): screenshots, OCR, background removal, window management, dock preview, clipboard, scratchpad, and more. It is a distinct product from the CLI documented below, with its own architecture, decisions, and tag-driven (`companion-v*`) release flow. **If your task touches `companion/`, read `companion/AGENTS.md` first** — it is the source of truth for the app (`companion/CLAUDE.md` symlinks to it). The rest of this file is about the `pear` CLI.
+
 ## Project
 
 Pear is a macOS system cleanup and optimization tool with shell and Go components. It performs file cleanup, app protection checks, and maintenance tasks, so safety rules matter more than speed.
