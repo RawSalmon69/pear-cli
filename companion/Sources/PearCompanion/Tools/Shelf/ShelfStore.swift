@@ -107,9 +107,10 @@ final class ShelfStore {
     func removeBackground(_ entry: ShelfEntry) {
         guard entry.isImage else { return }
         let source = entry.url
+        let hd = HDBackgroundModelManager.shared.activeModel
         Task { @MainActor in
             let cutout = await Task.detached(priority: .userInitiated) {
-                (try? Data(contentsOf: source)).flatMap(BackgroundRemovalService.cutout(imageData:))
+                (try? Data(contentsOf: source)).flatMap { BackgroundRemovalService.cutout(imageData: $0, using: hd) }
             }.value
             guard let cutout else { SoundEffects.play(.discard); return }
             let stem = source.deletingPathExtension().lastPathComponent

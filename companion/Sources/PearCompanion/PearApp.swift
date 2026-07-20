@@ -21,6 +21,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         runSettingsMigrations()
+        // If the HD background model was already downloaded, compile it now so
+        // the first cutout is instant; no-op (and no download) otherwise.
+        HDBackgroundModelManager.shared.prepare()
         UNUserNotificationCenter.current().delegate = self
         panelController = PanelController(env: environment)
         // Best-effort: unsigned dev builds have no push entitlement and land in

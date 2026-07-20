@@ -140,9 +140,10 @@ final class ScreenshotService {
     /// (like Markup, this is an edit of the shot). No subject found → keep the
     /// original and re-show it.
     private func removeBackground(data: Data, at fileURL: URL) {
+        let hd = HDBackgroundModelManager.shared.activeModel
         Task { @MainActor in
             let cutout = await Task.detached(priority: .userInitiated) {
-                BackgroundRemovalService.cutout(imageData: data)
+                BackgroundRemovalService.cutout(imageData: data, using: hd)
             }.value
             guard let cutout else {
                 SoundEffects.play(.discard)

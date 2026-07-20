@@ -14,6 +14,15 @@ import os
 enum BackgroundRemovalService {
     private static let logger = Logger(subsystem: CoupleKey.service, category: "bgremove")
 
+    /// Routes to the high-quality RMBG model when the caller supplies one (the
+    /// user opted in and it's downloaded), else the built-in Vision cutout. If
+    /// the HD model fails for any reason, falls back to Vision so removal always
+    /// produces something.
+    static func cutout(imageData: Data, using hd: RMBGModel?) -> Data? {
+        if let hd, let out = hd.cutout(imageData: imageData) { return out }
+        return cutout(imageData: imageData)
+    }
+
     /// PNG (with transparency) of the foreground subjects in `imageData`, or nil
     /// when Vision finds no foreground instance (caller keeps the original).
     static func cutout(imageData: Data) -> Data? {

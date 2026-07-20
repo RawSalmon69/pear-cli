@@ -21,6 +21,8 @@ struct SettingsPopover: View {
     @AppStorage(Prefs.previewAutoDismissSecondsKey) private var previewAutoDismissSeconds = 6.0
     @AppStorage(Prefs.previewMaxStackKey) private var previewMaxStack = 5
     @AppStorage(Prefs.panelClosesOnFocusLossKey) private var panelClosesOnFocusLoss = true
+    @AppStorage(Prefs.hdBackgroundRemovalKey) private var hdEnabled = false
+    @State private var hd = HDBackgroundModelManager.shared
 
     private enum Tab: String, CaseIterable, Identifiable {
         case general = "General", tools = "Tools", menuBar = "Menu Bar"
@@ -49,6 +51,58 @@ struct SettingsPopover: View {
         }
         .padding(16)
         .frame(width: 300)
+    }
+
+    @ViewBuilder private var backgroundRemovalSection: some View {
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Background removal")
+            Toggle("High-quality mode", isOn: $hdEnabled)
+                .font(Theme.body)
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+                .onChange(of: hdEnabled) { _, on in if on { hd.prepare() } }
+            Text(hdEnabled
+                ? "On-device AI model for remove.bg-class cutouts (hair, fine edges). One-time \(HDBackgroundModelManager.downloadSizeText) download; fully offline after."
+                : "Uses Apple's built-in cutout — instant, no download. Turn on for much sharper edges via a one-time \(HDBackgroundModelManager.downloadSizeText) model download.")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if hdEnabled { hdStatusRow }
+        }
+    }
+
+    @ViewBuilder private var hdStatusRow: some View {
+        switch hd.state {
+        case .absent:
+            Button("Download model (\(HDBackgroundModelManager.downloadSizeText))") { hd.download() }
+                .font(Theme.caption)
+        case .downloading(let fraction):
+            VStack(alignment: .leading, spacing: 4) {
+                ProgressView(value: fraction).tint(Theme.accent)
+                Text(hd.progressText ?? "Downloading…")
+                    .font(Theme.caption).foregroundStyle(.secondary).monospacedDigit()
+            }
+        case .preparing:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Preparing…").font(Theme.caption).foregroundStyle(.secondary)
+            }
+        case .ready:
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                Text("Ready · high quality").font(Theme.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Remove") { hd.remove() }
+                    .font(Theme.caption)
+                    .help("Delete the model and free \(HDBackgroundModelManager.downloadSizeText)")
+            }
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 4) {
+                Text(message).font(Theme.caption).foregroundStyle(Theme.warn)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Try again") { hd.download() }.font(Theme.caption)
+            }
+        }
     }
 
     @ViewBuilder private var generalTab: some View {
@@ -131,6 +185,8 @@ struct SettingsPopover: View {
                     .disabled(!autoSave)
             }
         }
+
+        backgroundRemovalSection
 
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             SectionLabel(text: "Preview stack")

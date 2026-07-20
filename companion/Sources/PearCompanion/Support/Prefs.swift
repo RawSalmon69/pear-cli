@@ -9,6 +9,7 @@ enum Prefs {
     static let previewAutoDismissSecondsKey = "screenshotPreviewAutoDismissSeconds"
     static let previewMaxStackKey = "screenshotPreviewMaxStack"
     static let panelClosesOnFocusLossKey = "panelClosesOnFocusLoss"
+    static let hdBackgroundRemovalKey = "hdBackgroundRemoval"
 
     /// Default on for both — opt-out, not opt-in.
     static var soundsEnabled: Bool {
@@ -24,6 +25,12 @@ enum Prefs {
 
     static var screenshotAutoSave: Bool {
         UserDefaults.standard.object(forKey: autoSaveKey) as? Bool ?? true
+    }
+
+    /// Opt-in: use the downloaded high-quality (RMBG) model for background
+    /// removal. Default off — the built-in Vision cutout needs no download.
+    static var hdBackgroundRemoval: Bool {
+        UserDefaults.standard.bool(forKey: hdBackgroundRemovalKey)
     }
 
     /// Which format the eyedropper drops on the clipboard — read by both the
