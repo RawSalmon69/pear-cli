@@ -72,6 +72,10 @@ struct ScratchpadView: View {
                 onClose()
             }
         }
+        // Drag the header (any gap the buttons don't claim) to move the window;
+        // the body stays free for text selection. Reuses the shelf's move overlay
+        // — a plain `window.performDrag` on mouseDown, behind the controls.
+        .background { ShelfWindowMoveOverlay() }
     }
 
     private var editor: some View {

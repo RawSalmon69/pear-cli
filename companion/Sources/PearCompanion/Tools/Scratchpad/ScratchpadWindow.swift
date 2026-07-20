@@ -114,10 +114,12 @@ final class ScratchpadWindowController {
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.isReleasedWhenClosed = false
-        // No title bar to drag by; let the whole card move the window.
-        panel.isMovableByWindowBackground = true
+        // The body/canvas must do full text interaction (drag-to-select,
+        // double-click-to-select), so the window is NOT draggable by its
+        // background; a drag handle behind the header (ScratchpadView) moves it.
+        panel.isMovableByWindowBackground = false
         panel.onCancel = { [weak self] in self?.hide() }
-        let host = NSHostingView(
+        let host = ScratchpadHostingView(
             rootView: ScratchpadView(store: store, onClose: { [weak self] in self?.hide() })
         )
         // Clip the rectangular backing to the card's corner radius so no
@@ -138,6 +140,14 @@ final class ScratchpadWindowController {
         }
         return panel
     }
+}
+
+/// Delivers the first click/drag to the text canvas even when the panel isn't
+/// yet key, so a drag in the body selects text immediately instead of only
+/// promoting the panel to key. (Same first-mouse trick the shelf/clipboard
+/// panels use.)
+private final class ScratchpadHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 /// Borderless panel that both takes key focus (so typing works) and keeps
