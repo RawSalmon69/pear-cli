@@ -261,5 +261,13 @@
     <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
     <enclosure url="https://github.com/RawSalmon69/pear-cli/releases/download/companion-v2.7.12/Pear-2.7.12.zip" length="5169422" type="application/octet-stream" sparkle:edSignature="ZdinYYOnEzFSCtrwqdtbnPcUpxr8bvJf9rbbmpvXQVnmWg4W5I1u4L6FjmSuGB3sb5m8dRPl3rr1Z0B/k+9UCg==" />
   </item>
+  <item>
+    <title>Version 2.7.13</title>
+    <pubDate>Mon, 20 Jul 2026 08:06:06 +0000</pubDate>
+    <sparkle:version>34</sparkle:version>
+    <sparkle:shortVersionString>2.7.13</sparkle:shortVersionString>
+    <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+    <enclosure url="https://github.com/RawSalmon69/pear-cli/releases/download/companion-v2.7.13/Pear-2.7.13.zip" length="5177132" type="application/octet-stream" sparkle:edSignature="6PAf2CYGdjoVzcIaToOpizYR0EQuKjXHG5bLxb01YRLsXxx1iSHRPbY70b0DOpHDKxn7a7gKKVMd7l6zfdh3Dw==" />
+  </item>
 </channel>
 </rss>
