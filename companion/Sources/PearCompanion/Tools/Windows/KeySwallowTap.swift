@@ -16,7 +16,7 @@ import CoreGraphics
 /// safely touch main-actor state via `assumeIsolated`.
 ///
 /// `eventMask` defaults to keyDown-only, preserving the original behavior for
-/// the ring/switcher call sites; Clean Mode passes keyDown+keyUp+flagsChanged
+/// the ring call site; Clean Mode passes keyDown+keyUp+flagsChanged
 /// to swallow every keystroke while the screen is blanked. The mask alone
 /// decides which types reach `handler` — mouse events are never in any mask, so
 /// the pointer always stays live.

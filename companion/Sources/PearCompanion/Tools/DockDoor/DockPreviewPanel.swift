@@ -97,9 +97,19 @@ final class DockPreviewPanel {
     /// edge, then place and clamp via `DockGeometry`. Placement and gap are read
     /// live, so a settings change applies on the next hover with no relaunch.
     private func frame(forIconRectAX iconRectAX: CGRect, panelSize: CGSize) -> CGRect {
-        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
+        let screens = NSScreen.screens
+        // Flip about the menu-bar screen's height: AX global y is measured from
+        // the TOP of the zero-origin screen, AppKit global y from its bottom.
+        // Pin to the explicit (0,0) screen rather than screens.first so the flip
+        // stays correct even if AppKit ever hands back a reordered screens array.
+        let pivotScreen = screens.first(where: { $0.frame.origin == .zero }) ?? screens.first
+        let primaryMaxY = pivotScreen?.frame.maxY ?? 0
         let iconAppKit = DockGeometry.flipToAppKit(iconRectAX, primaryMaxY: primaryMaxY)
-        let screen = screenContaining(iconAppKit) ?? NSScreen.main ?? NSScreen.screens.first
+        // Anchor to the screen the icon is actually on — via overlap/nearest, so
+        // an auto-hidden or edge Dock whose icon rect clears the screen still
+        // resolves to the Dock's display, never the focused-window screen.
+        let index = DockGeometry.screenIndex(forIconRect: iconAppKit, screenFrames: screens.map(\.frame))
+        let screen = index.map { screens[$0] } ?? NSScreen.main ?? screens.first
         let visible = screen?.visibleFrame ?? .zero
         // iconRect lets the edge inference survive an auto-hidden Dock, which
         // reserves no inset for the inset-based detection to see.
@@ -111,11 +121,6 @@ final class DockPreviewPanel {
             visibleFrame: visible, gap: DockDoorSettings.previewGap()
         )
         return CGRect(origin: origin, size: panelSize)
-    }
-
-    private func screenContaining(_ rect: CGRect) -> NSScreen? {
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        return NSScreen.screens.first { $0.frame.contains(center) }
     }
 
     // MARK: - Panel

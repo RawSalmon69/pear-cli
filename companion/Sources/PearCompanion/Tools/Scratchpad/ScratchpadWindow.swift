@@ -127,8 +127,10 @@ final class ScratchpadWindowController {
         host.layer?.masksToBounds = true
         panel.contentView = host
 
-        if let screen = NSScreen.main {
-            let visible = screen.visibleFrame
+        // Anchor bottom-right of the primary display — a fixed, predictable spot,
+        // not NSScreen.main (which follows the focused window between displays).
+        let screen = NSScreen.screens.first ?? NSScreen.main
+        if let visible = screen?.visibleFrame {
             panel.setFrameOrigin(NSPoint(
                 x: visible.maxX - size.width - 20,
                 y: visible.minY + 20

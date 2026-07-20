@@ -54,6 +54,11 @@ private final class PreviewEntry {
 final class ScreenshotPreviewController {
     private var entries: [PreviewEntry] = [] // index 0 = newest, nearest edge
     private var scrollMonitor: Any?
+    /// Visible frame the stack lives in — the primary display, resolved when the
+    /// first card appears (see `show`). Fixed for the stack's lifetime so cards
+    /// never jump displays, and always the primary so the preview is in one
+    /// predictable spot rather than the focused-window screen (NSScreen.main).
+    private var anchorVisible: NSRect = .zero
 
     private static let panelSize = NSSize(width: 216, height: 141)
     private static let margin: CGFloat = 20
@@ -113,11 +118,31 @@ final class ScreenshotPreviewController {
         panel.contentView = host
 
         let entry = PreviewEntry(id: id, panel: panel)
+        // Fix the anchor screen when a fresh stack starts; existing stacks keep
+        // theirs so the cards stay put on the capture display.
+        if entries.isEmpty { anchorVisible = Self.anchorVisibleFrame() }
         entries.insert(entry, at: 0)
         evictOverflow()
         layout(newItem: entry)
         installScrollMonitor()
         scheduleAutoDismiss(entry)
+    }
+
+    /// Visible frame of the primary display — the preview always lives there, a
+    /// fixed spot the user learns, rather than `NSScreen.main` (the key-window
+    /// screen), which drifts to whatever display holds the focused app.
+    private static func anchorVisibleFrame() -> NSRect {
+        (NSScreen.screens.first ?? NSScreen.main)?.visibleFrame ?? .zero
+    }
+
+    /// How many stacked cards fit in `visible` before the top one runs off the
+    /// screen — the cap on a short or scaled display, so cards never climb under
+    /// the menu bar or off the top. At least one; unbounded if the frame is
+    /// unset (defensive — the stack-size preference then governs).
+    private static func maxCardsThatFit(in visible: NSRect) -> Int {
+        guard visible.height > 0 else { return .max }
+        let usable = visible.height - 2 * margin
+        return max(1, Int((usable + gap) / (panelSize.height + gap)))
     }
 
     // MARK: Layout
@@ -133,7 +158,8 @@ final class ScreenshotPreviewController {
     /// Re-seats every card to its stack slot. A `newItem` starts off-screen and
     /// slides in; the rest animate to close or open the gap.
     private func layout(newItem: PreviewEntry?) {
-        guard let visible = NSScreen.main?.visibleFrame else { return }
+        let visible = anchorVisible
+        guard visible.width > 0 else { return }
         for (idx, entry) in entries.enumerated() {
             let home = homeFrame(index: idx, in: visible)
             if entry === newItem {
@@ -166,7 +192,8 @@ final class ScreenshotPreviewController {
         guard let entry = entries.first(where: { $0.id == id }) else { return }
         entry.timer?.invalidate()
         entry.timer = nil
-        guard let visible = NSScreen.main?.visibleFrame else { remove(entry); return }
+        let visible = anchorVisible
+        guard visible.width > 0 else { remove(entry); return }
         let off = NSRect(
             x: visible.maxX + Self.panelSize.width,
             y: entry.panel.frame.minY,
@@ -192,7 +219,7 @@ final class ScreenshotPreviewController {
 
     /// Fade out and drop the oldest cards beyond the stack limit.
     private func evictOverflow() {
-        let maxCount = Prefs.previewMaxStack
+        let maxCount = min(Prefs.previewMaxStack, Self.maxCardsThatFit(in: anchorVisible))
         while entries.count > maxCount {
             let victim = entries.removeLast()
             victim.timer?.invalidate()

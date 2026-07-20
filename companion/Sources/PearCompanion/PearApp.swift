@@ -20,12 +20,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private var panelController: PanelController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        runSettingsMigrations()
         UNUserNotificationCenter.current().delegate = self
         panelController = PanelController(env: environment)
         // Best-effort: unsigned dev builds have no push entitlement and land in
         // didFailToRegister — that's fine, the foreground poll covers delivery.
         if FeatureFlags.coupleNote {
             NSApplication.shared.registerForRemoteNotifications()
+        }
+    }
+
+    /// One-time settings migrations, each gated by its own ran-once flag so it
+    /// fires exactly once and never fights a later user change.
+    private func runSettingsMigrations() {
+        let defaults = UserDefaults.standard
+        // Reset the Dock-preview placement to Auto (follow Dock) for everyone
+        // once: some users were left on a stale value whose preview ignored the
+        // Dock edge. Auto is the default, so this only touches changed installs;
+        // they can re-pick a manual anchor afterward.
+        let placementAutoFlag = "migration.dockdoorPlacementAuto.v1"
+        if !defaults.bool(forKey: placementAutoFlag) {
+            defaults.set(DockPreviewPlacement.auto.rawValue, forKey: DockDoorSettings.Key.previewPlacement)
+            defaults.set(true, forKey: placementAutoFlag)
         }
     }
 

@@ -76,7 +76,7 @@ final class ShelfWindowController {
     /// ⌘V pastes the clipboard into the shelf; ⌘C copies the hovered row out.
     /// A local key monitor scoped to the panel's visibility — installed on
     /// show, torn down in `hide()` — mirroring the session-scoped monitors in
-    /// RadialTrigger / DockSwitcher. The non-activating panel means a SwiftUI
+    /// RadialTrigger. The non-activating panel means a SwiftUI
     /// `.onPasteCommand` would not fire reliably, so the shortcuts live here.
     private func installKeyMonitor(for panel: NSPanel) {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak panel] event in

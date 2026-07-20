@@ -16,35 +16,24 @@ final class DockDoorTool: Tool {
     let title = "Dock Preview"
     let icon = "dock.rectangle"
     let category = ToolCategory.system
-    let summary = "Hover a Dock icon to preview its windows; ⌥-tab to switch windows."
+    let summary = "Hover a Dock icon to preview its windows."
     let hotkey: HotKeyChord? = nil
 
     private let controller = DockHoverController()
-    private let switcher = DockSwitcher()
 
     func start() {
         controller.start()
-        switcher.start()
     }
 
     func stop() {
         controller.stop()
-        switcher.stop()
     }
 
     var entry: ToolEntry {
         // onTrusted: the permission card just confirmed Accessibility, so the
-        // (idempotent) start paths can install the Dock observer + switcher
-        // hotkeys live. onSwitcherChanged: the toggle flips the ⌥-tab hotkeys
-        // on/off without a relaunch.
-        .popover { [controller, switcher] in
-            AnyView(DockDoorSettingsView(
-                onTrusted: {
-                    controller.start()
-                    switcher.start()
-                },
-                onSwitcherChanged: { switcher.setEnabled($0) }
-            ))
+        // (idempotent) start path can install the Dock observer live.
+        .popover { [controller] in
+            AnyView(DockDoorSettingsView(onTrusted: { controller.start() }))
         }
     }
 }

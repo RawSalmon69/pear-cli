@@ -58,28 +58,49 @@ enum DockGeometry {
         return .bottom
     }
 
-    /// A `size` rect centered in `visibleFrame` and clamped fully inside it —
-    /// the ⌥-tab switcher's frame. Extracted (and made honest: the old call
-    /// site documented clamping it never did) so a tall grid can't hang off
-    /// the top/bottom of the screen.
-    static func centeredFrame(size: CGSize, in visibleFrame: CGRect, margin: CGFloat = 8) -> CGRect {
-        let x = clamp(
-            visibleFrame.midX - size.width / 2,
-            min: visibleFrame.minX + margin, max: visibleFrame.maxX - size.width - margin
-        )
-        let y = clamp(
-            visibleFrame.midY - size.height / 2,
-            min: visibleFrame.minY + margin, max: visibleFrame.maxY - size.height - margin
-        )
-        return CGRect(x: x, y: y, width: size.width, height: size.height)
-    }
-
     /// Reflects an AX rect (top-left origin, y-down) into AppKit space
     /// (bottom-left origin, y-up) about the primary screen's top edge. The
     /// transform is its own inverse. `primaryMaxY` is the primary screen's
     /// `frame.maxY` (its full height when the primary origin is zero).
     static func flipToAppKit(_ rect: CGRect, primaryMaxY: CGFloat) -> CGRect {
         CGRect(x: rect.minX, y: primaryMaxY - rect.maxY, width: rect.width, height: rect.height)
+    }
+
+    /// Index of the screen a hovered Dock icon belongs to, given each screen's
+    /// AppKit `frame` (same space as the flipped `iconRect`). Prefers the screen
+    /// whose frame overlaps the icon most; when the icon clears every screen — an
+    /// auto-hidden Dock parks its items a few points past the edge, so the rect
+    /// can sit fully off-screen — falls back to the screen whose center is
+    /// nearest. Crucially never the focused-window screen, so a preview can't
+    /// jump to a display the Dock isn't on (the `NSScreen.main` fallback bug).
+    /// Pure over frames, so screen selection is testable without live screens.
+    /// Returns nil only for an empty screen list.
+    static func screenIndex(forIconRect iconRect: CGRect, screenFrames: [CGRect]) -> Int? {
+        guard !screenFrames.isEmpty else { return nil }
+        var bestArea: CGFloat = 0
+        var bestOverlap: Int?
+        for (index, frame) in screenFrames.enumerated() {
+            let overlap = frame.intersection(iconRect)
+            guard !overlap.isNull else { continue }
+            let area = overlap.width * overlap.height
+            if area > bestArea {
+                bestArea = area
+                bestOverlap = index
+            }
+        }
+        if let bestOverlap { return bestOverlap }
+        var bestDistance = CGFloat.greatestFiniteMagnitude
+        var nearest = 0
+        for (index, frame) in screenFrames.enumerated() {
+            let dx = frame.midX - iconRect.midX
+            let dy = frame.midY - iconRect.midY
+            let distance = dx * dx + dy * dy
+            if distance < bestDistance {
+                bestDistance = distance
+                nearest = index
+            }
+        }
+        return nearest
     }
 
     /// Resolves a user placement setting into a concrete anchor. `.auto` follows

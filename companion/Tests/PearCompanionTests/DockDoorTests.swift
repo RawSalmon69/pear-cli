@@ -103,6 +103,42 @@ final class DockDoorTests: XCTestCase {
         XCTAssertEqual(origin.x, 8)
     }
 
+    // MARK: - Screen selection (never the focused-window screen)
+
+    func testScreenIndexPicksMostOverlappingScreen() {
+        let left = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let right = CGRect(x: 1440, y: 0, width: 1920, height: 1080)
+        // Icon sits mostly on the right screen.
+        let icon = CGRect(x: 1460, y: 500, width: 60, height: 48)
+        XCTAssertEqual(DockGeometry.screenIndex(forIconRect: icon, screenFrames: [left, right]), 1)
+    }
+
+    func testScreenIndexFallsBackToNearestWhenIconClearsEveryScreen() {
+        // An auto-hidden Dock parks its icon a few points past the screen edge,
+        // so the rect overlaps nothing — pick the nearest screen, not screen 0.
+        let a = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let b = CGRect(x: 1440, y: 0, width: 1920, height: 1080)
+        let icon = CGRect(x: 3380, y: 540, width: 60, height: 48) // just past b's right edge
+        XCTAssertEqual(DockGeometry.screenIndex(forIconRect: icon, screenFrames: [a, b]), 1)
+    }
+
+    func testScreenIndexEmptyScreensIsNil() {
+        XCTAssertNil(DockGeometry.screenIndex(forIconRect: .zero, screenFrames: []))
+    }
+
+    func testScreenIndexRegressionOwnerAutoHiddenRightDock() {
+        // The reported bug's real geometry: a right-side auto-hidden Dock on the
+        // primary (0,0,1512,982) with a second display ABOVE it (−211,982,…). The
+        // hovered icon's flipped rect sticks ~58 pt PAST the primary's right edge,
+        // so a center-point test misses every screen and the old code fell back to
+        // NSScreen.main. screenIndex must still land on the Dock's screen (index 0)
+        // via the sliver of overlap — never the other display.
+        let primary = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let above = CGRect(x: -211, y: 982, width: 1920, height: 1080)
+        let icon = CGRect(x: 1510, y: 821, width: 60, height: 48) // 2 pt overlap on primary
+        XCTAssertEqual(DockGeometry.screenIndex(forIconRect: icon, screenFrames: [primary, above]), 0)
+    }
+
     // MARK: - Manual placement overrides
 
     func testResolvedPlacementAutoFollowsDockSide() {
@@ -400,23 +436,6 @@ final class DockDoorTests: XCTestCase {
         XCTAssertEqual(DockGeometry.side(frame: frame, visibleFrame: visible), .bottom)
     }
 
-    // MARK: - Switcher frame clamping
-
-    func testCenteredFrameCentersWhenItFits() {
-        let visible = CGRect(x: 0, y: 0, width: 1440, height: 875)
-        let frame = DockGeometry.centeredFrame(size: CGSize(width: 400, height: 300), in: visible)
-        XCTAssertEqual(frame.midX, visible.midX)
-        XCTAssertEqual(frame.midY, visible.midY)
-    }
-
-    func testCenteredFrameClampsTallGrid() {
-        // A grid taller than the screen used to hang off the top and bottom.
-        let visible = CGRect(x: 0, y: 0, width: 1440, height: 875)
-        let frame = DockGeometry.centeredFrame(size: CGSize(width: 400, height: 2000), in: visible)
-        XCTAssertEqual(frame.minY, visible.minY + 8) // pinned to the margin
-        XCTAssertEqual(frame.width, 400)
-    }
-
     // MARK: - Thumbnail match ceiling
 
     func testMatchDistanceIsL1CornerPlusSize() {
@@ -523,52 +542,6 @@ final class DockDoorTests: XCTestCase {
             subrole: "AXSheet", minimized: false, fullScreen: false,
             size: CGSize(width: 300, height: 500)
         ))
-    }
-
-    // MARK: - Switcher cycle order
-
-    func testSwitcherOpenIndexForwardPicksNext() {
-        XCTAssertEqual(DockSwitcherCycle.openIndex(count: 5, backward: false), 1)
-        XCTAssertEqual(DockSwitcherCycle.openIndex(count: 1, backward: false), 0)
-        XCTAssertEqual(DockSwitcherCycle.openIndex(count: 0, backward: false), -1)
-    }
-
-    func testSwitcherOpenIndexBackwardPicksLast() {
-        XCTAssertEqual(DockSwitcherCycle.openIndex(count: 5, backward: true), 4)
-        XCTAssertEqual(DockSwitcherCycle.openIndex(count: 1, backward: true), 0)
-        XCTAssertEqual(DockSwitcherCycle.openIndex(count: 0, backward: true), -1)
-    }
-
-    func testSwitcherAdvanceForwardWraps() {
-        XCTAssertEqual(DockSwitcherCycle.advance(from: 0, count: 5, backward: false), 1)
-        XCTAssertEqual(DockSwitcherCycle.advance(from: 4, count: 5, backward: false), 0) // wrap
-    }
-
-    func testSwitcherAdvanceBackwardWraps() {
-        XCTAssertEqual(DockSwitcherCycle.advance(from: 4, count: 5, backward: true), 3)
-        XCTAssertEqual(DockSwitcherCycle.advance(from: 0, count: 5, backward: true), 4) // wrap
-    }
-
-    func testSwitcherAdvanceDegenerateCounts() {
-        XCTAssertEqual(DockSwitcherCycle.advance(from: 0, count: 1, backward: false), 0)
-        XCTAssertEqual(DockSwitcherCycle.advance(from: 0, count: 1, backward: true), 0)
-        XCTAssertEqual(DockSwitcherCycle.advance(from: 3, count: 0, backward: false), -1)
-    }
-
-    func testSwitcherScopeSettingsRoundTrip() {
-        let defaults = suite("dockdoor-switcher")
-        defer { defaults.removePersistentDomain(forName: "dockdoor-switcher") }
-
-        XCTAssertFalse(DockDoorSettings.switcherEnabled(defaults)) // default off (opt-in)
-        XCTAssertEqual(DockDoorSettings.switcherScope(defaults), .allWindows)
-
-        defaults.set(true, forKey: DockDoorSettings.Key.switcherEnabled)
-        defaults.set(DockSwitcherScope.activeApp.rawValue, forKey: DockDoorSettings.Key.switcherScope)
-        XCTAssertTrue(DockDoorSettings.switcherEnabled(defaults))
-        XCTAssertEqual(DockDoorSettings.switcherScope(defaults), .activeApp)
-
-        defaults.set("nonsense", forKey: DockDoorSettings.Key.switcherScope)
-        XCTAssertEqual(DockDoorSettings.switcherScope(defaults), .allWindows) // fallback
     }
 
     // MARK: - Helpers

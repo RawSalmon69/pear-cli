@@ -12,8 +12,6 @@ enum DockDoorSettings {
         static let previewGap = "dockdoor.previewGap"
         static let showTitles = "dockdoor.showTitles"
         static let keepOpen = "dockdoor.keepOpen"
-        static let switcherEnabled = "dockdoor.switcher.enabled"
-        static let switcherScope = "dockdoor.switcher.scope"
     }
 
     // Defaults.
@@ -32,11 +30,6 @@ enum DockDoorSettings {
     /// on Esc, a tile click, hovering a different icon, or a click anywhere
     /// else.
     static let defaultKeepOpen = false
-    /// The ⌥-tab switcher is opt-in (off by default): turning it on registers a
-    /// global ⌥-tab Carbon hotkey that claims the chord system-wide, so Pear
-    /// only takes it once the user asks for it. The live toggle flips it on.
-    static let defaultSwitcherEnabled = false
-    static let defaultSwitcherScope = DockSwitcherScope.allWindows
 
     // Hover delay slider range, in milliseconds.
     static let hoverDelayRange: ClosedRange<Double> = 0 ... 500
@@ -80,33 +73,6 @@ enum DockDoorSettings {
         store.object(forKey: Key.keepOpen) == nil
             ? defaultKeepOpen
             : store.bool(forKey: Key.keepOpen)
-    }
-
-    static func switcherEnabled(_ store: UserDefaults = .standard) -> Bool {
-        store.object(forKey: Key.switcherEnabled) == nil
-            ? defaultSwitcherEnabled
-            : store.bool(forKey: Key.switcherEnabled)
-    }
-
-    static func switcherScope(_ store: UserDefaults = .standard) -> DockSwitcherScope {
-        store.string(forKey: Key.switcherScope).flatMap(DockSwitcherScope.init) ?? defaultSwitcherScope
-    }
-}
-
-/// Which windows the ⌥-tab switcher cycles through. Mirrors DockDoor's
-/// `SwitcherInvocationMode` (`.allWindows` / `.activeAppOnly`), trimmed to the
-/// two scopes that matter without a live Dock: everything, or just the
-/// frontmost app's windows.
-enum DockSwitcherScope: String, CaseIterable, Identifiable {
-    case allWindows, activeApp
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .allWindows: "All Windows"
-        case .activeApp: "Active App"
-        }
     }
 }
 
