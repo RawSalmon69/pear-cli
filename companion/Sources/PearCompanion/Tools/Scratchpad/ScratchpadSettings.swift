@@ -8,11 +8,14 @@ enum ScratchpadSettings {
     enum Key {
         static let swipeEnabled = "scratchpad.swipeEnabled"
         static let linkDetection = "scratchpad.linkDetection"
+        static let rememberPosition = "scratchpad.rememberPosition"
     }
 
     // Both features are on by default — parity with Antinote out of the box.
     static let defaultSwipeEnabled = true
     static let defaultLinkDetection = true
+    /// Off = always spawn bottom-right; on = reopen where it was last closed.
+    static let defaultRememberPosition = false
 
     // MARK: Read accessors (read at use time)
 
@@ -29,5 +32,12 @@ enum ScratchpadSettings {
         store.object(forKey: Key.linkDetection) == nil
             ? defaultLinkDetection
             : store.bool(forKey: Key.linkDetection)
+    }
+
+    /// Whether the panel reopens at its last-closed position (else bottom-right).
+    static func rememberPosition(_ store: UserDefaults = .standard) -> Bool {
+        store.object(forKey: Key.rememberPosition) == nil
+            ? defaultRememberPosition
+            : store.bool(forKey: Key.rememberPosition)
     }
 }

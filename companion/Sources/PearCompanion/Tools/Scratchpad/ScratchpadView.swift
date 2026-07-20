@@ -109,11 +109,14 @@ private struct ScratchpadSettingsView: View {
     private var swipeEnabled = ScratchpadSettings.defaultSwipeEnabled
     @AppStorage(ScratchpadSettings.Key.linkDetection)
     private var linkDetection = ScratchpadSettings.defaultLinkDetection
+    @AppStorage(ScratchpadSettings.Key.rememberPosition)
+    private var rememberPosition = ScratchpadSettings.defaultRememberPosition
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             Toggle("Swipe to switch notes", isOn: $swipeEnabled)
             Toggle("Detect links", isOn: $linkDetection)
+            Toggle("Reopen where I left it", isOn: $rememberPosition)
         }
         .font(Theme.body)
         .padding(Theme.cardPadding)

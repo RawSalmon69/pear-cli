@@ -30,14 +30,50 @@ final class ScratchpadWindowController {
     func hide() {
         store.saveNow()
         removeScrollMonitor()
+        // Remember where it was closed (used only when the setting is on).
+        if let panel { Self.saveOrigin(panel.frame.origin) }
         panel?.orderOut(nil)
     }
 
     private func show() {
         let panel = panel ?? makePanel()
         self.panel = panel
+        applySpawnPosition(to: panel)
         panel.makeKeyAndOrderFront(nil)
         installScrollMonitor()
+    }
+
+    /// Places the panel per the spawn-position setting: reopen at the last-closed
+    /// spot (when it's still on a connected screen), otherwise bottom-right.
+    private func applySpawnPosition(to panel: NSPanel) {
+        let size = panel.frame.size
+        if ScratchpadSettings.rememberPosition(), let origin = Self.savedOrigin() {
+            let frame = NSRect(origin: origin, size: size)
+            let onScreen = NSScreen.screens.contains { $0.visibleFrame.intersects(frame) }
+            panel.setFrameOrigin(onScreen ? origin : Self.bottomRightOrigin(for: size))
+        } else {
+            panel.setFrameOrigin(Self.bottomRightOrigin(for: size))
+        }
+    }
+
+    // MARK: - Spawn position persistence
+
+    private static let originKey = "scratchpad.lastOrigin"
+
+    private static func saveOrigin(_ origin: NSPoint) {
+        UserDefaults.standard.set(NSStringFromPoint(origin), forKey: originKey)
+    }
+
+    private static func savedOrigin() -> NSPoint? {
+        guard let string = UserDefaults.standard.string(forKey: originKey), !string.isEmpty
+        else { return nil }
+        return NSPointFromString(string)
+    }
+
+    /// Bottom-right of the primary display — the fixed default spawn spot.
+    private static func bottomRightOrigin(for size: NSSize) -> NSPoint {
+        let visible = (NSScreen.screens.first ?? NSScreen.main)?.visibleFrame ?? .zero
+        return NSPoint(x: visible.maxX - size.width - 20, y: visible.minY + 20)
     }
 
     // MARK: - Swipe to switch / create notes
@@ -128,16 +164,8 @@ final class ScratchpadWindowController {
         host.layer?.cornerRadius = 16
         host.layer?.masksToBounds = true
         panel.contentView = host
-
-        // Anchor bottom-right of the primary display — a fixed, predictable spot,
-        // not NSScreen.main (which follows the focused window between displays).
-        let screen = NSScreen.screens.first ?? NSScreen.main
-        if let visible = screen?.visibleFrame {
-            panel.setFrameOrigin(NSPoint(
-                x: visible.maxX - size.width - 20,
-                y: visible.minY + 20
-            ))
-        }
+        // Position is applied by `show()` via `applySpawnPosition` (bottom-right,
+        // or the last-closed spot when the remember-position setting is on).
         return panel
     }
 }
