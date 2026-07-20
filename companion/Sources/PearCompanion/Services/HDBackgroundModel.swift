@@ -171,7 +171,11 @@ final class HDBackgroundModelManager {
     }
 
     private func compile() {
-        if case .downloading = state { return }
+        // Guard only against a re-entrant compile (already preparing). It MUST
+        // run from the download-completion path, where state is still
+        // .downloading(1.0) — guarding on .downloading there left the model
+        // downloaded-but-never-activated (stuck on a full bar).
+        if case .preparing = state { return }
         state = .preparing
         let dir = modelDir
         Task { [weak self] in
