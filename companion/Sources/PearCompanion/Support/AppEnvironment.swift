@@ -35,6 +35,7 @@ final class AppEnvironment {
         let tools = ToolRegistry()
         tools.offer(ScreenshotTool(messaging: messaging))
         tools.offer(OCRTool())
+        tools.offer(BackgroundRemoverTool())
         tools.offer(ClipboardTool())
         tools.offer(DiskTool())
         tools.offer(ShelfTool())
