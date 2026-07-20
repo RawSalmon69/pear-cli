@@ -72,6 +72,7 @@ final class ScreenshotPreviewController {
         onCopy: @escaping () -> Void,
         onReveal: @escaping () -> Void,
         onMarkup: @escaping () -> Void,
+        onRemoveBackground: @escaping () -> Void = {},
         onSend: @escaping () -> Void,
         onSave: @escaping () -> Void = {}
     ) {
@@ -89,6 +90,10 @@ final class ScreenshotPreviewController {
             onReveal: onReveal,
             onMarkup: { [weak self] in
                 onMarkup()
+                self?.dismiss(id: id)
+            },
+            onRemoveBackground: { [weak self] in
+                onRemoveBackground()
                 self?.dismiss(id: id)
             },
             onSend: { [weak self] in
@@ -305,6 +310,7 @@ private struct ScreenshotPreviewView: View {
     let onSave: () -> Void
     let onReveal: () -> Void
     let onMarkup: () -> Void
+    let onRemoveBackground: () -> Void
     let onSend: () -> Void
     let onDismiss: () -> Void
     let onHoverChange: (Bool) -> Void
@@ -353,6 +359,9 @@ private struct ScreenshotPreviewView: View {
                 }
             }
             PreviewAction(symbol: "folder", help: "Reveal", action: onReveal)
+            PreviewAction(
+                symbol: "person.and.background.dotted",
+                help: "Remove background", action: onRemoveBackground)
             if canMarkup {
                 PreviewAction(symbol: "pencil.tip.crop.circle", help: "Markup", action: onMarkup)
             }

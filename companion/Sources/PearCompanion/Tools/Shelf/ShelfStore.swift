@@ -17,6 +17,12 @@ struct ShelfEntry: Identifiable {
     let thumbnail: NSImage?
 
     var url: URL { URL(fileURLWithPath: storedPath) }
+
+    /// Whether the held file is an image — gates the "remove background" action.
+    var isImage: Bool {
+        guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
+        return type.conforms(to: .image)
+    }
 }
 
 /// Holds the shelf's items and owns their on-disk copies. Mirrors
@@ -92,6 +98,26 @@ final class ShelfStore {
         items.insert(entry, at: 0)
         enforceCap()
         save()
+    }
+
+    /// Runs Vision background removal on an image entry off the main actor, then
+    /// adds the transparent cutout as a NEW entry beside the original — the shelf
+    /// is a holding area, so keep the source. No-op (with a sound) when Vision
+    /// finds no subject.
+    func removeBackground(_ entry: ShelfEntry) {
+        guard entry.isImage else { return }
+        let source = entry.url
+        Task { @MainActor in
+            let cutout = await Task.detached(priority: .userInitiated) {
+                (try? Data(contentsOf: source)).flatMap(BackgroundRemovalService.cutout(imageData:))
+            }.value
+            guard let cutout else { SoundEffects.play(.discard); return }
+            let stem = source.deletingPathExtension().lastPathComponent
+            guard let temp = Self.writeTemp(cutout, filename: "\(stem) (cutout).png") else { return }
+            await add(temp)
+            try? FileManager.default.removeItem(at: temp.deletingLastPathComponent())
+            SoundEffects.play(.copy)
+        }
     }
 
     /// Removes an item and moves its stored copy to the Trash (recoverable —

@@ -82,6 +82,7 @@ struct ShelfView: View {
                         onReveal: { reveal(entry) },
                         onPreview: { previewURL = entry.url },
                         onCopy: { store.copy(entry) },
+                        onRemoveBackground: { store.removeBackground(entry) },
                         onRemove: {
                             SoundEffects.play(.discard)
                             withAnimation { store.remove(entry) }
@@ -130,6 +131,7 @@ private struct ShelfRow: View {
     let onReveal: () -> Void
     let onPreview: () -> Void
     let onCopy: () -> Void
+    let onRemoveBackground: () -> Void
     let onRemove: () -> Void
 
     var body: some View {
@@ -147,6 +149,11 @@ private struct ShelfRow: View {
 
             if hovering {
                 GlyphButton(symbol: "doc.on.doc", help: "Copy", action: onCopy)
+                if entry.isImage {
+                    GlyphButton(
+                        symbol: "person.and.background.dotted",
+                        help: "Remove background", action: onRemoveBackground)
+                }
                 GlyphButton(symbol: "eye", help: "Quick Look", action: onPreview)
                 GlyphButton(symbol: "xmark", help: "Remove", action: onRemove)
             }

@@ -56,10 +56,8 @@ final class ScreenshotService {
 
         guard let data = try? Data(contentsOf: tempURL) else { return }
 
-        copyToPasteboard(data)
-
-        // Save into the screenshot folder when auto-save is on; either way the
-        // temp file backs the preview and send.
+        // Save into the screenshot folder when auto-save is on; either way a
+        // file backs the preview, the send, and the clipboard's file URL.
         var savedURL = tempURL
         if Prefs.screenshotAutoSave {
             do {
@@ -69,6 +67,7 @@ final class ScreenshotService {
             }
         }
 
+        copyToPasteboard(data, fileURL: savedURL)
         present(data: data, at: savedURL)
 
         // With auto-save on, persist() wrote the real copy and the preview/send
@@ -91,11 +90,12 @@ final class ScreenshotService {
             // already in the folder (and the preview already points at it).
             canSave: !Prefs.screenshotAutoSave,
             onCopy: { [weak self] in
-                self?.copyToPasteboard(data)
+                self?.copyToPasteboard(data, fileURL: fileURL)
                 SoundEffects.play(.copy)
             },
             onReveal: { NSWorkspace.shared.activateFileViewerSelecting([fileURL]) },
             onMarkup: { [weak self] in self?.markup(data: data, at: fileURL) },
+            onRemoveBackground: { [weak self] in self?.removeBackground(data: data, at: fileURL) },
             onSend: {
                 SoundEffects.play(.send)
                 Task { @MainActor in
@@ -129,17 +129,42 @@ final class ScreenshotService {
         // fresh preview for the edited image.
         onMarkupRequest(image) { [weak self] edited in
             guard let self, let edited, let png = edited.pngData() else { return }
-            self.copyToPasteboard(png)
             try? png.write(to: fileURL)
+            self.copyToPasteboard(png, fileURL: fileURL)
             self.present(data: png, at: fileURL)
         }
     }
 
-    private func copyToPasteboard(_ pngData: Data) {
+    /// Vision background removal on the current shot: replaces the card's image
+    /// with the transparent cutout, copies it, and overwrites the saved file
+    /// (like Markup, this is an edit of the shot). No subject found → keep the
+    /// original and re-show it.
+    private func removeBackground(data: Data, at fileURL: URL) {
+        Task { @MainActor in
+            let cutout = await Task.detached(priority: .userInitiated) {
+                BackgroundRemovalService.cutout(imageData: data)
+            }.value
+            guard let cutout else {
+                SoundEffects.play(.discard)
+                self.present(data: data, at: fileURL)
+                return
+            }
+            try? cutout.write(to: fileURL)
+            self.copyToPasteboard(cutout, fileURL: fileURL)
+            SoundEffects.play(.copy)
+            self.present(data: cutout, at: fileURL)
+        }
+    }
+
+    private func copyToPasteboard(_ pngData: Data, fileURL: URL) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        // TIFF is the type most apps read for a Cmd+V image paste; PNG-only left
-        // some apps unable to paste. Offer both.
+        // Write the saved file's URL first so targets that take a FILE paste
+        // (terminals, Finder, this very chat) accept it — matching how a
+        // CleanShot paste lands as a path. Bitmap-only left those unable to
+        // paste at all; the bitmap types below still serve image editors that
+        // want an inline Cmd+V image. One item, three representations.
+        pasteboard.writeObjects([fileURL as NSURL])
         if let tiff = NSImage(data: pngData)?.tiffRepresentation {
             pasteboard.setData(tiff, forType: .tiff)
         }
