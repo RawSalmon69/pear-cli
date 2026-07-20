@@ -133,6 +133,11 @@ maintainer before tagging.
   turn (re-entrant constraint pass crashes).
 - **Every new `NSStatusItem` needs an `autosaveName` + a right-edge position
   seed**, or the menu-bar hider's length trick eats it.
+- **RMBG HD model must load with `computeUnits = .cpuOnly`.** Measured on this
+  int8 model: `.all` triggers a multi-minute Neural Engine compile that hangs
+  "Preparing…"; `.cpuAndGPU` loads fast but the GPU **miscomputes** it (garbage
+  mask); `.cpuOnly` is correct and fast (~4s load, ~2s inference). Don't "optimize"
+  it back to `.all`/ANE.
 - **Verify the shipped zip by directly launching it** (not just spctl/stapler) —
   toolchain/launch bugs pass every other check.
 - **Footprint metric**: `top -l1 -pid N -stats mem` (Activity Monitor number),
