@@ -138,6 +138,9 @@ final class MenuBarManager {
         applyState()
         persistCollapsed()
         cancelRehide()
+        // Positions are intentionally NOT forgotten here: the user's divider
+        // arrangement must survive a disable→re-enable, so a re-enable inherits it
+        // rather than snapping back. The collapse guard keeps a bad order safe.
         surface?.removeAll()
         surface = nil
     }

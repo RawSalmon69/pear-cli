@@ -289,6 +289,25 @@ final class MenuBarManagerTests: XCTestCase {
         XCTAssertTrue(fake.removed)
     }
 
+    // MARK: - Boundary-item position seeding
+
+    func testSeedPositionOnlySeedsWhenAbsent() throws {
+        let suite = "MenuBarTests-seed"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.removePersistentDomain(forName: suite)
+        let key = "NSStatusItem Preferred Position mb.chevron"
+
+        // First run: absent → seeded.
+        StatusBarSurface.seedPosition("mb.chevron", 100, defaults: defaults)
+        XCTAssertEqual(defaults.double(forKey: key), 100)
+
+        // The user drags it; a relaunch must NOT clobber that saved position.
+        defaults.set(42, forKey: key)
+        StatusBarSurface.seedPosition("mb.chevron", 100, defaults: defaults)
+        XCTAssertEqual(defaults.double(forKey: key), 42)
+    }
+
     // MARK: - Persistence round-trips
 
     func testAutoRehidePersistsAcrossReload() throws {

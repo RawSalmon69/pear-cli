@@ -82,8 +82,9 @@ final class StatusBarSurface: MenuBarSurface {
         // is behind the notch, leaving the dividers invisible (owner report).
         // Larger offset == further left, so chevron sits rightmost, the stretch
         // separator to its left, the always-hidden zone further left still.
-        // Re-pinned on every install (see seedPosition) so a disable→re-enable
-        // always restores this safe order instead of a stale persisted one.
+        // Seeded ONLY when no position is saved (see seedPosition), so the user's
+        // dragged arrangement survives relaunches, updates, AND a disable→re-enable
+        // — the positions are never rewritten once set.
         Self.seedPosition("\(autosavePrefix).chevron", 100)
         Self.seedPosition("\(autosavePrefix).separator", 130)
 
@@ -130,24 +131,27 @@ final class StatusBarSurface: MenuBarSurface {
         separator.button?.image = visible ? Self.dividerImage() : nil
     }
 
-    /// Pins one of the hider's OWN status items to its bar position (offset from
-    /// the right edge) via the private-but-stable `NSStatusItem Preferred
-    /// Position` default macOS reads for an autosaved item.
+    /// Seeds one of the hider's OWN items to a bar position (offset from the right
+    /// edge) via the private-but-stable `NSStatusItem Preferred Position` default
+    /// macOS reads for an autosaved item — but ONLY when none is saved yet.
     ///
-    /// Written on EVERY install, not just first run. These three items (chevron,
-    /// stretch separator, always-hidden) are Pear's own boundary controls, and
-    /// the whole safety of the length-hide trick depends on their order
-    /// (separator left of chevron left of Pear's main icon). A disable→re-enable
-    /// used to leave a stale position persisted from the prior session (measured
-    /// while the separator was inflated, or shuffled by removeStatusItem), which
-    /// let the recreated separator land right of the main icon and swallow Pear's
-    /// own icon. Re-pinning each install re-establishes the known-good order that
-    /// first-enable produces, and repairs installs already broken this way. The
-    /// trade-off — a user's ⌘-drag of the chevron/separator itself snaps back —
-    /// is worth never hiding the app's own icon; OTHER apps' icons are untouched.
-    private static func seedPosition(_ autosaveName: String, _ offsetFromRight: CGFloat) {
+    /// A saved position IS the user's arrangement (their ⌘-drag of the divider,
+    /// and of other apps' icons across it), so it is left untouched and survives
+    /// relaunches and app updates. Writing it on every launch was the 2.7.11
+    /// disable→re-enable fix, but a launch includes every update, so it reset the
+    /// user's layout each time (owner report). The safe left-to-right order
+    /// (always-hidden, separator, chevron, main icon) is guaranteed by creation
+    /// order on a true first run, and — the real protection against ever hiding
+    /// Pear's own icon — enforced at collapse time by `isChevronRightOfSeparator`,
+    /// which refuses to collapse an invalid arrangement. Positions are never
+    /// rewritten after first run (relaunch, update, or disable→re-enable), so the
+    /// user's arrangement always persists.
+    static func seedPosition(
+        _ autosaveName: String, _ offsetFromRight: CGFloat, defaults: UserDefaults = .standard
+    ) {
         let key = "NSStatusItem Preferred Position \(autosaveName)"
-        UserDefaults.standard.set(offsetFromRight, forKey: key)
+        guard defaults.object(forKey: key) == nil else { return }
+        defaults.set(offsetFromRight, forKey: key)
     }
 
     var isChevronRightOfSeparator: Bool {
