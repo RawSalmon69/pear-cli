@@ -742,3 +742,76 @@ EOF
     [[ "$output" == *"Idle Alpha"* ]] || return 1
     [[ "$output" == *"Nothing to clean"* ]] || return 1
 }
+
+@test "pe clean --system parses and dry-run stays adopt-only" {
+    run env HOME="$HOME" PEAR_TEST_MODE=1 "$PROJECT_ROOT/pear" clean --system --dry-run
+    [ "$status" -eq 0 ] || return 1
+    [[ "$output" != *"Unknown option"* ]] || return 1
+    # Dry-run preview must not attempt auth even with the flag.
+    [[ "$output" == *"sudo -v && pe clean --dry-run"* ]] || return 1
+}
+
+@test "pe clean --system headless skips gracefully when auth unavailable" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PEAR_TEST_NO_AUTH=1 PEAR_TEST_MODE=1 \
+        bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/bin/clean.sh"
+DRY_RUN=false
+EXTERNAL_VOLUME_TARGET=""
+SYSTEM_CLEAN_REQUESTED=true
+start_cleanup < /dev/null
+echo "SYSTEM_CLEAN=$SYSTEM_CLEAN"
+SCRIPT
+    [ "$status" -eq 0 ] || return 1
+    [[ "$output" == *"Running in non-interactive mode"* ]] || return 1
+    [[ "$output" == *"System-level cleanup skipped"* ]] || return 1
+    [[ "$output" == *"SYSTEM_CLEAN=false"* ]] || return 1
+}
+
+@test "pe clean --system headless enables system clean when auth succeeds" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PEAR_TEST_MODE=0 PEAR_TEST_NO_AUTH=0 \
+        bash --noprofile --norc <<'SCRIPT'
+# set -u only: a sudo function mock returning nonzero inside an if-condition
+# trips errexit on the macos-14 runner's bash (see root AGENTS.md pitfalls).
+set -u
+source "$PROJECT_ROOT/bin/clean.sh"
+DRY_RUN=false
+EXTERNAL_VOLUME_TARGET=""
+SYSTEM_CLEAN_REQUESTED=true
+
+# adopt must fail (no cached session), the explicit request must succeed:
+sudo() { return 1; }
+request_sudo_access() { return 0; }
+_start_sudo_keepalive() { echo "keepalive-pid"; }
+_stop_sudo_keepalive() { :; }
+
+start_cleanup < /dev/null
+echo "SYSTEM_CLEAN=$SYSTEM_CLEAN"
+SCRIPT
+    [ "$status" -eq 0 ] || return 1
+    [[ "$output" == *"admin access granted"* ]] || return 1
+    [[ "$output" == *"SYSTEM_CLEAN=true"* ]] || return 1
+}
+
+@test "pe clean headless without --system never attempts auth (unchanged)" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PEAR_TEST_MODE=0 PEAR_TEST_NO_AUTH=0 \
+        bash --noprofile --norc <<'SCRIPT'
+# set -u only: see errexit pitfall note in the auth-succeeds test above.
+set -u
+source "$PROJECT_ROOT/bin/clean.sh"
+DRY_RUN=false
+EXTERNAL_VOLUME_TARGET=""
+
+sudo() { return 1; }
+request_sudo_access() { echo "AUTH-ATTEMPTED"; return 0; }
+_start_sudo_keepalive() { echo "keepalive-pid"; }
+_stop_sudo_keepalive() { :; }
+
+start_cleanup < /dev/null
+echo "SYSTEM_CLEAN=$SYSTEM_CLEAN"
+SCRIPT
+    [ "$status" -eq 0 ] || return 1
+    [[ "$output" != *"AUTH-ATTEMPTED"* ]] || return 1
+    [[ "$output" == *"System-level cleanup skipped"* ]] || return 1
+    [[ "$output" == *"SYSTEM_CLEAN=false"* ]] || return 1
+}

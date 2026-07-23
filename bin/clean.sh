@@ -23,6 +23,7 @@ source "$SCRIPT_DIR/../lib/clean/system.sh"
 source "$SCRIPT_DIR/../lib/clean/user.sh"
 
 SYSTEM_CLEAN=false
+SYSTEM_CLEAN_REQUESTED=false
 DRY_RUN=false
 PROTECT_FINDER_METADATA=false
 EXTERNAL_VOLUME_TARGET=""
@@ -1128,6 +1129,17 @@ EOF
             SYSTEM_CLEAN=true
             echo -e "${GREEN}${ICON_SUCCESS}${NC} Admin access already available"
             echo ""
+        elif [[ "$SYSTEM_CLEAN_REQUESTED" == "true" ]]; then
+            # --system: behave as if the user pressed Enter at the gate.
+            if ensure_sudo_session "System cleanup requires admin access"; then
+                SYSTEM_CLEAN=true
+                echo -e "${GREEN}${ICON_SUCCESS}${NC} Admin access granted"
+                echo ""
+            else
+                SYSTEM_CLEAN=false
+                echo -e "${YELLOW}Authentication failed${NC}, continuing with user-level cleanup"
+                echo ""
+            fi
         else
             prompt_for_system_clean
         fi
@@ -1137,6 +1149,11 @@ EOF
         if adopt_sudo_session; then
             SYSTEM_CLEAN=true
             echo "  ${ICON_LIST} System-level cleanup enabled, sudo session active"
+        elif [[ "$SYSTEM_CLEAN_REQUESTED" == "true" ]] && ensure_sudo_session "System cleanup requires admin access"; then
+            # Headless --system: ensure_sudo_session's GUI mode pops the native
+            # macOS password dialog (lib/core/sudo.sh request_sudo_access).
+            SYSTEM_CLEAN=true
+            echo "  ${ICON_LIST} System-level cleanup enabled, admin access granted"
         else
             SYSTEM_CLEAN=false
             echo "  ${ICON_LIST} System-level cleanup skipped, requires sudo"
@@ -1553,6 +1570,9 @@ main() {
                 source "$SCRIPT_DIR/../lib/manage/whitelist.sh"
                 manage_whitelist "clean"
                 exit 0
+                ;;
+            "--system")
+                SYSTEM_CLEAN_REQUESTED=true
                 ;;
             "--select" | "--categories" | "--exclude")
                 echo "pe clean $1 was removed in this release." >&2
