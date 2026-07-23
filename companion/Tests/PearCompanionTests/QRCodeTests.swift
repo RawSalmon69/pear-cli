@@ -44,3 +44,15 @@ final class QRCodeTests: XCTestCase {
         XCTAssertNil(QRCode.openableURL(in: []))
     }
 }
+
+@MainActor
+final class PreviewQRStateTests: XCTestCase {
+    func testBadgeVisibility() {
+        let state = PreviewQRState()
+        XCTAssertFalse(state.showsBadge)
+        state.payloads = ["https://example.com"]
+        XCTAssertTrue(state.showsBadge)
+        state.payloads = []
+        XCTAssertFalse(state.showsBadge)
+    }
+}

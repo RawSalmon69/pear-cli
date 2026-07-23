@@ -27,6 +27,16 @@ enum PreviewStackLayout {
     }
 }
 
+/// Per-card QR detection result, filled asynchronously after the card shows
+/// so detection never delays the slide-in. The view observes it and grows a
+/// badge when a code is found.
+@MainActor
+@Observable
+final class PreviewQRState {
+    var payloads: [String] = []
+    var showsBadge: Bool { !payloads.isEmpty }
+}
+
 /// One preview: its non-activating panel plus per-card timer / gesture state.
 @MainActor
 private final class PreviewEntry {
@@ -52,6 +62,8 @@ private final class PreviewEntry {
 /// no shared re-layout state to leak.
 @MainActor
 final class ScreenshotPreviewController {
+    static let shared = ScreenshotPreviewController()
+
     private var entries: [PreviewEntry] = [] // index 0 = newest, nearest edge
     private var scrollMonitor: Any?
     /// Visible frame the stack lives in — the primary display, resolved when the
@@ -69,7 +81,11 @@ final class ScreenshotPreviewController {
         canMarkup: Bool,
         canSend: Bool = FeatureFlags.coupleNote,
         canSave: Bool = false,
+        canRemoveBackground: Bool = true,
+        qrState: PreviewQRState? = nil,
         onCopy: @escaping () -> Void,
+        onCopyText: (() -> Void)? = nil,
+        onQRTap: (() -> Void)? = nil,
         onReveal: @escaping () -> Void,
         onMarkup: @escaping () -> Void,
         onRemoveBackground: @escaping () -> Void = {},
@@ -85,7 +101,11 @@ final class ScreenshotPreviewController {
             canMarkup: canMarkup,
             canSend: canSend,
             canSave: canSave,
+            canRemoveBackground: canRemoveBackground,
+            qrState: qrState,
             onCopy: onCopy,
+            onCopyText: onCopyText,
+            onQRTap: onQRTap,
             onSave: onSave,
             onReveal: onReveal,
             onMarkup: { [weak self] in
@@ -306,7 +326,11 @@ private struct ScreenshotPreviewView: View {
     let canMarkup: Bool
     let canSend: Bool
     let canSave: Bool
+    let canRemoveBackground: Bool
+    let qrState: PreviewQRState?
     let onCopy: () -> Void
+    let onCopyText: (() -> Void)?
+    let onQRTap: (() -> Void)?
     let onSave: () -> Void
     let onReveal: () -> Void
     let onMarkup: () -> Void
@@ -334,6 +358,9 @@ private struct ScreenshotPreviewView: View {
             }
             .overlay(alignment: .bottom) { if hovering { toolbar } }
             .overlay(alignment: .topTrailing) { if hovering { closeButton } }
+            .overlay(alignment: .topLeading) {
+                if qrState?.showsBadge == true { qrBadge }
+            }
             .padding(8)
             .glassCard(cornerRadius: 12)
             // Swipe right to flick it away; the panel then slides off-screen
@@ -353,15 +380,20 @@ private struct ScreenshotPreviewView: View {
             PreviewAction(symbol: copied ? "checkmark" : "doc.on.doc", help: "Copy") {
                 onCopy(); withAnimation { copied = true }
             }
+            if let onCopyText {
+                PreviewAction(symbol: "text.viewfinder", help: "Copy text", action: onCopyText)
+            }
             if canSave {
                 PreviewAction(symbol: saved ? "checkmark" : "square.and.arrow.down", help: "Save") {
                     onSave(); withAnimation { saved = true }
                 }
             }
             PreviewAction(symbol: "folder", help: "Reveal", action: onReveal)
-            PreviewAction(
-                symbol: "person.and.background.dotted",
-                help: "Remove background", action: onRemoveBackground)
+            if canRemoveBackground {
+                PreviewAction(
+                    symbol: "person.and.background.dotted",
+                    help: "Remove background", action: onRemoveBackground)
+            }
             if canMarkup {
                 PreviewAction(symbol: "pencil.tip.crop.circle", help: "Markup", action: onMarkup)
             }
@@ -385,6 +417,20 @@ private struct ScreenshotPreviewView: View {
                 .padding(5)
         }
         .buttonStyle(.plain)
+        .transition(.opacity)
+    }
+
+    private var qrBadge: some View {
+        Button(action: { onQRTap?() }) {
+            Image(systemName: "qrcode")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(5)
+                .background(Circle().fill(.black.opacity(0.55)))
+        }
+        .buttonStyle(.plain)
+        .help("QR code found — copy its contents")
+        .padding(6)
         .transition(.opacity)
     }
 
