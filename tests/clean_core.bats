@@ -773,8 +773,11 @@ SCRIPT
         bash --noprofile --norc <<'SCRIPT'
 # set -u only: a sudo function mock returning nonzero inside an if-condition
 # trips errexit on the macos-14 runner's bash (see root AGENTS.md pitfalls).
+# The source below re-arms -e (bin/clean.sh sets -euo pipefail), so `set +e`
+# after sourcing is what actually disarms errexit; nounset stays on.
 set -u
 source "$PROJECT_ROOT/bin/clean.sh"
+set +e
 DRY_RUN=false
 EXTERNAL_VOLUME_TARGET=""
 SYSTEM_CLEAN_REQUESTED=true
@@ -788,7 +791,7 @@ _stop_sudo_keepalive() { :; }
 start_cleanup < /dev/null
 echo "SYSTEM_CLEAN=$SYSTEM_CLEAN"
 SCRIPT
-    [ "$status" -eq 0 ] || return 1
+    [ "$status" -eq 0 ] || { echo "status=$status"; echo "$output"; return 1; }
     [[ "$output" == *"admin access granted"* ]] || return 1
     [[ "$output" == *"SYSTEM_CLEAN=true"* ]] || return 1
 }
@@ -797,8 +800,11 @@ SCRIPT
     run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PEAR_TEST_MODE=0 PEAR_TEST_NO_AUTH=0 \
         bash --noprofile --norc <<'SCRIPT'
 # set -u only: see errexit pitfall note in the auth-succeeds test above.
+# The source below re-arms -e (bin/clean.sh sets -euo pipefail), so `set +e`
+# after sourcing is what actually disarms errexit; nounset stays on.
 set -u
 source "$PROJECT_ROOT/bin/clean.sh"
+set +e
 DRY_RUN=false
 EXTERNAL_VOLUME_TARGET=""
 
@@ -810,7 +816,7 @@ _stop_sudo_keepalive() { :; }
 start_cleanup < /dev/null
 echo "SYSTEM_CLEAN=$SYSTEM_CLEAN"
 SCRIPT
-    [ "$status" -eq 0 ] || return 1
+    [ "$status" -eq 0 ] || { echo "status=$status"; echo "$output"; return 1; }
     [[ "$output" != *"AUTH-ATTEMPTED"* ]] || return 1
     [[ "$output" == *"System-level cleanup skipped"* ]] || return 1
     [[ "$output" == *"SYSTEM_CLEAN=false"* ]] || return 1
