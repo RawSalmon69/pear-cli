@@ -65,7 +65,9 @@ push/PR.
 
 Capture: **Screenshot** (⌃⇧S, region → clipboard+file+floating preview stack,
 markup, background-remove), **OCR / Grab Text** (⌃⇧T, Vision), **Background
-removal** (Apple Vision default; opt-in HD RMBG-2 Core ML — see below).
+removal** (Apple Vision default; opt-in HD RMBG-2 Core ML — see below), **QR**
+(⌃⇧Q, scan screen region / generate from clipboard, auto QR badge + Copy-text
+button on screenshot preview cards).
 Windows: **Windows** (snap zones + Loop-style radial ring on Fn), **Dock Preview**
 (hover a dock icon → window thumbnails, follows the dock edge on any display).
 Utilities: **Color Picker** (NSColorSampler + WCAG), **Shelf** (⌃⇧V drop-hold-drag),
