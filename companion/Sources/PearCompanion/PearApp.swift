@@ -71,4 +71,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         -> UNNotificationPresentationOptions {
         [.banner, .sound]
     }
+
+    // Open the URL a QR notification carries — from the "Open Link" button or
+    // a plain tap on the banner. Non-QR notifications carry no URL key.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            didReceive response: UNNotificationResponse) async {
+        let info = response.notification.request.content.userInfo
+        guard let urlString = info[QRService.urlUserInfoKey] as? String,
+              let url = URL(string: urlString) else { return }
+        guard response.actionIdentifier == QRService.openActionIdentifier
+            || response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        _ = await MainActor.run { NSWorkspace.shared.open(url) }
+    }
 }
