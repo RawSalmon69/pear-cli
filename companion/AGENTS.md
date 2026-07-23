@@ -53,7 +53,7 @@ push/PR.
   `MenuBarExtra`). Closes on focus loss by default (`Prefs.panelClosesOnFocusLoss`),
   draggable, recreate-per-open so idle cost ~0.
 - **Services** (`Services/`): Screenshot, OCR (Vision), BackgroundRemoval
-  (Vision + optional HD model), HDBackgroundModel (RMBG download/manage),
+  (Vision + optional HD model), HDBackgroundModel (BEN2 download/manage),
   Clipboard history, CloudKit messaging (flagged off), Stats (`pear status --json`),
   Cleaner (headless `pear clean/optimize` into a panel; opt-in Include-system-caches
   setting passes `clean --system` → native auth dialog), DiskAnalyze, HotKeyManager
@@ -66,7 +66,7 @@ push/PR.
 
 Capture: **Screenshot** (⌃⇧S, region → clipboard+file+floating preview stack,
 markup, background-remove), **OCR / Grab Text** (⌃⇧T, Vision), **Background
-removal** (Apple Vision default; opt-in HD RMBG-2 Core ML — see below), **QR**
+removal** (Apple Vision default; opt-in HD BEN2 Core ML — see below), **QR**
 (⌃⇧Q, scan screen region / generate from clipboard, auto QR badge + Copy-text
 button on screenshot preview cards).
 Windows: **Windows** (snap zones + Loop-style radial ring on Fn), **Dock Preview**
@@ -93,11 +93,14 @@ battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
   ScreenCaptureKit for thumbnails, `screencapture -i` for region capture. Don't
   replace a bulletproof system path with custom code for a nice-to-have.
 - **HD background removal** is opt-in: default is Apple Vision (instant, no
-  download). Turning on "High-quality mode" downloads RMBG-2 int8 Core ML
-  (~233MB) from Hugging Face, cached in Application Support, removable, with a
-  Vision fallback. License is **non-commercial** (CC-BY-NC + BRIA) — see
-  `Resources/Licenses/RMBG-2.0-NOTICE.txt`; do not ship this in a commercial
-  product without a BRIA license.
+  download). Turning on "High-quality mode" downloads a **BEN2 Base** Core ML
+  fp16 model (~205MB) from the project's GitHub release (`ben2-bg-model-v1`,
+  three flat assets rebuilt into an `.mlpackage`), cached in Application Support,
+  removable, with a Vision fallback. License is **MIT** (BEN2 Base, Prama LLC —
+  commercial use OK) — see `Resources/Licenses/BEN2-NOTICE.txt`. Replaced the
+  old RMBG-2.0 model (CC-BY-NC, which blocked monetization) on 2026-07-23. Model
+  I/O: input `[1,3,1024,1024]` ImageNet-normalized NCHW (the app normalizes);
+  output is a **0..1 sigmoid matte** (already sigmoided — do NOT sigmoid again).
 - **Floating-window positioning**: dock preview follows the dock edge (picks the
   icon's screen by overlap, never the focused-window screen); screenshot preview
   + scratchpad open on the **primary** display; menu-bar hider seeds its
@@ -136,11 +139,12 @@ maintainer before tagging.
   turn (re-entrant constraint pass crashes).
 - **Every new `NSStatusItem` needs an `autosaveName` + a right-edge position
   seed**, or the menu-bar hider's length trick eats it.
-- **RMBG HD model must load with `computeUnits = .cpuOnly`.** Measured on this
-  int8 model: `.all` triggers a multi-minute Neural Engine compile that hangs
-  "Preparing…"; `.cpuAndGPU` loads fast but the GPU **miscomputes** it (garbage
-  mask); `.cpuOnly` is correct and fast (~4s load, ~2s inference). Don't "optimize"
-  it back to `.all`/ANE.
+- **HD bg model (BEN2) must load with `computeUnits = .cpuOnly`.** Verified by
+  PyTorch-vs-CoreML parity: `.all`/ANE is wrong (maxΔ 0.89, 26s compile),
+  `.cpuAndGPU` **miscomputes** it (NaN mask), `.cpuOnly` matches the reference
+  (fp16-level, ~1s load, ~1.6s inference). Same pattern the old RMBG model had —
+  don't "optimize" it back to `.all`/ANE. Conversion recipe (torch.export +
+  run_decompositions + a bitwise_not→logical_not op override) is in root memory.
 - **Verify the shipped zip by directly launching it** (not just spctl/stapler) —
   toolchain/launch bugs pass every other check.
 - **Footprint metric**: `top -l1 -pid N -stats mem` (Activity Monitor number),

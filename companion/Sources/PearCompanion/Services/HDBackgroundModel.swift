@@ -5,15 +5,15 @@ import Observation
 import Foundation
 import os
 
-/// A compiled RMBG-2 (BiRefNet) Core ML model plus the inference that turns an
-/// image into a soft-alpha cutout — remove.bg-class, on-device. `@unchecked
-/// Sendable` because `MLModel.prediction` is thread-safe, so a caller can run
-/// `cutout` off the main actor.
+/// A compiled BEN2 Core ML model plus the inference that turns an image into a
+/// soft-alpha cutout — remove.bg-class, on-device. `@unchecked Sendable` because
+/// `MLModel.prediction` is thread-safe, so a caller can run `cutout` off the
+/// main actor.
 ///
-/// Model: VincentGOURBIN/RMBG-2-CoreML (CC-BY-NC-4.0), from BRIA AI RMBG-2.0
-/// (non-commercial). Input [1,3,1024,1024] ImageNet-normalized NCHW; output_3 is
-/// a full-res logit mask (sigmoid → 0..1 matte).
-final class RMBGModel: @unchecked Sendable {
+/// Model: BEN2 Base (PramaLLC, MIT — commercial use OK), converted to Core ML
+/// fp16. Input [1,3,1024,1024] ImageNet-normalized NCHW; the single output is a
+/// full-res 0..1 sigmoid matte (already sigmoided — do NOT sigmoid again).
+final class BEN2Model: @unchecked Sendable {
     private let model: MLModel
     private static let N = 1024
     private static let mean: [Float] = [0.485, 0.456, 0.406]
@@ -41,11 +41,12 @@ final class RMBGModel: @unchecked Sendable {
             }
         }
         guard let inName = model.modelDescription.inputDescriptionsByName.keys.first,
+              let outName = model.modelDescription.outputDescriptionsByName.keys.first,
               let out = try? model.prediction(from: MLDictionaryFeatureProvider(dictionary: [inName: input])),
-              let mask = (out.featureValue(for: "output_3") ?? out.featureValue(for: out.featureNames.sorted().last ?? ""))?.multiArrayValue
+              let mask = out.featureValue(for: outName)?.multiArrayValue
         else { return nil }
 
-        let matte = Self.sigmoidMatte(mask, count: N * N)
+        let matte = Self.matte(mask, count: N * N)
         return Self.composite(cg: cg, matte: matte, maskSide: N)
     }
 
@@ -61,19 +62,20 @@ final class RMBGModel: @unchecked Sendable {
     }
 
     /// Reads the last `count` elements of `mask` as Float (honoring the model's
-    /// Float16 output) and applies sigmoid to turn logits into a 0..1 matte.
-    private static func sigmoidMatte(_ mask: MLMultiArray, count: Int) -> [Float] {
+    /// Float16 output). BEN2 already outputs a 0..1 sigmoid matte, so this reads
+    /// it straight through — no sigmoid (double-sigmoid would wash it out).
+    private static func matte(_ mask: MLMultiArray, count: Int) -> [Float] {
         let base = max(0, mask.count - count)
         var out = [Float](repeating: 0, count: count)
         switch mask.dataType {
         case .float16:
             let p = mask.dataPointer.bindMemory(to: Float16.self, capacity: mask.count)
-            for i in 0..<count { out[i] = 1.0 / (1.0 + expf(-Float(p[base + i]))) }
+            for i in 0..<count { out[i] = Float(p[base + i]) }
         case .float32:
             let p = mask.dataPointer.bindMemory(to: Float.self, capacity: mask.count)
-            for i in 0..<count { out[i] = 1.0 / (1.0 + expf(-p[base + i])) }
+            for i in 0..<count { out[i] = p[base + i] }
         default:
-            for i in 0..<count { out[i] = 1.0 / (1.0 + expf(-mask[base + i].floatValue)) }
+            for i in 0..<count { out[i] = mask[base + i].floatValue }
         }
         return out
     }
@@ -105,10 +107,10 @@ final class RMBGModel: @unchecked Sendable {
 }
 
 /// Opt-in manager for the high-quality background-removal model: downloads it
-/// from Hugging Face on request, tracks state for the settings UI, compiles it
-/// once per launch, and can delete it to reclaim the ~233MB. Singleton so the
-/// settings view and the (static-call) removal sites share one instance without
-/// threading it through every service.
+/// from the project's GitHub release on request, tracks state for the settings
+/// UI, compiles it once per launch, and can delete it to reclaim the ~205MB.
+/// Singleton so the settings view and the (static-call) removal sites share one
+/// instance without threading it through every service.
 @MainActor
 @Observable
 final class HDBackgroundModelManager {
@@ -125,10 +127,10 @@ final class HDBackgroundModelManager {
     private(set) var state: State = .absent
     /// Compiled model when ready+enabled, else nil. Sendable, so removal sites
     /// can hand it to an off-main `Task`. nil ⇒ callers use the Vision fallback.
-    private(set) var model: RMBGModel?
+    private(set) var model: BEN2Model?
 
     /// The download's approximate size, for the opt-in notice.
-    static let downloadBytes = 244 * 1024 * 1024
+    static let downloadBytes = 205 * 1024 * 1024
     static var downloadSizeText: String {
         ByteCountFormatter.string(fromByteCount: Int64(downloadBytes), countStyle: .file)
     }
@@ -136,20 +138,21 @@ final class HDBackgroundModelManager {
     private let logger = Logger(subsystem: CoupleKey.service, category: "bgremove-hd")
     private var downloadTask: Task<Void, Never>?
 
-    // Hugging Face source (the original host — we don't re-publish it).
-    private static let hfBase =
-        "https://huggingface.co/VincentGOURBIN/RMBG-2-CoreML/resolve/main/RMBG-2-native-int8.mlpackage"
-    private static let files = [
-        "Manifest.json",
-        "Data/com.apple.CoreML/model.mlmodel",
-        "Data/com.apple.CoreML/weights/weight.bin",
+    // GitHub release host. The .mlpackage is split into flat assets (release
+    // assets can't have slashes); each maps to a path we rebuild on disk.
+    private static let releaseBase =
+        "https://github.com/RawSalmon69/pear-cli/releases/download/ben2-bg-model-v1"
+    private static let files: [(rel: String, asset: String)] = [
+        ("Manifest.json", "BEN2-Manifest.json"),
+        ("Data/com.apple.CoreML/model.mlmodel", "BEN2-model.mlmodel"),
+        ("Data/com.apple.CoreML/weights/weight.bin", "BEN2-weight.bin"),
     ]
-    private static let weightsBytes: Int64 = 241_333_920 // integrity check
+    private static let weightsBytes: Int64 = 203_771_968 // integrity check
 
     private var modelDir: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        return base.appendingPathComponent("PearCompanion/Models/RMBG-2-native-int8.mlpackage", isDirectory: true)
+        return base.appendingPathComponent("PearCompanion/Models/BEN2-matting-1024.mlpackage", isDirectory: true)
     }
 
     /// Whether the model files are present and complete on disk.
@@ -179,20 +182,21 @@ final class HDBackgroundModelManager {
         state = .preparing
         let dir = modelDir
         Task { [weak self] in
-            // Build the Sendable RMBGModel wrapper inside the detached task —
+            // Build the Sendable BEN2Model wrapper inside the detached task —
             // MLModel itself isn't Sendable, so it must not cross the boundary.
-            let built: RMBGModel? = await Task.detached(priority: .userInitiated) {
+            let built: BEN2Model? = await Task.detached(priority: .userInitiated) {
                 guard let url = try? MLModel.compileModel(at: dir) else { return nil }
                 let cfg = MLModelConfiguration()
-                // CPU-only, deliberately. Measured on this model:
-                //  • .all         → Neural Engine compile takes MINUTES (hangs "Preparing…")
-                //  • .cpuAndGPU   → loads in ~5s but the GPU MISCOMPUTES this int8 model
-                //                   (garbage mask, background not removed)
-                //  • .cpuOnly     → ~4s load, ~2s inference, and CORRECT output
-                // CPU is the reference backend here: correct and fast.
+                // CPU-only, deliberately. Verified by PyTorch-vs-Core ML parity
+                // on this BEN2 model:
+                //  • .all (ANE)   → 26s compile AND wrong output (maxΔ 0.89 vs ref)
+                //  • .cpuAndGPU   → the GPU MISCOMPUTES it (NaN mask)
+                //  • .cpuOnly     → ~1s load, ~1.6s inference, matches ref (fp16-level)
+                // CPU is the reference backend here: correct and fast. Same
+                // pattern as the old RMBG model — do not "optimize" to ANE/GPU.
                 cfg.computeUnits = .cpuOnly
                 guard let m = try? MLModel(contentsOf: url, configuration: cfg) else { return nil }
-                return RMBGModel(model: m)
+                return BEN2Model(model: m)
             }.value
             guard let self else { return }
             if let built {
@@ -204,7 +208,7 @@ final class HDBackgroundModelManager {
         }
     }
 
-    /// Downloads the model files from Hugging Face with progress, verifies the
+    /// Downloads the model files from GitHub with progress, verifies the
     /// weights size, then compiles. Safe to call repeatedly.
     func download() {
         guard downloadTask == nil else { return }
@@ -213,9 +217,9 @@ final class HDBackgroundModelManager {
         downloadTask = Task { [weak self] in
             do {
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-                // The two tiny files first (manifest + spec, ~3MB) — no bar.
-                for rel in Self.files.dropLast() { try await Self.fetchSimple(rel, into: dir) }
-                // Then the 230MB weights with real progress driving the bar.
+                // The two tiny files first (manifest + spec, ~1MB) — no bar.
+                for file in Self.files.dropLast() { try await Self.fetchSimple(file, into: dir) }
+                // Then the ~204MB weights with real progress driving the bar.
                 try await Self.fetchWithProgress(Self.files.last!, into: dir) { fraction in
                     Task { @MainActor in
                         if let self, case .downloading = self.state { self.state = .downloading(fraction) }
@@ -255,15 +259,15 @@ final class HDBackgroundModelManager {
     }
 
     /// The model to use right now: only when the user opted in AND it's ready.
-    var activeModel: RMBGModel? {
+    var activeModel: BEN2Model? {
         (Prefs.hdBackgroundRemoval && state == .ready) ? model : nil
     }
 
     // MARK: - Download plumbing
 
-    private static func fetchSimple(_ rel: String, into dir: URL) async throws {
-        guard let url = URL(string: "\(hfBase)/\(rel)") else { throw URLError(.badURL) }
-        let dest = dir.appendingPathComponent(rel)
+    private static func fetchSimple(_ file: (rel: String, asset: String), into dir: URL) async throws {
+        guard let url = URL(string: "\(releaseBase)/\(file.asset)") else { throw URLError(.badURL) }
+        let dest = dir.appendingPathComponent(file.rel)
         try FileManager.default.createDirectory(
             at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
         let (tmp, _) = try await URLSession.shared.download(from: url)
@@ -272,10 +276,10 @@ final class HDBackgroundModelManager {
     }
 
     private static func fetchWithProgress(
-        _ rel: String, into dir: URL, progress: @escaping @Sendable (Double) -> Void
+        _ file: (rel: String, asset: String), into dir: URL, progress: @escaping @Sendable (Double) -> Void
     ) async throws {
-        guard let url = URL(string: "\(hfBase)/\(rel)") else { throw URLError(.badURL) }
-        let dest = dir.appendingPathComponent(rel)
+        guard let url = URL(string: "\(releaseBase)/\(file.asset)") else { throw URLError(.badURL) }
+        let dest = dir.appendingPathComponent(file.rel)
         try FileManager.default.createDirectory(
             at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
         let tmp = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<URL, Error>) in

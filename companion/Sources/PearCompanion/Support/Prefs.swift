@@ -28,7 +28,7 @@ enum Prefs {
         UserDefaults.standard.object(forKey: autoSaveKey) as? Bool ?? true
     }
 
-    /// Opt-in: use the downloaded high-quality (RMBG) model for background
+    /// Opt-in: use the downloaded high-quality (BEN2) model for background
     /// removal. Default off — the built-in Vision cutout needs no download.
     static var hdBackgroundRemoval: Bool {
         UserDefaults.standard.bool(forKey: hdBackgroundRemovalKey)
