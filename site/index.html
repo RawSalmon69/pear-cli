@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pear — a quiet Mac toolbox</title>
-<meta name="description" content="Pear is a private, native macOS menu-bar utility: screenshots, OCR, QR, window snapping, clipboard history, disk maps and Mac cleanup — on-device, no accounts, no telemetry.">
-<meta property="og:title" content="Pear — a quiet Mac toolbox">
+<title>Pear · a quiet Mac toolbox</title>
+<meta name="description" content="Pear is a private, native macOS menu-bar utility: screenshots, OCR, QR, window snapping, clipboard history, disk maps and Mac cleanup, all on-device with no accounts and no telemetry.">
+<meta property="og:title" content="Pear · a quiet Mac toolbox">
 <meta property="og:description" content="Seventeen small tools behind one menu-bar icon. Native, on-device, free. macOS 14+, Apple Silicon.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://pear.phanthawas.dev">
@@ -22,6 +22,13 @@
     <symbol id="i-pear" viewBox="0 0 24 24">
       <path style="fill:var(--accent)" d="M12 22c-3.7 0-6.4-2.6-6.4-6 0-2.7 1.6-4.4 2.9-5.8C9.6 9 10.4 8 10.4 6.6V5h3.2v1.6c0 1.4.8 2.4 1.9 3.6 1.3 1.4 2.9 3.1 2.9 5.8 0 3.4-2.7 6-6.4 6z"/>
       <path style="fill:var(--muted)" d="M14 5.2c1.3-1.4 3.3-1.6 4.6-.8-.5 1.5-2.1 2.6-4.2 2.1z"/>
+    </symbol>
+    <!-- large outline pear: body + stem + leaf. Strokes are inline because
+         class selectors don't cross the <use> shadow boundary. -->
+    <symbol id="pear-xl" viewBox="0 0 200 240">
+      <path style="fill:color-mix(in srgb, var(--accent) 11%, transparent);stroke:var(--accent);stroke-width:4.5;stroke-linejoin:round" d="M100 74c-9 0-15 8-17 19-2 12-11 20-21 34-15 21-18 47-6 68 11 20 32 29 44 29s33-9 44-29c12-21 9-47-6-68-10-14-19-22-21-34-2-11-8-19-17-19Z"/>
+      <path style="fill:none;stroke:var(--accent);stroke-width:4.5;stroke-linecap:round" d="M100 74c0-14 1-24 9-33"/>
+      <path style="fill:none;stroke:var(--accent);stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round" d="M112 47c11-13 30-15 44-8-5 15-21 26-42 20"/>
     </symbol>
     <symbol id="i-shot" viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3.2"/></symbol>
     <symbol id="i-ocr" viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8.5 9.5h7M12 9.5V15"/></symbol>
@@ -44,7 +51,7 @@
 </svg>
 
 <header class="bar" id="top">
-  <a class="brand" href="#top" aria-label="Pear — top">
+  <a class="brand" href="#top" aria-label="Pear, back to top">
     <svg class="pear" aria-hidden="true"><use href="#i-pear"/></svg>
     <span>Pear</span>
   </a>
@@ -60,89 +67,111 @@
   <!-- ── HERO ── -->
   <section class="hero">
     <div class="hero-copy">
-      <p class="eyebrow">macOS menu-bar utility</p>
-      <h1>Seventeen&nbsp;tools.<br>One quiet&nbsp;<span class="hl">icon.</span></h1>
-      <p class="lede">A native toolbox that lives in your menu bar — screenshots,
-      text&nbsp;grabbing, window snapping, clipboard history, disk maps, a Mac
-      cleaner. On-device, and out of the way until you reach for it.</p>
+      <p class="eyebrow"><span class="dot"></span>Pear, a menu-bar app for Mac</p>
+      <h1>Seventeen tools.<br>One quiet <span class="hl">icon.</span></h1>
+      <p class="lede">Pear keeps a whole toolbox in your menu bar. Screenshots,
+      text grabbing, window snapping, clipboard history, disk maps, a Mac
+      cleaner. Everything runs on your machine, and stays quiet until you reach
+      for it.</p>
       <div class="cta">
         <a class="btn" href="https://github.com/RawSalmon69/pear-cli/releases" data-download>Download for Mac</a>
         <p class="meta"><span data-version>latest</span> · macOS&nbsp;14+ · Apple&nbsp;Silicon · free</p>
       </div>
     </div>
 
-    <!-- minimal wireframe of the menu bar + dropped panel -->
-    <aside class="wire" aria-label="The Pear panel, dropped from the menu bar">
-      <div class="wire-strip">
-        <span class="wl"></span><span class="wl short"></span>
-        <span class="grow"></span>
-        <span class="wdot"></span>
-        <span class="wclock">9:41</span>
-      </div>
-      <div class="wire-panel">
-        <div class="wire-head"><svg class="pear" aria-hidden="true"><use href="#i-pear"/></svg><span>Pear</span></div>
-        <div class="wire-grid">
-          <span><svg aria-hidden="true"><use href="#i-shot"/></svg></span>
-          <span><svg aria-hidden="true"><use href="#i-ocr"/></svg></span>
-          <span><svg aria-hidden="true"><use href="#i-qr"/></svg></span>
-          <span><svg aria-hidden="true"><use href="#i-win"/></svg></span>
-          <span><svg aria-hidden="true"><use href="#i-clip"/></svg></span>
-          <span><svg aria-hidden="true"><use href="#i-shelf"/></svg></span>
-          <span><svg aria-hidden="true"><use href="#i-note"/></svg></span>
-          <span><svg aria-hidden="true"><use href="#i-color"/></svg></span>
-          <span><svg aria-hidden="true"><use href="#i-disk"/></svg></span>
-          <span><svg aria-hidden="true"><use href="#i-clean"/></svg></span>
+    <div class="hero-art">
+      <svg class="pear-xl" viewBox="0 0 200 240" aria-hidden="true"><use href="#pear-xl"/></svg>
+      <aside class="wire" aria-label="The Pear panel, dropped from the menu bar">
+        <div class="wire-strip">
+          <span class="wl"></span><span class="wl short"></span>
+          <span class="grow"></span>
+          <span class="wdot"></span>
+          <span class="wclock">9:41</span>
         </div>
-      </div>
-    </aside>
+        <div class="wire-panel">
+          <div class="wire-head"><svg class="pear" aria-hidden="true"><use href="#i-pear"/></svg><span>Pear</span></div>
+          <div class="wire-grid">
+            <span><svg aria-hidden="true"><use href="#i-shot"/></svg></span>
+            <span><svg aria-hidden="true"><use href="#i-ocr"/></svg></span>
+            <span><svg aria-hidden="true"><use href="#i-qr"/></svg></span>
+            <span><svg aria-hidden="true"><use href="#i-win"/></svg></span>
+            <span><svg aria-hidden="true"><use href="#i-clip"/></svg></span>
+            <span><svg aria-hidden="true"><use href="#i-shelf"/></svg></span>
+            <span><svg aria-hidden="true"><use href="#i-note"/></svg></span>
+            <span><svg aria-hidden="true"><use href="#i-color"/></svg></span>
+            <span><svg aria-hidden="true"><use href="#i-disk"/></svg></span>
+            <span><svg aria-hidden="true"><use href="#i-clean"/></svg></span>
+          </div>
+        </div>
+      </aside>
+    </div>
   </section>
+
+  <!-- ── MARQUEE ── -->
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee-track">
+      <span>Pear</span><svg class="pear" aria-hidden="true"><use href="#i-pear"/></svg>
+      <span>Pear</span><svg class="pear" aria-hidden="true"><use href="#i-pear"/></svg>
+      <span>Pear</span><svg class="pear" aria-hidden="true"><use href="#i-pear"/></svg>
+      <span>Pear</span><svg class="pear" aria-hidden="true"><use href="#i-pear"/></svg>
+      <span>Pear</span><svg class="pear" aria-hidden="true"><use href="#i-pear"/></svg>
+      <span>Pear</span><svg class="pear" aria-hidden="true"><use href="#i-pear"/></svg>
+      <span aria-hidden="true">Pear</span><svg class="pear" aria-hidden="true"><use href="#i-pear"/></svg>
+      <span aria-hidden="true">Pear</span><svg class="pear" aria-hidden="true"><use href="#i-pear"/></svg>
+      <span aria-hidden="true">Pear</span><svg class="pear" aria-hidden="true"><use href="#i-pear"/></svg>
+      <span aria-hidden="true">Pear</span><svg class="pear" aria-hidden="true"><use href="#i-pear"/></svg>
+      <span aria-hidden="true">Pear</span><svg class="pear" aria-hidden="true"><use href="#i-pear"/></svg>
+      <span aria-hidden="true">Pear</span><svg class="pear" aria-hidden="true"><use href="#i-pear"/></svg>
+    </div>
+  </div>
 
   <!-- ── TOOLS ── -->
   <section class="tools" id="tools">
+    <span class="watermark" aria-hidden="true">Pear</span>
     <header class="lead reveal">
-      <h2>A drawer of small, sharp things.</h2>
-      <p>Each one leans on Apple’s own frameworks instead of reinventing them —
-      so it stays fast, quiet, and trustworthy.</p>
+      <h2>Everything Pear can do.</h2>
+      <p>Every tool is built on Apple’s own frameworks, so Pear stays fast and
+      light instead of shipping its own half of macOS.</p>
     </header>
 
     <div class="group reveal">
       <p class="cat">Capture</p>
       <ul class="index">
-        <li><svg aria-hidden="true"><use href="#i-shot"/></svg><b>Screenshot</b><kbd>⌃⇧S</kbd><span>Region capture into floating cards — mark up, copy, or strip the background.</span></li>
-        <li><svg aria-hidden="true"><use href="#i-ocr"/></svg><b>Grab Text</b><kbd>⌃⇧T</kbd><span>Point at anything on screen; the words land in your clipboard.</span></li>
-        <li><svg aria-hidden="true"><use href="#i-qr"/></svg><b>QR</b><kbd>⌃⇧Q</kbd><span>Scan a code on screen, or turn your clipboard into a card.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-shot"/></svg><b>Screenshot</b><kbd>⌃⇧S</kbd><span>Grab a region into floating cards. Mark it up, copy it, or lift the background out.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-ocr"/></svg><b>Grab Text</b><kbd>⌃⇧T</kbd><span>Point at anything on screen and the words land in your clipboard.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-qr"/></svg><b>QR</b><kbd>⌃⇧Q</kbd><span>Scan a code on the screen, or turn your clipboard into a QR card.</span></li>
       </ul>
     </div>
 
     <div class="group reveal">
       <p class="cat">Windows</p>
       <ul class="index">
-        <li><svg aria-hidden="true"><use href="#i-win"/></svg><b>Snap &amp; ring</b><kbd>Fn</kbd><span>Snap zones, plus a radial ring to fling windows exactly where they go.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-win"/></svg><b>Snap &amp; ring</b><kbd>Fn</kbd><span>Snap zones, plus a radial ring for flinging windows where you want them.</span></li>
         <li><svg aria-hidden="true"><use href="#i-dock"/></svg><b>Dock Preview</b><span>Hover a Dock icon to peek at its windows, on any display.</span></li>
-        <li><svg aria-hidden="true"><use href="#i-keys"/></svg><b>KeyClu</b><kbd>⌃⇧K</kbd><span>Every shortcut of the app you’re in, on one cheat sheet.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-keys"/></svg><b>KeyClu</b><kbd>⌃⇧K</kbd><span>Every shortcut for the app you’re in, gathered on one sheet.</span></li>
       </ul>
     </div>
 
     <div class="group reveal">
       <p class="cat">Everyday</p>
       <ul class="index">
-        <li><svg aria-hidden="true"><use href="#i-clip"/></svg><b>Clipboard</b><span>Everything you’ve copied, searchable, with pins.</span></li>
-        <li><svg aria-hidden="true"><use href="#i-shelf"/></svg><b>Shelf</b><kbd>⌃⇧V</kbd><span>Drop files mid-drag, then carry them onward.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-clip"/></svg><b>Clipboard</b><span>Everything you’ve copied, searchable, with pins for the regulars.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-shelf"/></svg><b>Shelf</b><kbd>⌃⇧V</kbd><span>Drop files mid-drag, then carry them somewhere else.</span></li>
         <li><svg aria-hidden="true"><use href="#i-note"/></svg><b>Scratchpad</b><kbd>⌃⇧N</kbd><span>A note that floats above everything else.</span></li>
-        <li><svg aria-hidden="true"><use href="#i-color"/></svg><b>Color Picker</b><span>The system eyedropper, with WCAG contrast.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-color"/></svg><b>Color Picker</b><span>The system eyedropper, with WCAG contrast built in.</span></li>
       </ul>
     </div>
 
     <div class="group reveal">
       <p class="cat">Your Mac</p>
       <ul class="index">
-        <li><svg aria-hidden="true"><use href="#i-disk"/></svg><b>Disk</b><span>A sunburst of what’s eating your space; removals go to the Trash.</span></li>
-        <li><svg aria-hidden="true"><use href="#i-clean"/></svg><b>Cleanup</b><span>One-click cleanup via the bundled CLI; system caches only if you opt in.</span></li>
-        <li><svg aria-hidden="true"><use href="#i-mon"/></svg><b>Monitor</b><span>CPU, memory, network, battery and sensors at a glance.</span></li>
-        <li><svg aria-hidden="true"><use href="#i-cat"/></svg><b>RunCat</b><span>A menu-bar runner that trots faster as your CPU works.</span></li>
-        <li><svg aria-hidden="true"><use href="#i-hide"/></svg><b>Menu-bar hider</b><span>Tuck away icons you don’t need. Off by default.</span></li>
-        <li><svg aria-hidden="true"><use href="#i-switch"/></svg><b>Switches</b><span>Eight system toggles in one place.</span></li>
-        <li><svg aria-hidden="true"><use href="#i-moon"/></svg><b>Clean Mode</b><span>Blank the desktop for recordings. Off by default.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-disk"/></svg><b>Disk</b><span>A sunburst of what’s filling your disk. Anything you remove goes to the Trash.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-clean"/></svg><b>Cleanup</b><span>One click of cleanup from the bundled CLI. System caches only if you turn it on.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-mon"/></svg><b>Monitor</b><span>CPU, memory, network, battery and sensors, at a glance.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-cat"/></svg><b>RunCat</b><span>A little cat in your menu bar that runs faster as the CPU heats up.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-hide"/></svg><b>Menu-bar hider</b><span>Tuck away icons you don’t need. Off unless you turn it on.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-switch"/></svg><b>Switches</b><span>Eight system toggles in one spot.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-moon"/></svg><b>Clean Mode</b><span>Blank the desktop for a recording. Off unless you turn it on.</span></li>
       </ul>
     </div>
   </section>
@@ -150,29 +179,31 @@
   <!-- ── PRIVACY ── -->
   <section class="privacy" id="privacy">
     <div class="privacy-inner reveal">
-      <p class="cat">Private by architecture</p>
-      <h2>No server. Nothing to<br>send your data to.</h2>
+      <p class="cat">Private by design</p>
+      <h2>Pear keeps everything<br>on your Mac.</h2>
       <dl class="priv">
-        <div><dt>On-device, always</dt><dd>Text recognition, background removal and QR scanning run on your Mac through Apple’s Vision framework. Nothing leaves.</dd></div>
-        <div><dt>No accounts, no telemetry</dt><dd>Nothing to sign into, nothing phoning home. There’s no analytics pipeline because there’s no pipeline.</dd></div>
-        <div><dt>Signed &amp; notarized</dt><dd>Every release is built in CI, signed with a Developer&nbsp;ID and notarized by Apple.</dd></div>
-        <div><dt>Quiet updates</dt><dd>Pear updates itself over Sparkle from a signed feed — the mechanism trusted Mac apps have used for years.</dd></div>
+        <div><dt>On-device, always</dt><dd>Text recognition, background removal and QR scanning run on your Mac with Apple’s Vision framework. Nothing gets uploaded.</dd></div>
+        <div><dt>No accounts, no telemetry</dt><dd>Nothing to sign into, and nothing phones home. Pear does not collect anything about you.</dd></div>
+        <div><dt>Signed and notarized</dt><dd>Every build is signed with a Developer ID and notarized by Apple before it goes out.</dd></div>
+        <div><dt>Quiet updates</dt><dd>Pear updates itself over Sparkle from a signed feed, the same way plenty of trusted Mac apps do.</dd></div>
       </dl>
     </div>
   </section>
 
   <!-- ── STORY ── -->
   <section class="story reveal">
-    <p>Named after someone dear. Started as a gift, grew into a toolbox, and is
-    shared the way homemade things are — <span class="hl">free, for friends, family, and now you.</span></p>
-    <p class="story-fine">No pricing page. No roadmap. Just a small thing, made carefully.</p>
+    <svg class="pear-xl story-pear" viewBox="0 0 200 240" aria-hidden="true"><use href="#pear-xl"/></svg>
+    <p>Pear is named after someone dear. It started as a gift, grew into a
+    toolbox, and gets passed around the way homemade things do. <span class="hl">Free, for friends, family, and now you.</span></p>
+    <p class="story-fine">No pricing, no roadmap. Just a little app, named after a girl.</p>
   </section>
 
-  <!-- ── FINAL ── -->
+  <!-- ── FINAL / GIANT WORDMARK ── -->
   <section class="final reveal">
-    <h2>Put the drawer in your menu bar.</h2>
-    <a class="btn" href="https://github.com/RawSalmon69/pear-cli/releases" data-download>Download for Mac</a>
+    <p class="final-kicker">Put Pear in your menu bar.</p>
+    <a class="btn btn-big" href="https://github.com/RawSalmon69/pear-cli/releases" data-download>Download for Mac</a>
     <p class="meta"><span data-version>latest</span> · free for personal use</p>
+    <h2 class="wordmark" aria-hidden="true">Pear</h2>
   </section>
 </main>
 
@@ -185,7 +216,7 @@
   </nav>
   <p class="fine">Free for personal, non-commercial use. Optional HD background
   removal uses BRIA&nbsp;RMBG-2.0 (CC-BY-NC). Type set in Space&nbsp;Grotesk (OFL).
-  Panel above is an illustration — real screenshots to come.</p>
+  The panel above is an illustration; real screenshots are on the way.</p>
 </footer>
 
 <script>
@@ -202,7 +233,7 @@
   } catch { /* fallback hrefs already point at the releases page */ }
 })();
 
-// Scroll reveals — enhancement only (hidden state is JS-gated in CSS).
+// Scroll reveals, enhancement only (hidden state is JS-gated in CSS).
 if (!matchMedia('(prefers-reduced-motion: reduce)').matches && 'IntersectionObserver' in window) {
   const io = new IntersectionObserver((es) => {
     for (const e of es) if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
