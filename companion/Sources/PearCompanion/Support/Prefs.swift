@@ -10,6 +10,7 @@ enum Prefs {
     static let previewMaxStackKey = "screenshotPreviewMaxStack"
     static let panelClosesOnFocusLossKey = "panelClosesOnFocusLoss"
     static let hdBackgroundRemovalKey = "hdBackgroundRemoval"
+    static let cleanSystemCachesKey = "cleanIncludeSystemCaches"
 
     /// Default on for both — opt-out, not opt-in.
     static var soundsEnabled: Bool {
@@ -31,6 +32,12 @@ enum Prefs {
     /// removal. Default off — the built-in Vision cutout needs no download.
     static var hdBackgroundRemoval: Bool {
         UserDefaults.standard.bool(forKey: hdBackgroundRemovalKey)
+    }
+
+    /// Opt-in: the app's Clean button also cleans system caches, which asks
+    /// for an admin password via the CLI's native dialog. Default off.
+    static var cleanIncludeSystemCaches: Bool {
+        UserDefaults.standard.bool(forKey: cleanSystemCachesKey)
     }
 
     /// Which format the eyedropper drops on the clipboard — read by both the

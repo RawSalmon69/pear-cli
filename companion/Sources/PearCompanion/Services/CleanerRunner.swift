@@ -5,7 +5,9 @@ import Observation
 /// native progress panel — no Terminal window. Stdin is /dev/null, so the
 /// CLI takes its non-interactive path: user-level cleanup proceeds, and
 /// anything needing admin either pops the CLI's own native auth dialog
-/// (optimize) or is skipped (clean's system caches).
+/// (optimize) or is skipped (clean's system caches — unless the
+/// Include-system-caches setting passes `--system`, which pops the CLI's
+/// native auth dialog).
 @MainActor
 @Observable
 final class CleanerRunner {
@@ -26,6 +28,13 @@ final class CleanerRunner {
         return false
     }
 
+    /// clean gets --system when the user opted in; optimize already pops its
+    /// own native auth dialog for admin tasks and takes no flag.
+    nonisolated static func arguments(for command: String, includeSystemCaches: Bool) -> [String] {
+        guard command == "clean", includeSystemCaches else { return [command] }
+        return [command, "--system"]
+    }
+
     func run(command: String) {
         guard !isRunning else { return }
         guard let binary = PearStatsService.pearBinary() else {
@@ -38,7 +47,8 @@ final class CleanerRunner {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
-        process.arguments = [command]
+        process.arguments = Self.arguments(
+            for: command, includeSystemCaches: Prefs.cleanIncludeSystemCaches)
         var environment = ProcessInfo.processInfo.environment
         environment["NO_COLOR"] = "1" // CLI honors no-color.org
         process.environment = environment

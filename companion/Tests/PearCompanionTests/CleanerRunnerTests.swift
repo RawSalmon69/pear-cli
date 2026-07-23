@@ -41,4 +41,14 @@ final class CleanerRunnerTests: XCTestCase {
         buffer.append(contentsOf: glyph[1...])
         XCTAssertEqual(CleanerRunner.decodeStreaming(buffer: &buffer), "✓")
     }
+
+    func testArgumentsIncludeSystemFlagOnlyForCleanWhenEnabled() {
+        XCTAssertEqual(CleanerRunner.arguments(for: "clean", includeSystemCaches: true),
+                       ["clean", "--system"])
+        XCTAssertEqual(CleanerRunner.arguments(for: "clean", includeSystemCaches: false),
+                       ["clean"])
+        // optimize handles its own auth; the flag is clean-only.
+        XCTAssertEqual(CleanerRunner.arguments(for: "optimize", includeSystemCaches: true),
+                       ["optimize"])
+    }
 }

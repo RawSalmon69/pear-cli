@@ -55,7 +55,8 @@ push/PR.
 - **Services** (`Services/`): Screenshot, OCR (Vision), BackgroundRemoval
   (Vision + optional HD model), HDBackgroundModel (RMBG download/manage),
   Clipboard history, CloudKit messaging (flagged off), Stats (`pear status --json`),
-  Cleaner (headless `pear clean/optimize` into a panel), DiskAnalyze, HotKeyManager
+  Cleaner (headless `pear clean/optimize` into a panel; opt-in Include-system-caches
+  setting passes `clean --system` → native auth dialog), DiskAnalyze, HotKeyManager
   (`.shared`, Carbon hotkeys → tokens), Updater (Sparkle), CommandRunner/ScreenCapture seams.
 - **`Prefs`** (`Support/Prefs.swift`): all UserDefaults keys in one place.
   `Support/ResourceBundle.swift` → **always `Bundle.pearResources`, never
