@@ -1,6 +1,5 @@
 import AppKit
 import UserNotifications
-import os
 
 /// QR from anywhere: region capture → Vision barcode decode → clipboard, with
 /// a notification that grows an "Open Link" button when the code is a URL.
@@ -13,8 +12,6 @@ final class QRService {
     nonisolated static let categoryIdentifier = "pear.qr.url"
     nonisolated static let openActionIdentifier = "pear.qr.open"
     nonisolated static let urlUserInfoKey = "pearQRURL"
-
-    private let logger = Logger(subsystem: CoupleKey.service, category: "qr")
 
     /// Registers the URL-notification category. Called once from QRTool.start().
     static func registerNotificationCategory() {
@@ -78,10 +75,31 @@ final class QRService {
         presentGenerated(png: png)
     }
 
-    /// Split out so Task 5 can wire the preview stack without touching the
-    /// flow above. Until then: log only.
+    /// Generated code → a card in the shared preview stack: copy it, reveal
+    /// the PNG, scan it with a phone. Markup/send/background-removal make no
+    /// sense on a QR grid, so those actions are off.
     private func presentGenerated(png: Data) {
-        logger.info("QR generated (\(png.count) bytes); preview wiring pending")
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pear-qr-\(UUID().uuidString).png")
+        try? png.write(to: url)
+        SoundEffects.play(.done)
+        ScreenshotPreviewController.shared.show(
+            imageData: png,
+            canMarkup: false,
+            canSend: false,
+            canSave: false,
+            canRemoveBackground: false,
+            onCopy: {
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                pasteboard.writeObjects([url as NSURL])
+                pasteboard.setData(png, forType: .png)
+                SoundEffects.play(.copy)
+            },
+            onReveal: { NSWorkspace.shared.activateFileViewerSelecting([url]) },
+            onMarkup: {},
+            onSend: {}
+        )
     }
 
     private func notify(title: String, body: String,

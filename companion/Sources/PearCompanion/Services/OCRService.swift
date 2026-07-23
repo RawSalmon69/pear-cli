@@ -20,7 +20,12 @@ final class OCRService {
               let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             return
         }
+        copyText(from: cgImage)
+    }
 
+    /// Recognize → clipboard → sound → notification. Public so the screenshot
+    /// preview's "Copy text" action can reuse the whole flow on an existing image.
+    func copyText(from cgImage: CGImage) {
         let text = recognizeText(in: cgImage)
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
