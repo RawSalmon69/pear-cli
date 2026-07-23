@@ -6,12 +6,12 @@
 <title>Pear · a quiet Mac toolbox</title>
 <meta name="description" content="Pear is a private, native macOS menu-bar utility: screenshots, OCR, QR, window snapping, clipboard history, disk maps and Mac cleanup, all on-device with no accounts and no telemetry.">
 <meta property="og:title" content="Pear · a quiet Mac toolbox">
-<meta property="og:description" content="Seventeen small tools behind one menu-bar icon. Native, on-device, free. macOS 14+, Apple Silicon.">
+<meta property="og:description" content="Seventeen small tools behind one menu-bar icon. Native, on-device, private. macOS 14+, Apple Silicon.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://pear.phanthawas.dev">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0c0e">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f6f4">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23aee34f' d='M12 22c-3.7 0-6.4-2.6-6.4-6 0-2.7 1.6-4.4 2.9-5.8C9.6 9 10.4 8 10.4 6.6V5h3.2v1.6c0 1.4.8 2.4 1.9 3.6 1.3 1.4 2.9 3.1 2.9 5.8 0 3.4-2.7 6-6.4 6z'/%3E%3Cpath fill='%2378879a' d='M14 5.2c1.3-1.4 3.3-1.6 4.6-.8-.5 1.5-2.1 2.6-4.2 2.1z'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 138'%3E%3Cpath fill='%23aee34f' d='M60 40c-9 0-13 8-15 17-2 10-5 15-12 24-9 11-12 25-6 37 6 11 19 16 33 16s27-5 33-16c6-12 3-26-6-37-7-9-10-14-12-24-2-9-6-17-15-17Z'/%3E%3Cpath fill='%234fe08c' d='M64 24c8-11 23-13 31-8-4 11-17 16-30 10Z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 <script>document.documentElement.classList.add('js');</script>
 </head>
@@ -19,16 +19,22 @@
 
 <svg width="0" height="0" class="defs" aria-hidden="true">
   <defs>
-    <symbol id="i-pear" viewBox="0 0 24 24">
-      <path style="fill:var(--accent)" d="M12 22c-3.7 0-6.4-2.6-6.4-6 0-2.7 1.6-4.4 2.9-5.8C9.6 9 10.4 8 10.4 6.6V5h3.2v1.6c0 1.4.8 2.4 1.9 3.6 1.3 1.4 2.9 3.1 2.9 5.8 0 3.4-2.7 6-6.4 6z"/>
-      <path style="fill:var(--muted)" d="M14 5.2c1.3-1.4 3.3-1.6 4.6-.8-.5 1.5-2.1 2.6-4.2 2.1z"/>
+    <!-- gradient for the large hero pear (theme-aware via inherited custom props) -->
+    <linearGradient id="pearGrad" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0" style="stop-color:var(--accent)"/>
+      <stop offset="1" style="stop-color:var(--accent-2)"/>
+    </linearGradient>
+    <!-- solid minimal pear: body + slim stem + leaf. Fills inline (class
+         selectors don't cross the <use> shadow boundary). -->
+    <symbol id="i-pear" viewBox="0 0 120 138">
+      <path style="fill:var(--accent)" d="M60 40c-9 0-13 8-15 17-2 10-5 15-12 24-9 11-12 25-6 37 6 11 19 16 33 16s27-5 33-16c6-12 3-26-6-37-7-9-10-14-12-24-2-9-6-17-15-17Z"/>
+      <path style="fill:none;stroke:var(--accent);stroke-width:5;stroke-linecap:round" d="M60 43c0-9 0-14 4-20"/>
+      <path style="fill:var(--accent-2)" d="M64 24c8-11 23-13 31-8-4 11-17 16-30 10Z"/>
     </symbol>
-    <!-- large outline pear: body + stem + leaf. Strokes are inline because
-         class selectors don't cross the <use> shadow boundary. -->
-    <symbol id="pear-xl" viewBox="0 0 200 240">
-      <path style="fill:color-mix(in srgb, var(--accent) 11%, transparent);stroke:var(--accent);stroke-width:4.5;stroke-linejoin:round" d="M100 74c-9 0-15 8-17 19-2 12-11 20-21 34-15 21-18 47-6 68 11 20 32 29 44 29s33-9 44-29c12-21 9-47-6-68-10-14-19-22-21-34-2-11-8-19-17-19Z"/>
-      <path style="fill:none;stroke:var(--accent);stroke-width:4.5;stroke-linecap:round" d="M100 74c0-14 1-24 9-33"/>
-      <path style="fill:none;stroke:var(--accent);stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round" d="M112 47c11-13 30-15 44-8-5 15-21 26-42 20"/>
+    <symbol id="pear-xl" viewBox="0 0 120 138">
+      <path style="fill:url(#pearGrad)" d="M60 40c-9 0-13 8-15 17-2 10-5 15-12 24-9 11-12 25-6 37 6 11 19 16 33 16s27-5 33-16c6-12 3-26-6-37-7-9-10-14-12-24-2-9-6-17-15-17Z"/>
+      <path style="fill:none;stroke:var(--accent);stroke-width:5;stroke-linecap:round" d="M60 43c0-9 0-14 4-20"/>
+      <path style="fill:var(--accent-2)" d="M64 24c8-11 23-13 31-8-4 11-17 16-30 10Z"/>
     </symbol>
     <symbol id="i-shot" viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3.2"/></symbol>
     <symbol id="i-ocr" viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8.5 9.5h7M12 9.5V15"/></symbol>
@@ -75,7 +81,7 @@
       for it.</p>
       <div class="cta">
         <a class="btn" href="https://github.com/RawSalmon69/pear-cli/releases" data-download>Download for Mac</a>
-        <p class="meta"><span data-version>latest</span> · macOS&nbsp;14+ · Apple&nbsp;Silicon · free</p>
+        <p class="meta"><span data-version>latest</span> · macOS&nbsp;14+ · Apple&nbsp;Silicon</p>
       </div>
     </div>
 
@@ -195,15 +201,14 @@
     <svg class="pear-xl story-pear" viewBox="0 0 200 240" aria-hidden="true"><use href="#pear-xl"/></svg>
     <p>Pear is named after <span class="em">someone dear</span>. It started as a
     <span class="em">gift</span>, grew into a toolbox, and gets passed around the
-    way <span class="em">homemade things</span> do. <span class="hl">Free, for friends, family, and now you.</span></p>
-    <p class="story-fine">No pricing, no roadmap. Just a little app, <span class="em">named after a girl</span>.</p>
+    way <span class="em">homemade things</span> do.</p>
   </section>
 
   <!-- ── FINAL / GIANT WORDMARK ── -->
   <section class="final reveal">
     <p class="final-kicker">Put Pear in <span class="em">your</span> menu bar.</p>
     <a class="btn btn-big" href="https://github.com/RawSalmon69/pear-cli/releases" data-download>Download for Mac</a>
-    <p class="meta"><span data-version>latest</span> · free for personal use</p>
+    <p class="meta"><span data-version>latest</span> · macOS&nbsp;14+ · Apple&nbsp;Silicon</p>
     <h2 class="wordmark" aria-hidden="true">Pear</h2>
   </section>
 </main>
@@ -215,9 +220,9 @@
     <a href="https://github.com/RawSalmon69/pear-cli/releases" rel="noopener">Releases</a>
     <a href="https://github.com/RawSalmon69/pear-cli/tree/main/companion/Sources/PearCompanion/Resources/Licenses" rel="noopener">Licenses</a>
   </nav>
-  <p class="fine">Free for personal, non-commercial use. Optional HD background
-  removal uses BRIA&nbsp;RMBG-2.0 (CC-BY-NC). Type set in Space&nbsp;Grotesk (OFL).
-  The panel above is an illustration; real screenshots are on the way.</p>
+  <p class="fine">Optional HD background removal uses BRIA&nbsp;RMBG-2.0 (CC-BY-NC).
+  Type set in Space&nbsp;Grotesk and Fraunces (OFL). The panel above is an
+  illustration; real screenshots are on the way.</p>
 </footer>
 
 <script>

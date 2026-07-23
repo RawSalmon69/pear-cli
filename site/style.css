@@ -81,7 +81,7 @@ p { margin: 0; text-wrap: pretty; }
 }
 /* serif italic emphasis, the Claude-style counterpoint to the grotesk */
 .em { font-family: var(--serif); font-style: italic; font-weight: 480; letter-spacing: 0; }
-.pear { width: 1em; height: 1em; }
+.pear { height: 1em; width: auto; aspect-ratio: 60 / 69; }
 
 kbd {
   font-family: var(--font);
@@ -127,7 +127,7 @@ kbd {
   border-bottom: 1px solid var(--line);
 }
 .brand { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 500; font-size: 1.1rem; letter-spacing: -0.02em; }
-.brand .pear { width: 1.15rem; height: 1.15rem; }
+.brand .pear { height: 1.3rem; width: auto; }
 .nav { display: flex; gap: 1.7rem; margin-left: 0.5rem; font-size: 0.92rem; color: var(--muted); }
 .nav a:hover { color: var(--ink); }
 .dl { margin-left: auto; display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.92rem; font-weight: 500; color: var(--ink); }
@@ -220,7 +220,7 @@ main > section { padding: clamp(4.5rem, 11vw, 9rem) var(--gutter); }
   transform: rotate(45deg);
 }
 .wire-head { display: flex; align-items: center; gap: 0.45rem; padding: 0 0.2rem 0.8rem; font-size: 0.9rem; font-weight: 500; }
-.wire-head .pear { width: 1.05rem; height: 1.05rem; }
+.wire-head .pear { height: 1.2rem; width: auto; }
 .wire-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.4rem; }
 .wire-grid span { aspect-ratio: 1; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 9px; }
 .wire-grid svg { width: 18px; height: 18px; fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
@@ -238,7 +238,7 @@ main > section { padding: clamp(4.5rem, 11vw, 9rem) var(--gutter); }
   color: transparent;
   -webkit-text-stroke: 1.4px var(--line2);
 }
-.marquee-track .pear { width: clamp(1.5rem, 3.5vw, 2.4rem); height: auto; opacity: 0.85; }
+.marquee-track .pear { height: clamp(1.7rem, 4vw, 2.7rem); width: auto; opacity: 0.9; }
 @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
 /* ── tools ── */
@@ -281,8 +281,7 @@ main > section { padding: clamp(4.5rem, 11vw, 9rem) var(--gutter); }
 .story { position: relative; overflow: clip; max-width: 46rem; margin: 0 auto; text-align: center; }
 .story .story-pear {
   position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%);
-  width: clamp(22rem, 44vw, 34rem); z-index: 0; opacity: 0.2;
-  filter: drop-shadow(0 0 60px color-mix(in srgb, var(--accent) 30%, transparent));
+  width: clamp(20rem, 40vw, 30rem); z-index: 0; opacity: 0.1;
 }
 .story > p, .story .story-fine { position: relative; z-index: 1; }
 .story > p { font-size: clamp(1.5rem, 3.6vw, 2.15rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.4; }
