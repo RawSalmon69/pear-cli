@@ -44,10 +44,12 @@ deletion logic, no new matchers.
   make the flag a no-op skip in tests (auth returns 1 → graceful skip).
 - `--help` text gains the flag.
 
-### App: Cleaner panel toggle
+### App: settings toggle
 
-- "Include system caches (admin)" toggle in the Cleaner panel, persisted via
-  `Prefs`, **default OFF** (repo invariant: state-mutating behavior is opt-in).
+- "Clean includes system caches" toggle in the Settings popover (persistent,
+  discoverable before a run — the Cleaner panel only exists once a run is
+  live), persisted via `Prefs`, **default OFF** (repo invariant:
+  state-mutating behavior is opt-in).
 - ON → `CleanerRunner.run` launches `pear clean --system`; the CLI pops the
   native auth dialog when no sudo session is cached. Applies to clean only,
   not optimize (optimize already handles its own auth).
