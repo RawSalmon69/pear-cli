@@ -149,16 +149,27 @@ main > section { padding: clamp(4.5rem, 11vw, 9rem) var(--gutter); }
 /* ── hero ── */
 .hero {
   position: relative;
-  overflow: clip;
   max-width: var(--wrap);
   margin: 0 auto;
-  background: radial-gradient(34rem 30rem at 82% 42%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 70%);
   display: grid;
   grid-template-columns: 1.08fr 0.92fr;
   gap: clamp(2rem, 5vw, 3.5rem);
   align-items: center;
   padding-top: clamp(4rem, 9vw, 7rem);
   padding-bottom: clamp(3rem, 7vw, 5rem);
+}
+/* Full-bleed ambient glow behind the pear. Lives on a 100vw layer (not the
+   max-width .hero box) so it fades out on its own instead of being sliced at
+   the box edge. Fully transparent well before the viewport edge. */
+.hero::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 0; bottom: 0; left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+  background: radial-gradient(38rem 32rem at 66% 46%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 64%);
+  pointer-events: none;
 }
 .hero-copy, .hero-art { position: relative; z-index: 2; }
 
