@@ -42,11 +42,14 @@ final class PearStatsService {
         pearBinary(isExecutable: { FileManager.default.isExecutableFile(atPath: $0) })
     }
 
-    /// Installed copies win — `pe update` keeps them fresher than the app —
-    /// and the bundled copy backstops. Predicate-injectable so the order is
-    /// unit-testable without touching the filesystem.
+    /// The bundled copy wins: it's version-matched to this build of the app, so
+    /// every command/flag the companion invokes (e.g. `clean --system`) is
+    /// guaranteed present — a stale installed `pear` must not shadow it and
+    /// break a newer bundled feature. Installed copies are the fallback for
+    /// `swift run`/tests, where no app bundle exists. Predicate-injectable so
+    /// the order is unit-testable without touching the filesystem.
     nonisolated static func pearBinary(isExecutable: (String) -> Bool) -> String? {
-        (candidates + [bundled].compactMap { $0 }).first(where: isExecutable)
+        ([bundled].compactMap { $0 } + candidates).first(where: isExecutable)
     }
 
     func refresh() async {
