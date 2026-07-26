@@ -27,27 +27,42 @@ enum PreviewStackLayout {
     }
 }
 
-/// Per-card QR detection result, filled asynchronously after the card shows
-/// so detection never delays the slide-in. The view observes it and grows a
-/// badge when a code is found.
+/// What the detail window needs from the card that spawned it: the full bytes,
+/// the insights, and the very same action closures, so copy / save / reveal /
+/// send have one implementation across both views.
 @MainActor
-@Observable
-final class PreviewQRState {
-    var payloads: [String] = []
-    var showsBadge: Bool { !payloads.isEmpty }
+private struct DetailContext {
+    let imageData: Data
+    let insights: ScreenshotInsights
+    let canMarkup: Bool
+    let canSend: Bool
+    let canSave: Bool
+    let canRemoveBackground: Bool
+    let onCopy: () -> Void
+    let onCopyText: (() -> Void)?
+    let onQRTap: (([String]) -> Void)?
+    let onSave: () -> Void
+    let onReveal: () -> Void
+    let onMarkup: () -> Void
+    let onRemoveBackground: () -> Void
+    let onSend: () -> Void
 }
 
-/// One preview: its non-activating panel plus per-card timer / gesture state.
+/// One preview: its non-activating panel plus per-card timer / gesture state,
+/// its insights, and the detail window it opens (created on first click).
 @MainActor
 private final class PreviewEntry {
     let id: UUID
     let panel: NSPanel
+    let detailContext: DetailContext
+    var detail: ScreenshotDetailWindowController?
     var timer: Timer?
     var scrollAccumulator: CGFloat = 0
 
-    init(id: UUID, panel: NSPanel) {
+    init(id: UUID, panel: NSPanel, detailContext: DetailContext) {
         self.id = id
         self.panel = panel
+        self.detailContext = detailContext
     }
 }
 
@@ -83,10 +98,10 @@ final class ScreenshotPreviewController {
         canSend: Bool = FeatureFlags.coupleNote,
         canSave: Bool = false,
         canRemoveBackground: Bool = true,
-        qrState: PreviewQRState? = nil,
+        fileURL: URL? = nil,
         onCopy: @escaping () -> Void,
         onCopyText: (() -> Void)? = nil,
-        onQRTap: (() -> Void)? = nil,
+        onQRTap: (([String]) -> Void)? = nil,
         onReveal: @escaping () -> Void,
         onMarkup: @escaping () -> Void,
         onRemoveBackground: @escaping () -> Void = {},
@@ -98,16 +113,18 @@ final class ScreenshotPreviewController {
         guard let image = Thumbnail.image(from: imageData, maxPixel: 504) else { return }
 
         let id = UUID()
+        let insights = ScreenshotInsights(imageData: imageData, fileURL: fileURL)
         let content = ScreenshotPreviewView(
             image: image,
             canMarkup: canMarkup,
             canSend: canSend,
             canSave: canSave,
             canRemoveBackground: canRemoveBackground,
-            qrState: qrState,
+            insights: insights,
             onCopy: onCopy,
             onCopyText: onCopyText,
             onQRTap: onQRTap,
+            onOpen: { [weak self] in self?.openDetail(id: id) },
             onSave: onSave,
             onReveal: onReveal,
             onMarkup: { [weak self] in
@@ -144,7 +161,26 @@ final class ScreenshotPreviewController {
         host.clipToCard(radius: 12)
         panel.contentView = host
 
-        let entry = PreviewEntry(id: id, panel: panel)
+        let entry = PreviewEntry(
+            id: id,
+            panel: panel,
+            detailContext: DetailContext(
+                imageData: imageData,
+                insights: insights,
+                canMarkup: canMarkup,
+                canSend: canSend,
+                canSave: canSave,
+                canRemoveBackground: canRemoveBackground,
+                onCopy: onCopy,
+                onCopyText: onCopyText,
+                onQRTap: onQRTap,
+                onSave: onSave,
+                onReveal: onReveal,
+                onMarkup: onMarkup,
+                onRemoveBackground: onRemoveBackground,
+                onSend: onSend
+            )
+        )
         // Fix the anchor screen when a fresh stack starts; existing stacks keep
         // theirs so the cards stay put on the capture display.
         if entries.isEmpty { anchorVisible = Self.anchorVisibleFrame() }
@@ -153,6 +189,58 @@ final class ScreenshotPreviewController {
         layout(newItem: entry)
         installScrollMonitor()
         scheduleAutoDismiss(entry)
+        // Card is on screen: only now start reading it, so OCR / barcode /
+        // palette work can never delay the capture → preview hop.
+        insights.scan()
+    }
+
+    // MARK: Detail window
+
+    /// Opens the big view for a card, or refocuses the one already open. The
+    /// card stays put and stops auto-dismissing while its window is up.
+    /// Markup / background-removal there close the window and run the card's own
+    /// closure, which re-presents a fresh card for the edited image.
+    private func openDetail(id: UUID) {
+        guard let entry = entries.first(where: { $0.id == id }) else { return }
+        entry.timer?.invalidate()
+        entry.timer = nil
+        if let detail = entry.detail {
+            detail.show()
+            return
+        }
+        let context = entry.detailContext
+        guard let image = NSImage(data: context.imageData) else { return }
+        let close = { [weak entry] in entry?.detail?.close() }
+        let content = ScreenshotDetailView(
+            image: image,
+            insights: context.insights,
+            canMarkup: context.canMarkup,
+            canSend: context.canSend,
+            canSave: context.canSave,
+            canRemoveBackground: context.canRemoveBackground,
+            onCopy: context.onCopy,
+            onCopyText: context.onCopyText,
+            onQRTap: context.onQRTap,
+            onSave: context.onSave,
+            onReveal: context.onReveal,
+            onMarkup: { close(); context.onMarkup() },
+            onRemoveBackground: { close(); context.onRemoveBackground() },
+            onSend: { close(); context.onSend() }
+        )
+        let details = context.insights.details
+        let pixelSize = NSSize(width: details.pixelWidth, height: details.pixelHeight)
+        let controller = ScreenshotDetailWindowController(
+            content: content,
+            imageSize: pixelSize.width > 0 ? pixelSize : image.size
+        )
+        controller.onClosed = { [weak self, weak entry] in
+            guard let entry else { return }
+            entry.detail = nil
+            // Re-arm auto-dismiss (if enabled) once the big view is gone.
+            self?.scheduleAutoDismiss(entry)
+        }
+        entry.detail = controller
+        controller.show()
     }
 
     /// Visible frame of the primary display — the preview always lives there, a
@@ -235,6 +323,7 @@ final class ScreenshotPreviewController {
 
     private func remove(_ entry: PreviewEntry) {
         entry.timer?.invalidate()
+        entry.detail?.close()
         entry.panel.orderOut(nil)
         entries.removeAll { $0 === entry }
         layout(newItem: nil)
@@ -260,7 +349,8 @@ final class ScreenshotPreviewController {
     private func scheduleAutoDismiss(_ entry: PreviewEntry) {
         entry.timer?.invalidate()
         entry.timer = nil
-        guard Prefs.previewAutoDismiss else { return }
+        // Never time out a card whose big view is open — the user is reading it.
+        guard Prefs.previewAutoDismiss, entry.detail == nil else { return }
         let id = entry.id
         let timer = Timer(timeInterval: Prefs.previewAutoDismissSeconds, repeats: false) { [weak self] _ in
             Task { @MainActor in self?.dismiss(id: id) }
@@ -329,10 +419,11 @@ private struct ScreenshotPreviewView: View {
     let canSend: Bool
     let canSave: Bool
     let canRemoveBackground: Bool
-    let qrState: PreviewQRState?
+    let insights: ScreenshotInsights
     let onCopy: () -> Void
     let onCopyText: (() -> Void)?
-    let onQRTap: (() -> Void)?
+    let onQRTap: (([String]) -> Void)?
+    let onOpen: () -> Void
     let onSave: () -> Void
     let onReveal: () -> Void
     let onMarkup: () -> Void
@@ -364,10 +455,13 @@ private struct ScreenshotPreviewView: View {
                 RoundedRectangle(cornerRadius: Self.cardRadius - Self.inset)
                     .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
             }
+            // Click the shot itself for the big view; the buttons layered on top
+            // consume their own clicks, and a drag still becomes a swipe.
+            .onTapGesture(perform: onOpen)
             .overlay(alignment: .bottom) { if hovering { toolbar } }
             .overlay(alignment: .topTrailing) { if hovering { closeButton } }
             .overlay(alignment: .topLeading) {
-                if qrState?.showsBadge == true { qrBadge }
+                if insights.showsQRBadge { qrBadge }
             }
             .padding(Self.inset)
             .glassCard(cornerRadius: Self.cardRadius)
@@ -429,7 +523,7 @@ private struct ScreenshotPreviewView: View {
     }
 
     private var qrBadge: some View {
-        Button(action: { onQRTap?() }) {
+        Button(action: { onQRTap?(insights.payloads) }) {
             Image(systemName: "qrcode")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white)

@@ -3,13 +3,42 @@ import UserNotifications
 import Vision
 import os
 
+/// Pure on-device recognition, free of the actor and the clipboard flow, so
+/// off-main callers (the screenshot insights scan) share one Vision path with
+/// the ⌃⇧T hotkey instead of keeping a second copy.
+enum OCRText {
+    static func recognize(in cgImage: CGImage) -> String {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        do {
+            try handler.perform([request])
+        } catch {
+            return ""
+        }
+        return (request.results ?? [])
+            .compactMap { $0.topCandidates(1).first?.string }
+            .joined(separator: "\n")
+    }
+
+    /// Straight from encoded bytes — the form the preview stack holds. Sendable
+    /// input, so callers can hop executors (mirrors `QRCode.payloads`).
+    static func recognize(inImageData data: Data) -> String {
+        guard let image = NSImage(data: data),
+              let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            return ""
+        }
+        return recognize(in: cgImage)
+    }
+}
+
 /// "Grab text from anywhere": region capture → on-device text recognition →
 /// clipboard, with a notification showing what was copied. Global hotkey ⌃⇧T
 /// or a panel button. A cancelled capture is a no-op.
 @MainActor
 final class OCRService {
-    private let logger = Logger(subsystem: CoupleKey.service, category: "ocr")
-
     func grab() async {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("pear-ocr-\(UUID().uuidString).png")
@@ -26,7 +55,7 @@ final class OCRService {
     /// Recognize → clipboard → sound → notification. Public so the screenshot
     /// preview's "Copy text" action can reuse the whole flow on an existing image.
     func copyText(from cgImage: CGImage) {
-        let text = recognizeText(in: cgImage)
+        let text = OCRText.recognize(in: cgImage)
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             notify(title: "No text found", body: "Pear couldn't read any text there.")
@@ -39,25 +68,6 @@ final class OCRService {
 
         let preview = trimmed.count > 90 ? String(trimmed.prefix(90)) + "…" : trimmed
         notify(title: "Copied text 📋", body: preview)
-    }
-
-    /// Synchronous on-device recognition. Fast enough for a screenshot region
-    /// that running it inline beats the concurrency-hop complexity.
-    private func recognizeText(in cgImage: CGImage) -> String {
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = true
-
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        do {
-            try handler.perform([request])
-        } catch {
-            logger.error("OCR failed: \(error.localizedDescription, privacy: .public)")
-            return ""
-        }
-        let lines = (request.results ?? [])
-            .compactMap { $0.topCandidates(1).first?.string }
-        return lines.joined(separator: "\n")
     }
 
     private func notify(title: String, body: String) {

@@ -67,7 +67,11 @@ push/PR.
 Capture: **Screenshot** (⌃⇧S, region → clipboard+file+floating preview stack,
 markup, background-remove), **Full-screen Shot** (⌃⇧F, whole main display
 instantly) and **Window Shot** (⌃⇧W, click a window) — all three are
-`ScreenshotTool` modes sharing one preview/markup/send flow, **OCR / Grab Text**
+`ScreenshotTool` modes sharing one preview/markup/send flow. Clicking a preview
+card opens the **detail window** (`ScreenshotDetailWindow.swift`): the shot at
+size, the same actions, and a sidebar of `ScreenshotInsights` — OCR text, QR
+payloads, color palette, file facts — scanned once off-main *after* the card is
+on screen, so nothing delays capture → preview. **OCR / Grab Text**
 (⌃⇧T, Vision), **Background
 removal** (Apple Vision default; opt-in HD BEN2 Core ML — see below), **QR**
 (⌃⇧Q, scan screen region / generate from clipboard, auto QR badge + Copy-text

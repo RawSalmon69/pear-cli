@@ -46,13 +46,39 @@ final class QRCodeTests: XCTestCase {
 }
 
 @MainActor
-final class PreviewQRStateTests: XCTestCase {
-    func testBadgeVisibility() {
-        let state = PreviewQRState()
-        XCTAssertFalse(state.showsBadge)
-        state.payloads = ["https://example.com"]
-        XCTAssertTrue(state.showsBadge)
-        state.payloads = []
-        XCTAssertFalse(state.showsBadge)
+final class PreviewQRBadgeTests: XCTestCase {
+    /// The badge now rides `ScreenshotInsights`, which learns the payloads from
+    /// its own scan — so this covers the whole path: bytes in, badge out.
+    func testBadgeAppearsAfterScanFindsACode() async throws {
+        let png = try XCTUnwrap(QRCode.generate(from: "https://example.com")?.pngData())
+        let insights = ScreenshotInsights(imageData: png, fileURL: nil)
+        XCTAssertFalse(insights.showsQRBadge)
+
+        insights.scan()
+        var waited = 0
+        while insights.isScanning, waited < 100 {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            waited += 1
+        }
+
+        XCTAssertFalse(insights.isScanning, "scan never finished")
+        XCTAssertEqual(insights.payloads, ["https://example.com"])
+        XCTAssertTrue(insights.showsQRBadge)
+        XCTAssertFalse(insights.colors.isEmpty, "palette should come back with the scan")
+    }
+
+    /// A second scan must not re-run: the results are already in hand and the
+    /// detail window may open several times per card.
+    func testScanIsIdempotent() async throws {
+        let png = try XCTUnwrap(QRCode.generate(from: "pear")?.pngData())
+        let insights = ScreenshotInsights(imageData: png, fileURL: nil)
+        insights.scan()
+        var waited = 0
+        while insights.isScanning, waited < 100 {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            waited += 1
+        }
+        insights.scan()
+        XCTAssertFalse(insights.isScanning)
     }
 }

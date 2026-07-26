@@ -112,22 +112,15 @@ final class ScreenshotService {
     private func present(data: Data, at fileURL: URL) {
         let messaging = self.messaging
         let log = logger
-        let qrState = PreviewQRState()
-        // Detect off-main from the encoded bytes (Sendable); fill the state
-        // after — the card never waits on Vision. The state is card-owned, so
-        // the closure captures only it (and `data`), not self.
-        Task { @MainActor in
-            qrState.payloads = await Task.detached(priority: .utility) {
-                QRCode.payloads(inImageData: data)
-            }.value
-        }
         preview.show(
             imageData: data,
             canMarkup: onMarkupRequest != nil,
             // Only offer Save when auto-save is off; with it on the file is
             // already in the folder (and the preview already points at it).
             canSave: !Prefs.screenshotAutoSave,
-            qrState: qrState,
+            // Backs the detail view's Details section (and its reveal link).
+            // The card's insights — text, codes, palette — are scanned there.
+            fileURL: fileURL,
             onCopy: { [weak self] in
                 self?.copyToPasteboard(data, fileURL: fileURL)
                 SoundEffects.play(.copy)
@@ -139,8 +132,8 @@ final class ScreenshotService {
                 else { return }
                 self.ocr.copyText(from: cg)
             },
-            onQRTap: { [weak self] in
-                self?.qr.deliver(qrState.payloads)
+            onQRTap: { [weak self] payloads in
+                self?.qr.deliver(payloads)
             },
             onReveal: { NSWorkspace.shared.activateFileViewerSelecting([fileURL]) },
             onMarkup: { [weak self] in self?.markup(data: data, at: fileURL) },

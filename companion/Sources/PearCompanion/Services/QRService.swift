@@ -89,6 +89,7 @@ final class QRService {
             canSend: false,
             canSave: false,
             canRemoveBackground: false,
+            fileURL: url,
             onCopy: {
                 let pasteboard = NSPasteboard.general
                 pasteboard.clearContents()
