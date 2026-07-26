@@ -72,7 +72,8 @@ final class ScreenshotPreviewController {
     /// predictable spot rather than the focused-window screen (NSScreen.main).
     private var anchorVisible: NSRect = .zero
 
-    private static let panelSize = NSSize(width: 216, height: 141)
+    /// Thumbnail (208×130) plus the card's 3pt glass rim on each side.
+    private static let panelSize = NSSize(width: 214, height: 136)
     private static let margin: CGFloat = 20
     private static let gap: CGFloat = 12
 
@@ -92,7 +93,8 @@ final class ScreenshotPreviewController {
         onSend: @escaping () -> Void,
         onSave: @escaping () -> Void = {}
     ) {
-        // 252 pt display width @2x — never inflate the full capture here.
+        // ~2.4× the 208pt thumbnail — headroom for scaledToFill's crop without
+        // ever inflating the full capture here.
         guard let image = Thumbnail.image(from: imageData, maxPixel: 504) else { return }
 
         let id = UUID()
@@ -344,25 +346,31 @@ private struct ScreenshotPreviewView: View {
     @State private var copied = false
     @State private var saved = false
 
-    private static let thumbWidth: CGFloat = 200
-    private static let thumbHeight: CGFloat = 125
+    private static let thumbWidth: CGFloat = 208
+    private static let thumbHeight: CGFloat = 130
+    /// Slim glass rim: the card reads as a framed thumbnail, not a thumbnail
+    /// floating in a panel. Keep `cardRadius - inset` as the inner radius so the
+    /// two corners stay concentric.
+    private static let inset: CGFloat = 3
+    private static let cardRadius: CGFloat = 12
 
     var body: some View {
         Image(nsImage: image)
             .resizable()
             .scaledToFill()
             .frame(width: Self.thumbWidth, height: Self.thumbHeight)
-            .clipShape(RoundedRectangle(cornerRadius: 9))
+            .clipShape(RoundedRectangle(cornerRadius: Self.cardRadius - Self.inset))
             .overlay {
-                RoundedRectangle(cornerRadius: 9).strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                RoundedRectangle(cornerRadius: Self.cardRadius - Self.inset)
+                    .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
             }
             .overlay(alignment: .bottom) { if hovering { toolbar } }
             .overlay(alignment: .topTrailing) { if hovering { closeButton } }
             .overlay(alignment: .topLeading) {
                 if qrState?.showsBadge == true { qrBadge }
             }
-            .padding(8)
-            .glassCard(cornerRadius: 12)
+            .padding(Self.inset)
+            .glassCard(cornerRadius: Self.cardRadius)
             // Swipe right to flick it away; the panel then slides off-screen
             // with the content riding along, so the motion is continuous.
             .offset(x: drag.width, y: drag.height)
