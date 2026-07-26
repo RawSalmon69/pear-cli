@@ -66,7 +66,9 @@ push/PR.
 
 Capture: **Screenshot** (⌃⇧S, region → clipboard+file+floating preview stack,
 markup, background-remove), **Full-screen Shot** (⌃⇧F, whole main display
-instantly, same preview flow), **OCR / Grab Text** (⌃⇧T, Vision), **Background
+instantly) and **Window Shot** (⌃⇧W, click a window) — all three are
+`ScreenshotTool` modes sharing one preview/markup/send flow, **OCR / Grab Text**
+(⌃⇧T, Vision), **Background
 removal** (Apple Vision default; opt-in HD BEN2 Core ML — see below), **QR**
 (⌃⇧Q, scan screen region / generate from clipboard, auto QR badge + Copy-text
 button on screenshot preview cards).

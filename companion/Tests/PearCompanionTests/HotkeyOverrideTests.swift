@@ -170,23 +170,33 @@ final class HotkeyOverrideTests: XCTestCase {
             HotKeyChord(keyCode: kVK_ANSI_P, modifiers: controlKey | shiftKey, label: "⌃⇧P"))
     }
 
-    /// Full-screen shot rides ⌃⇧F and must not collide with the region capture
-    /// or any other default chord.
-    func testFullScreenShotChordIsFreeAndDistinct() {
-        let full = ScreenshotFullTool(messaging: MockMessagingService())
+    /// The extra capture modes ride ⌃⇧F / ⌃⇧W, each with its own id, and no
+    /// default chord may be claimed twice.
+    func testCaptureModeChordsAreDistinct() {
+        let full = ScreenshotTool(mode: .fullScreen, messaging: MockMessagingService())
+        let window = ScreenshotTool(mode: .window, messaging: MockMessagingService())
+        XCTAssertEqual(full.id, "screenshot-full")
+        XCTAssertEqual(window.id, "screenshot-window")
         XCTAssertEqual(
             full.hotkey,
             HotKeyChord(keyCode: kVK_ANSI_F, modifiers: controlKey | shiftKey, label: "⌃⇧F"))
+        XCTAssertEqual(
+            window.hotkey,
+            HotKeyChord(keyCode: kVK_ANSI_W, modifiers: controlKey | shiftKey, label: "⌃⇧W"))
 
-        let others: [any Tool] = [
-            ScreenshotTool(messaging: MockMessagingService()), OCRTool(),
-            QRTool(), ShelfTool(), ScratchpadTool(), KeyCluTool(), PanelTool(),
+        let tools: [any Tool] = [
+            ScreenshotTool(messaging: MockMessagingService()), full, window, OCRTool(),
+            QRTool(), ShelfTool(), ScratchpadTool(), KeyCluTool(), PanelTool(), ClipboardTool(),
         ]
-        for tool in others {
+        var claimed: [String: String] = [:]
+        for tool in tools {
+            guard let chord = tool.hotkey else { continue }
+            let key = "\(chord.keyCode)-\(chord.modifiers)"
+            XCTAssertNil(claimed[key], "\(tool.id) collides with \(claimed[key] ?? "")")
+            claimed[key] = tool.id
             XCTAssertFalse(
-                tool.hotkey?.keyCode == full.hotkey?.keyCode
-                    && tool.hotkey?.modifiers == full.hotkey?.modifiers,
-                "\(tool.id) collides with screenshot-full")
+                WindowsTool.isZoneChord(keyCode: chord.keyCode, modifiers: chord.modifiers),
+                "\(tool.id) collides with a Windows zone chord")
         }
     }
 

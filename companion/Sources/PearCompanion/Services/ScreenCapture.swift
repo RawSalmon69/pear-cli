@@ -16,6 +16,12 @@ enum ScreenCapture {
         await run(muted ? ["-x", url.path] : [url.path], writing: url)
     }
 
+    /// Click a window (`-w` locks interaction to window mode, no drag): the
+    /// window is captured cropped, with its shadow. Escape writes nothing.
+    static func window(to url: URL, muted: Bool = true) async -> Bool {
+        await run(muted ? ["-i", "-w", "-x", url.path] : ["-i", "-w", url.path], writing: url)
+    }
+
     private static func run(_ arguments: [String], writing url: URL) async -> Bool {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             DispatchQueue.global(qos: .userInitiated).async {

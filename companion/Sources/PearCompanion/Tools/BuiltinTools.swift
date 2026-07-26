@@ -4,82 +4,75 @@ import Carbon.HIToolbox
 // The four launch tools. Each holds its heavy service lazily; only the
 // clipboard collector runs from launch (its history is worthless otherwise).
 
-/// Region screenshot → clipboard + preview + markup + send. ⌃⇧S.
+/// Screenshot → clipboard + preview + markup + send. Three modes, one tool:
+/// region drag (⌃⇧S), whole screen (⌃⇧F), click-a-window (⌃⇧W). Everything
+/// after the capture is identical, so only the `ScreenCapture` call and the
+/// tile metadata differ. Each mode is offered as its own instance, so each
+/// gets its own id, tile, and rebindable hotkey.
 @MainActor
 final class ScreenshotTool: Tool {
-    let id = "screenshot"
-    let title = "Screenshot"
-    let icon = "camera.viewfinder"
-    let category = ToolCategory.capture
-    let summary = "Grab a region — copy it, mark it up, or save it."
-    let hotkey: HotKeyChord? = HotKeyChord(
-        keyCode: kVK_ANSI_S, modifiers: controlKey | shiftKey, label: "⌃⇧S")
+    enum Mode { case region, fullScreen, window }
 
+    let id: String
+    let title: String
+    let icon: String
+    let summary: String
+    let hotkey: HotKeyChord?
+    let category = ToolCategory.capture
+
+    private let mode: Mode
     private let messaging: MessagingService
     private var service: ScreenshotService?
 
-    init(messaging: MessagingService) {
+    init(mode: Mode = .region, messaging: MessagingService) {
+        self.mode = mode
         self.messaging = messaging
+        switch mode {
+        case .region:
+            id = "screenshot"
+            title = "Screenshot"
+            icon = "camera.viewfinder"
+            summary = "Grab a region — copy it, mark it up, or save it."
+            hotkey = HotKeyChord(keyCode: kVK_ANSI_S, modifiers: controlKey | shiftKey, label: "⌃⇧S")
+        case .fullScreen:
+            id = "screenshot-full"
+            title = "Full-screen Shot"
+            icon = "camera.on.rectangle"
+            summary = "Grab the whole screen instantly — no dragging."
+            hotkey = HotKeyChord(keyCode: kVK_ANSI_F, modifiers: controlKey | shiftKey, label: "⌃⇧F")
+        case .window:
+            id = "screenshot-window"
+            title = "Window Shot"
+            icon = "macwindow.on.rectangle"
+            summary = "Click a window to grab it, shadow and all."
+            hotkey = HotKeyChord(keyCode: kVK_ANSI_W, modifiers: controlKey | shiftKey, label: "⌃⇧W")
+        }
     }
 
     var entry: ToolEntry {
         .action { [weak self] in
             guard let self else { return }
-            Task { await self.resolveService().capture() }
+            Task { await self.capture() }
+        }
+    }
+
+    private func capture() async {
+        let service = resolveService()
+        switch mode {
+        case .region: await service.capture()
+        case .fullScreen: await service.captureFullScreen()
+        case .window: await service.captureWindow()
         }
     }
 
     private func resolveService() -> ScreenshotService {
         if let service { return service }
-        let created = ScreenshotService.markupWired(messaging: messaging)
-        service = created
-        return created
-    }
-}
-
-/// Whole-screen shot, no region drag. ⌃⇧F. Same preview/markup/send flow as
-/// ScreenshotTool — only the capture call differs.
-@MainActor
-final class ScreenshotFullTool: Tool {
-    let id = "screenshot-full"
-    let title = "Full-screen Shot"
-    let icon = "camera.on.rectangle"
-    let category = ToolCategory.capture
-    let summary = "Grab the whole screen instantly — no dragging."
-    let hotkey: HotKeyChord? = HotKeyChord(
-        keyCode: kVK_ANSI_F, modifiers: controlKey | shiftKey, label: "⌃⇧F")
-
-    private let messaging: MessagingService
-    private var service: ScreenshotService?
-
-    init(messaging: MessagingService) {
-        self.messaging = messaging
-    }
-
-    var entry: ToolEntry {
-        .action { [weak self] in
-            guard let self else { return }
-            Task { await self.resolveService().captureFullScreen() }
-        }
-    }
-
-    private func resolveService() -> ScreenshotService {
-        if let service { return service }
-        let created = ScreenshotService.markupWired(messaging: messaging)
-        service = created
-        return created
-    }
-}
-
-extension ScreenshotService {
-    /// A service with the markup editor wired in — the one bit of setup both
-    /// capture tools need, kept in one place.
-    static func markupWired(messaging: MessagingService) -> ScreenshotService {
-        let service = ScreenshotService(messaging: messaging)
-        service.onMarkupRequest = { image, done in
+        let created = ScreenshotService(messaging: messaging)
+        created.onMarkupRequest = { image, done in
             MarkupWindow.present(image: image, onComplete: done)
         }
-        return service
+        service = created
+        return created
     }
 }
 

@@ -66,6 +66,15 @@ final class ScreenshotService {
         deliver(tempURL: tempURL)
     }
 
+    /// Click-a-window shot — same downstream flow as `capture()`.
+    func captureWindow() async {
+        let tempURL = Self.captureTempURL()
+        guard await ScreenCapture.window(to: tempURL, muted: !Prefs.soundsEnabled) else {
+            return // cancelled or failed
+        }
+        deliver(tempURL: tempURL)
+    }
+
     private static func captureTempURL() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("pear-shot-\(UUID().uuidString).png")
