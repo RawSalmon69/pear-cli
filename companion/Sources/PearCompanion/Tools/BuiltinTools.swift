@@ -31,12 +31,55 @@ final class ScreenshotTool: Tool {
 
     private func resolveService() -> ScreenshotService {
         if let service { return service }
-        let created = ScreenshotService(messaging: messaging)
-        created.onMarkupRequest = { image, done in
-            MarkupWindow.present(image: image, onComplete: done)
-        }
+        let created = ScreenshotService.markupWired(messaging: messaging)
         service = created
         return created
+    }
+}
+
+/// Whole-screen shot, no region drag. ⌃⇧F. Same preview/markup/send flow as
+/// ScreenshotTool — only the capture call differs.
+@MainActor
+final class ScreenshotFullTool: Tool {
+    let id = "screenshot-full"
+    let title = "Full-screen Shot"
+    let icon = "camera.on.rectangle"
+    let category = ToolCategory.capture
+    let summary = "Grab the whole screen instantly — no dragging."
+    let hotkey: HotKeyChord? = HotKeyChord(
+        keyCode: kVK_ANSI_F, modifiers: controlKey | shiftKey, label: "⌃⇧F")
+
+    private let messaging: MessagingService
+    private var service: ScreenshotService?
+
+    init(messaging: MessagingService) {
+        self.messaging = messaging
+    }
+
+    var entry: ToolEntry {
+        .action { [weak self] in
+            guard let self else { return }
+            Task { await self.resolveService().captureFullScreen() }
+        }
+    }
+
+    private func resolveService() -> ScreenshotService {
+        if let service { return service }
+        let created = ScreenshotService.markupWired(messaging: messaging)
+        service = created
+        return created
+    }
+}
+
+extension ScreenshotService {
+    /// A service with the markup editor wired in — the one bit of setup both
+    /// capture tools need, kept in one place.
+    static func markupWired(messaging: MessagingService) -> ScreenshotService {
+        let service = ScreenshotService(messaging: messaging)
+        service.onMarkupRequest = { image, done in
+            MarkupWindow.present(image: image, onComplete: done)
+        }
+        return service
     }
 }
 

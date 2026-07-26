@@ -170,6 +170,26 @@ final class HotkeyOverrideTests: XCTestCase {
             HotKeyChord(keyCode: kVK_ANSI_P, modifiers: controlKey | shiftKey, label: "⌃⇧P"))
     }
 
+    /// Full-screen shot rides ⌃⇧F and must not collide with the region capture
+    /// or any other default chord.
+    func testFullScreenShotChordIsFreeAndDistinct() {
+        let full = ScreenshotFullTool(messaging: MockMessagingService())
+        XCTAssertEqual(
+            full.hotkey,
+            HotKeyChord(keyCode: kVK_ANSI_F, modifiers: controlKey | shiftKey, label: "⌃⇧F"))
+
+        let others: [any Tool] = [
+            ScreenshotTool(messaging: MockMessagingService()), OCRTool(),
+            QRTool(), ShelfTool(), ScratchpadTool(), KeyCluTool(), PanelTool(),
+        ]
+        for tool in others {
+            XCTAssertFalse(
+                tool.hotkey?.keyCode == full.hotkey?.keyCode
+                    && tool.hotkey?.modifiers == full.hotkey?.modifiers,
+                "\(tool.id) collides with screenshot-full")
+        }
+    }
+
     /// Remapping a *default* must never disturb a user override in
     /// `toolHotkey.*`. The tool is offered disabled so no real Carbon hotkey is
     /// registered; the effective label still resolves to the override.

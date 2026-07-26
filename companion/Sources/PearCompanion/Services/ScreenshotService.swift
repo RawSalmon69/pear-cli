@@ -48,14 +48,32 @@ final class ScreenshotService {
     }
 
     func capture() async {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("pear-shot-\(UUID().uuidString).png")
+        let tempURL = Self.captureTempURL()
         // Unmuted capture = macOS's own camera shutter (the CleanShot feel);
         // the sounds toggle mutes it.
         guard await ScreenCapture.region(to: tempURL, muted: !Prefs.soundsEnabled) else {
             return // cancelled or failed
         }
+        deliver(tempURL: tempURL)
+    }
 
+    /// Whole main display, no region drag — same downstream flow as `capture()`.
+    func captureFullScreen() async {
+        let tempURL = Self.captureTempURL()
+        guard await ScreenCapture.fullScreen(to: tempURL, muted: !Prefs.soundsEnabled) else {
+            return // failed
+        }
+        deliver(tempURL: tempURL)
+    }
+
+    private static func captureTempURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("pear-shot-\(UUID().uuidString).png")
+    }
+
+    /// Post-capture half, shared by every capture mode: auto-save, clipboard,
+    /// floating preview, temp cleanup.
+    private func deliver(tempURL: URL) {
         guard let data = try? Data(contentsOf: tempURL) else { return }
 
         // Save into the screenshot folder when auto-save is on; either way a

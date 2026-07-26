@@ -34,6 +34,7 @@ final class AppEnvironment {
         // Adding a tool to the app is one registration here.
         let tools = ToolRegistry()
         tools.offer(ScreenshotTool(messaging: messaging))
+        tools.offer(ScreenshotFullTool(messaging: messaging))
         tools.offer(OCRTool())
         tools.offer(QRTool())
         tools.offer(BackgroundRemoverTool())
