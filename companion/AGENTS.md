@@ -27,7 +27,7 @@ native Apple primitives over custom imitations. See root memory / `[[owner-quali
 ```bash
 cd companion
 swift build            # compile
-swift test             # full suite (455 tests, must stay green)
+swift test             # full suite (466 tests, must stay green)
 ./build.sh [version]   # assemble build/Pear.app (unsigned dev bundle); `open build/Pear.app`
 ```
 
@@ -187,5 +187,20 @@ maintainer before tagging.
   `NSImage` + PNG `Data`) per detail-window open. `State.wrappedValue`'s
   `nonmutating set` is what lets it compile. Expose an observed value and use
   `.onChange` instead (`ZoomController.lastPick`/`pickCount`).
+- **`@Observable` does not compare before notifying.** Writing the same value
+  still invalidates every view that read it. Anything written per input event —
+  a zoom readout, a scroll offset, a live counter — must dedupe (`guard new !=
+  old else { return }`), or a pinch re-renders the whole window dozens of times
+  per second on the same main thread the gesture is delivered on.
+- **`magnify(with:)` is not the only zoom path.** ⌘-scroll and two-finger
+  magnify-by-scroll are handled inside AppKit's `scrollWheel` and never reach it,
+  so a flag set from `magnify` misses them entirely. Derive "the user owns the
+  zoom" from the magnification itself (compare against the fit you applied), not
+  from having intercepted the right event. Shipped broken in 2.14.0: a scroll
+  zoom was discarded by the next layout pass and read as a dropped gesture.
+- **An overridden `layout()` runs constantly.** It fires on every layout pass, so
+  anything expensive or geometry-changing inside it must be gated on the geometry
+  having actually changed. A fit that re-ran unconditionally cost six fits per
+  six passes and fed a re-render loop through the observable above.
 - Interactive panel/overlay smoke is the **owner's** job — this box's screencapture/
   CGWindowList are permission-gated and AX-driving fights his live session.
