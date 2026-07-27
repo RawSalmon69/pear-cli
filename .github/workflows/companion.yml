@@ -29,3 +29,17 @@ jobs:
       - name: Assemble app bundle
         working-directory: companion
         run: ./build.sh
+
+      # Same 20 MB budget the release workflow enforces. It used to run ONLY on a
+      # `companion-v*` tag, so a change that bloated the bundle was already on
+      # main before anyone found out.
+      - name: Check bundle size budget
+        run: |
+          set -euo pipefail
+          APP="companion/build/Pear.app"
+          SIZE_MB=$(( $(du -sk "$APP" | cut -f1) / 1024 ))
+          echo "Bundle size: ${SIZE_MB} MB"
+          if [ "$SIZE_MB" -gt 20 ]; then
+            echo "::error::Bundle ${SIZE_MB} MB exceeds the 20 MB budget"
+            exit 1
+          fi

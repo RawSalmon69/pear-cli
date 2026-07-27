@@ -38,4 +38,43 @@ final class ScreenshotNamingTests: XCTestCase {
         )
         XCTAssertEqual(folder.path, "/Users/someone/Desktop/Shots")
     }
+
+    // MARK: Collision resolution
+    //
+    // The filename is second-granular, so two saves inside one second resolved
+    // to the same path and the second `write` truncated the first screenshot.
+
+    func testUniqueURLPassesThroughWhenFree() {
+        let target = URL(fileURLWithPath: "/shots/Pear 2026-07-27 at 14.03.09.png")
+        let resolved = ScreenshotNaming.uniqueURL(preferred: target, exists: { _ in false })
+        XCTAssertEqual(resolved, target)
+    }
+
+    func testUniqueURLSuffixesOnCollision() {
+        let target = URL(fileURLWithPath: "/shots/Pear 2026-07-27 at 14.03.09.png")
+        let taken: Set<String> = [target.path]
+        let resolved = ScreenshotNaming.uniqueURL(preferred: target, exists: { taken.contains($0.path) })
+        XCTAssertEqual(resolved.lastPathComponent, "Pear 2026-07-27 at 14.03.09 (1).png")
+    }
+
+    func testUniqueURLWalksPastSeveralCollisions() {
+        let target = URL(fileURLWithPath: "/shots/Pear 2026-07-27 at 14.03.09.png")
+        let taken: Set<String> = [
+            target.path,
+            "/shots/Pear 2026-07-27 at 14.03.09 (1).png",
+            "/shots/Pear 2026-07-27 at 14.03.09 (2).png",
+        ]
+        let resolved = ScreenshotNaming.uniqueURL(preferred: target, exists: { taken.contains($0.path) })
+        XCTAssertEqual(resolved.lastPathComponent, "Pear 2026-07-27 at 14.03.09 (3).png")
+        XCTAssertEqual(resolved.pathExtension, "png")
+    }
+
+    func testUniqueURLKeepsExtensionSeparateFromStem() {
+        // Guards the bug where the suffix lands after the extension
+        // ("shot.png (1)") and the file stops being a PNG.
+        let target = URL(fileURLWithPath: "/shots/shot.png")
+        let resolved = ScreenshotNaming.uniqueURL(preferred: target, exists: { $0.path == target.path })
+        XCTAssertEqual(resolved.deletingPathExtension().lastPathComponent, "shot (1)")
+        XCTAssertEqual(resolved.pathExtension, "png")
+    }
 }

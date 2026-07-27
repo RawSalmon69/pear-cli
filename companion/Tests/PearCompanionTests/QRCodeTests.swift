@@ -51,7 +51,9 @@ final class PreviewQRBadgeTests: XCTestCase {
     /// its own scan — so this covers the whole path: bytes in, badge out.
     func testBadgeAppearsAfterScanFindsACode() async throws {
         let png = try XCTUnwrap(QRCode.generate(from: "https://example.com")?.pngData())
-        let insights = ScreenshotInsights(imageData: png, fileURL: nil)
+        let url = try CaptureFixture.write(png)
+        defer { CaptureFixture.remove(url) }
+        let insights = ScreenshotInsights(url: url)
         XCTAssertFalse(insights.showsQRBadge)
 
         insights.scan()
@@ -71,7 +73,9 @@ final class PreviewQRBadgeTests: XCTestCase {
     /// detail window may open several times per card.
     func testScanIsIdempotent() async throws {
         let png = try XCTUnwrap(QRCode.generate(from: "pear")?.pngData())
-        let insights = ScreenshotInsights(imageData: png, fileURL: nil)
+        let url = try CaptureFixture.write(png)
+        defer { CaptureFixture.remove(url) }
+        let insights = ScreenshotInsights(url: url)
         insights.scan()
         var waited = 0
         while insights.isScanning, waited < 100 {

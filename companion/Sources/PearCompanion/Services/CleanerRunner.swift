@@ -51,6 +51,12 @@ final class CleanerRunner {
             for: command, includeSystemCaches: Prefs.cleanIncludeSystemCaches)
         var environment = ProcessInfo.processInfo.environment
         environment["NO_COLOR"] = "1" // CLI honors no-color.org
+        // Pinned PATH, not the inherited one. `pear clean --system` resolves
+        // `sudo`, `osascript` and `rm` through PATH, and any code running as the
+        // user can rewrite a GUI app's inherited PATH with `launchctl setenv` —
+        // which would let it supply the binary that draws Pear's admin-password
+        // dialog. Nothing the CLI needs lives outside these four directories.
+        environment["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
         process.environment = environment
         process.standardInput = FileHandle.nullDevice
 
@@ -74,10 +80,21 @@ final class CleanerRunner {
             Task { @MainActor [weak self] in self?.append(chunk) }
         }
 
-        process.terminationHandler = { process in
+        process.terminationHandler = { [pipe] process in
             let code = process.terminationStatus
+            // Drain what is still sitting in the pipe HERE, on the way out, and
+            // deliver it together with the final phase in one main-actor hop.
+            // Chunk hops and this hop were enqueued from different queues, so a
+            // burst still buffered at exit (usually the reclaimed-space summary)
+            // could land *after* the panel already said "finished".
+            let handle = pipe.fileHandleForReading
+            handle.readabilityHandler = nil
+            let remaining = handle.readDataToEndOfFile()
+            carry.data.append(remaining)
+            let tail = CleanerRunner.decodeStreaming(buffer: &carry.data)
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                if !tail.isEmpty { self.append(tail) }
                 self.process = nil
                 self.phase = .finished(command: command, exitCode: code)
             }
@@ -93,13 +110,60 @@ final class CleanerRunner {
         }
     }
 
-    /// SIGTERM; the CLI traps INT/TERM and cleans up after itself.
+    /// Stops the run for real. SIGTERM first, because the CLI traps INT/TERM and
+    /// tidies up after itself — but bash defers a trap handler until the running
+    /// foreground command returns, so a multi-minute `find … -delete` sweep meant
+    /// the panel kept spinning and the cleanup kept going. So: escalate to
+    /// SIGKILL if it is still alive after a short grace period.
+    ///
+    /// Killing the script stops further destructive commands being spawned. One
+    /// already-running root sweep (the CLI's own `sudo -n rm`) is out of reach —
+    /// a user-level process cannot signal a root child — but those are per-target
+    /// and short, so this bounds the damage at "the one in flight".
     func cancel() {
-        process?.terminate()
+        guard let process, process.isRunning else { return }
+        process.terminate()
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard let self, let process = self.process, process.isRunning else { return }
+            kill(process.processIdentifier, SIGKILL)
+        }
     }
+
+    /// Called from `applicationWillTerminate`: quitting Pear must not leave a
+    /// privileged `pear clean --system` running with no window, no transcript and
+    /// no way to stop it. Blocking (briefly) on purpose — the app is going away,
+    /// and an async cancel would not outlive it.
+    func terminateForQuit() {
+        guard let process, process.isRunning else { return }
+        process.terminate()
+        // Same reasoning as `cancel()`, minus the luxury of an async wait.
+        let deadline = Date().addingTimeInterval(1.5)
+        while process.isRunning, Date() < deadline {
+            usleep(50_000)
+        }
+        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+    }
+
+    /// Longest transcript kept in memory. A `clean` over a large machine emits a
+    /// lot, and the panel only ever shows the tail — an uncapped `String` grew for
+    /// the whole run.
+    static let transcriptLimit = 200_000
 
     private func append(_ chunk: String) {
         transcript += Self.stripControl(chunk)
+        if transcript.count > Self.transcriptLimit {
+            transcript = Self.trimmed(transcript, to: Self.transcriptLimit)
+        }
+    }
+
+    /// Keeps the last `limit` characters, cut at a line boundary so the panel
+    /// never shows half a line. Pure, so the trim is testable.
+    nonisolated static func trimmed(_ text: String, to limit: Int) -> String {
+        guard text.count > limit else { return text }
+        let tail = String(text.suffix(limit))
+        guard let newline = tail.firstIndex(of: "\n") else { return tail }
+        return String(tail[tail.index(after: newline)...])
     }
 
     /// Decodes the longest valid UTF-8 prefix of `buffer`, leaving any trailing

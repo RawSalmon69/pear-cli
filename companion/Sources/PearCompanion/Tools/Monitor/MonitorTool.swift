@@ -22,4 +22,11 @@ final class MonitorTool: Tool {
     var entry: ToolEntry {
         .action { [window] in window.show() }
     }
+
+    /// Live-disable: the sampling loop is owned by the window, not the tool, so
+    /// unregistering the tool alone left it ticking on a feature the user just
+    /// switched off.
+    func stop() {
+        window.close()
+    }
 }

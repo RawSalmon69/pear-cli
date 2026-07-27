@@ -71,8 +71,21 @@ final class OCRService {
         NSPasteboard.general.setString(trimmed, forType: .string)
         SoundEffects.play(.done)
 
-        let preview = trimmed.count > 90 ? String(trimmed.prefix(90)) + "…" : trimmed
-        notify(title: "Copied text 📋", body: preview)
+        // Deliberately NOT a preview of the text. A notification body is drawn as
+        // an on-screen banner and kept in Notification Center until dismissed —
+        // grabbing text from a password field, a private message or a 2FA code
+        // put it in both. Same reasoning as the concealed-pasteboard rule in
+        // `ClipboardHistoryService`; the text itself is on the clipboard.
+        notify(title: "Copied text 📋", body: Self.summary(of: trimmed))
+    }
+
+    /// Neutral confirmation: enough to know the grab worked, nothing readable.
+    /// Pure, so it's nonisolated and unit-testable off the main actor.
+    nonisolated static func summary(of text: String) -> String {
+        let characters = text.count
+        let words = text.split(whereSeparator: \.isWhitespace).count
+        let unit = characters == 1 ? "character" : "characters"
+        return words > 1 ? "\(words) words · \(characters) \(unit)" : "\(characters) \(unit)"
     }
 
     private func notify(title: String, body: String) {

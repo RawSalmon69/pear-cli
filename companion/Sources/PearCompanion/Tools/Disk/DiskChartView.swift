@@ -11,7 +11,10 @@ struct DiskChartView: View {
     /// staged segments and reconciles after a "Delete all".
     let staging: DiskStagingModel
 
-    @State private var model = DiskScanModel()
+    /// Owned by `DiskWindowController` so closing the window can cancel the walk
+    /// — `.onDisappear` does not fire when an AppKit window closes, which left
+    /// up to 8 parallel home-folder walks running with no UI attached.
+    let model: DiskScanModel
     /// Directories drilled into, deepest last. Empty == the scan root.
     @State private var stack: [DiskNode] = []
     @State private var hover: DiskChartHover?

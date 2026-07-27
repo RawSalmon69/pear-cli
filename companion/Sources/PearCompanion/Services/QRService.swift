@@ -48,15 +48,21 @@ final class QRService {
         NSPasteboard.general.setString(text, forType: .string)
         SoundEffects.play(.done)
 
-        let preview = text.count > 90 ? String(text.prefix(90)) + "…" : text
         if let url = QRCode.openableURL(in: payloads) {
+            // An http(s) link is what the banner's "Open Link" action acts on, so
+            // showing it is the point.
+            let preview = text.count > 90 ? String(text.prefix(90)) + "…" : text
             notify(title: "Copied link 📋", body: preview,
                    category: Self.categoryIdentifier,
                    userInfo: [Self.urlUserInfoKey: url.absoluteString])
         } else {
+            // Anything else stays out of the banner and out of Notification
+            // Center: a non-link QR is routinely a Wi-Fi password
+            // (`WIFI:T:WPA;S:…;P:…`) or a TOTP enrolment secret (`otpauth://`).
+            // The payload is on the clipboard either way.
             let title = payloads.count > 1
                 ? "Copied \(payloads.count) codes 📋" : "Copied code 📋"
-            notify(title: title, body: preview)
+            notify(title: title, body: OCRService.summary(of: text))
         }
     }
 
@@ -79,17 +85,19 @@ final class QRService {
     /// the PNG, scan it with a phone. Markup/send/background-removal make no
     /// sense on a QR grid, so those actions are off.
     private func presentGenerated(png: Data) {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("pear-qr-\(UUID().uuidString).png")
-        try? png.write(to: url)
+        // Same store as a capture: the card is backed by this file, so it must
+        // outlive the system temp dir's reaping. Retention clears it in a week.
+        guard let url = try? CaptureStore.save(png, prefix: "QR") else {
+            notify(title: "Couldn't save the QR code", body: "Pear could not write the image.")
+            return
+        }
         SoundEffects.play(.done)
         ScreenshotPreviewController.shared.show(
-            imageData: png,
+            url: url,
             canMarkup: false,
             canSend: false,
             canSave: false,
             canRemoveBackground: false,
-            fileURL: url,
             onCopy: {
                 let pasteboard = NSPasteboard.general
                 pasteboard.clearContents()

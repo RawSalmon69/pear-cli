@@ -2,7 +2,24 @@
 
 Date: 2026-07-26
 Product: Pear.app companion (`companion/`)
-Status: approved by owner, ready to implement
+Status: **SUPERSEDED (2026-07-27) — shipped, then extended past this document.**
+Kept for the problem statement and the original scoping decisions. What it now
+gets wrong:
+
+- "Out of scope: zoom/pan (fit only)" is false. v2.14.0 shipped full zoom —
+  pinch, ⌘-scroll, double-click, ⌘+/⌘−/⌘0 and a zoom capsule over an
+  `NSScrollView` with a centering clip view (`ZoomableImageScrollView`).
+- The **eyedropper** does not appear here at all: arming from the Colors
+  section, a crosshair cursor, `PixelSampler` reading exact image pixels, one
+  pick per arming.
+- `PaletteColor` was never built — the palette reuses the colour picker's
+  existing `PickedColor`, one colour type for the whole app.
+- The OCR reuse landed as a separate nonisolated `OCRText` enum
+  (`recognize(in:)` / `recognize(inImageData:)`), not as a visibility change on
+  `OCRService.recognizeText(in:)`.
+- Test counts in this document are stale (432 as of 2026-07-27).
+
+`companion/AGENTS.md` is the current description of the detail window.
 
 ## Problem
 

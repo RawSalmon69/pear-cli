@@ -123,11 +123,13 @@ struct ScreenshotDetailView: View {
         }
         .frame(minWidth: ScreenshotDetailLayout.minimum.width,
                minHeight: ScreenshotDetailLayout.minimum.height)
-        .onAppear {
-            zoom.onPick = { color in
-                picked = color
-                copy(color)
-            }
+        // Observed, not a stored callback: a closure written into `zoom` would
+        // capture this view, and the view's `@State` box owns `zoom` — the
+        // cycle that leaked the capture once per window open.
+        .onChange(of: zoom.pickCount) { _, _ in
+            guard let color = zoom.lastPick else { return }
+            picked = color
+            copy(color)
         }
     }
 
@@ -285,7 +287,10 @@ struct ScreenshotDetailView: View {
                     }
                 } else {
                     HStack(spacing: 6) {
-                        ForEach(insights.colors) { swatch in
+                        // Keyed by position, not by hex: a flat shot (white
+                        // page, dark terminal) resolves every band to the same
+                        // colour, and `PickedColor.id` is its hex string.
+                        ForEach(Array(insights.colors.enumerated()), id: \.offset) { _, swatch in
                             Swatch(color: swatch, size: CGSize(width: 30, height: 24),
                                    copied: copiedValue == Prefs.colorFormat.value(for: swatch)) {
                                 copy(swatch)
@@ -378,15 +383,25 @@ final class ZoomController {
     var isPicking = false {
         didSet { scrollView?.refreshCursor(picking: isPicking) }
     }
-    /// Called with the sampled color when the eyedropper is used.
-    @ObservationIgnored var onPick: ((PickedColor) -> Void)?
+    /// The last colour the eyedropper sampled. Observed rather than delivered
+    /// through a stored closure: a closure that writes the view's `@State` has
+    /// to capture the view, whose `@State` box owns this controller — a cycle
+    /// that leaked the whole capture (`NSImage` + PNG `Data`) once per open.
+    private(set) var lastPick: PickedColor?
+    /// Bumped on every pick so sampling the same colour twice still registers.
+    private(set) var pickCount = 0
 
     @ObservationIgnored weak var scrollView: ZoomableImageScrollView?
 
     func zoomIn() { scrollView?.step(by: 1.4) }
     func zoomOut() { scrollView?.step(by: 1 / 1.4) }
     func fit() { scrollView?.fitToWindow(animated: true) }
-    func actualSize() { scrollView?.setMagnification(1, animated: true) }
+    func actualSize() { scrollView?.actualSize(animated: true) }
+
+    fileprivate func deliver(pick color: PickedColor) {
+        lastPick = color
+        pickCount += 1
+    }
 
     fileprivate func report(_ magnification: CGFloat) {
         percent = max(1, Int((magnification * 100).rounded()))
@@ -433,7 +448,7 @@ struct ZoomableImage: NSViewRepresentable {
         // Free two-axis panning; the default snaps to whichever axis you
         // started on, which fights a diagonal drag around a zoomed shot.
         scrollView.usesPredominantAxisScrolling = false
-        scrollView.sourceImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        scrollView.pickSource = image
         scrollView.controller = controller
         controller.scrollView = scrollView
 
@@ -454,7 +469,7 @@ struct ZoomableImage: NSViewRepresentable {
               imageView.image !== image else { return }
         imageView.image = image
         imageView.frame = NSRect(origin: .zero, size: pixelSize)
-        scrollView.sourceImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        scrollView.pickSource = image
         scrollView.resetFit()
     }
 }
@@ -478,7 +493,24 @@ final class CenteringClipView: NSClipView {
 /// Owns fit state, the zoom steps, and the eyedropper hit-test.
 final class ZoomableImageScrollView: NSScrollView {
     weak var controller: ZoomController?
-    var sourceImage: CGImage?
+
+    /// The image the eyedropper samples. Held as the `NSImage` and rasterized on
+    /// the FIRST pick, not on window open: `cgImage(forProposedRect:)` inflates a
+    /// full RGBA bitmap (~81 MB for a 6K capture) that was previously created on
+    /// the main actor during `makeNSView` — inside the click→window latency — and
+    /// then pinned for the window's whole life for a feature the user may never
+    /// touch. `NSImageView` draws from its own representation and does not need
+    /// this. Cached after the first pick so repeated sampling stays instant.
+    var pickSource: NSImage? {
+        didSet { rasterized = nil }
+    }
+    private var rasterized: CGImage?
+
+    private func sourceImage() -> CGImage? {
+        if let rasterized { return rasterized }
+        rasterized = pickSource?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        return rasterized
+    }
 
     private var didFit = false
     private var fitMagnification: CGFloat = 1
@@ -504,23 +536,41 @@ final class ZoomableImageScrollView: NSScrollView {
         needsLayout = true
     }
 
+    /// The zoom-to-fit magnification for a document in a viewport, or nil when
+    /// either is degenerate. Capped at 1: fit means "show all of it", never "blow
+    /// a 30×30 grab up to 1450%". Matches `ScreenshotDetailLayout.windowSize`,
+    /// which already refuses to upscale, and keeps `fitMagnification` under
+    /// `maxMagnification` so the double-click fit↔100% toggle stays live. Pure,
+    /// so the one piece of arithmetic in this state machine is testable.
+    static func fitTarget(viewport: CGSize, document: CGSize) -> CGFloat? {
+        guard document.width > 0, document.height > 0 else { return nil }
+        let target = min(min(viewport.width / document.width,
+                             viewport.height / document.height), 1)
+        guard target.isFinite, target > 0 else { return nil }
+        return target
+    }
+
     func fitToWindow(animated: Bool) {
-        guard let document = documentView, document.bounds.width > 0 else { return }
-        let target = min(
-            bounds.width / document.bounds.width,
-            bounds.height / document.bounds.height
-        )
-        guard target.isFinite, target > 0 else { return }
+        guard let document = documentView, document.bounds.width > 0,
+              let target = Self.fitTarget(viewport: bounds.size, document: document.bounds.size)
+        else { return }
         fitMagnification = target
         // Never zoom out past fit: an image floating in a sea of empty window
         // is nobody's idea of zoomed out.
-        minMagnification = min(target, 1)
+        minMagnification = target
         userAdjusted = false
         setMagnification(target, animated: animated)
     }
 
     func step(by factor: CGFloat) {
         setMagnification(magnification * factor, animated: true)
+        userAdjusted = true
+    }
+
+    /// 1:1. Marks the zoom user-owned, or the next layout pass re-fits and the
+    /// image snaps straight back out.
+    func actualSize(animated: Bool) {
+        setMagnification(1, animated: animated)
         userAdjusted = true
     }
 
@@ -581,18 +631,21 @@ final class ZoomableImageScrollView: NSScrollView {
     @objc func handleClick(_ sender: NSClickGestureRecognizer) {
         guard controller?.isPicking == true,
               let document = documentView,
-              let image = sourceImage else { return }
-        // One pick per arming: the eyedropper disarms itself rather than
-        // leaving a mode running that the user has to remember to switch off.
-        defer { controller?.isPicking = false }
+              let image = sourceImage() else { return }
         let point = document.convert(sender.location(in: self), from: self)
         let scaleX = CGFloat(image.width) / document.bounds.width
         let scaleY = CGFloat(image.height) / document.bounds.height
         // Document coordinates run bottom-up; CGImage rows run top-down.
         let x = Int((point.x * scaleX).rounded(.down))
         let y = Int(((document.bounds.height - point.y) * scaleY).rounded(.down))
+        // A click in the empty margin around a fitted image samples nothing —
+        // stay armed so the user can just click again, instead of silently
+        // dropping out of eyedropper mode with no colour and no explanation.
         guard let color = PixelSampler.color(in: image, atX: x, y: y) else { return }
-        controller?.onPick?(color)
+        // One pick per arming: the eyedropper disarms itself rather than
+        // leaving a mode running that the user has to remember to switch off.
+        controller?.isPicking = false
+        controller?.deliver(pick: color)
     }
 }
 

@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import os
 import UniformTypeIdentifiers
 
 /// One held file: a copy that lives in the shelf's own directory (so it
@@ -52,6 +53,9 @@ final class ShelfStore {
     /// like `remove`), so the shelf can't grow without bound.
     static let maxItems = 100
 
+    /// `nonisolated` so the off-main copy/thumbnail hop can log too.
+    private nonisolated static let log = Logger(subsystem: CoupleKey.service, category: "shelf")
+
     static var defaultRoot: URL {
         let base = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -81,7 +85,10 @@ final class ShelfStore {
             do {
                 try FileManager.default.copyItem(at: source, to: dest)
             } catch {
-                NSLog("Shelf: copy failed for \(originalName) — \(error)")
+                // Filename redacted: `NSLog` has no privacy control and this
+                // lands in the system-wide unified log, readable by anything
+                // with log access. The error is enough to diagnose a failed copy.
+                Self.log.error("shelf copy failed: \(error.localizedDescription, privacy: .public)")
                 return nil
             }
             return PreparedEntry(storedURL: dest, thumbnail: Self.thumbnail(for: dest))
@@ -232,7 +239,7 @@ final class ShelfStore {
             try data.write(to: url)
             return url
         } catch {
-            NSLog("Shelf: temp write failed for \(filename) — \(error)")
+            Self.log.error("shelf temp write failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }
@@ -261,7 +268,7 @@ final class ShelfStore {
             let data = try JSONEncoder().encode(PersistedIndex(version: 1, items: records))
             try data.write(to: indexURL, options: .atomic)
         } catch {
-            NSLog("Shelf: index save failed — \(error)")
+            Self.log.error("shelf index save failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 

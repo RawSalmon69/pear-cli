@@ -24,6 +24,13 @@ final class ShelfTool: Tool {
         toggle()
     }
 
+    /// Live-disable: close the panel (which removes its keyDown monitor) so a
+    /// disabled tool leaves no floating window or event monitor behind — the
+    /// scratchpad's contract, which this tool was missing.
+    func stop() {
+        window?.hide()
+    }
+
     private func toggle() {
         let controller = window ?? ShelfWindowController(store: ShelfStore())
         window = controller

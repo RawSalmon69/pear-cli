@@ -120,12 +120,21 @@ final class MenuBarManager {
     /// for enabled tools). Creates the status items visible, then defers a
     /// guarded collapse so the position guard reads real geometry.
     func installSurface(autosavePrefix: String = "com.pear.companion.menubar") {
+        // Read the user's last state BEFORE the deliberate visible-start below
+        // overwrites it. Launch used to force `isCollapsed = false` and then
+        // always collapse, so the persisted value — written on every
+        // expand/collapse — could never affect anything: leaving the zone
+        // expanded and quitting still came back collapsed, with no setting that
+        // could change it.
+        let wantsCollapsed = wantsCollapsedOnLaunch
         wire(StatusBarSurface(autosavePrefix: autosavePrefix))
         // Start fully visible: hide nothing before the status-item windows lay
         // out, or the position guard would read nil frames and skip the collapse.
         isCollapsed = false
         applyState()
-        scheduleLaunchCollapse()
+        // First run (no stored value) defaults to collapsed, so the tool still
+        // declutters immediately — that was the documented intent.
+        if wantsCollapsed { scheduleLaunchCollapse() }
     }
 
     /// Teardown for a live disable (mirrors `installSurface`): reveal both zones
@@ -136,7 +145,9 @@ final class MenuBarManager {
         isCollapsed = false
         alwaysHiddenRevealed = true
         applyState()
-        persistCollapsed()
+        // Deliberately NOT persisted: this reveal is teardown, not a user choice.
+        // Writing it would overwrite the user's collapsed preference, so a
+        // disable→re-enable (or a launch after one) would come back expanded.
         cancelRehide()
         // Positions are intentionally NOT forgotten here: the user's divider
         // arrangement must survive a disable→re-enable, so a re-enable inherits it
@@ -145,11 +156,21 @@ final class MenuBarManager {
         surface = nil
     }
 
-    /// Test seam: attach a fake and enforce the collapsed-on-launch default
-    /// synchronously (the fake reports a valid position, so the guard passes).
+    /// Whether launch should collapse the hidden zone. First run (nothing stored)
+    /// collapses, so the tool declutters immediately; after that the user's last
+    /// expand/collapse wins.
+    private var wantsCollapsedOnLaunch: Bool {
+        defaults.object(forKey: collapsedKey) as? Bool ?? true
+    }
+
+    /// Test seam: attach a fake and apply the same launch decision production
+    /// makes, synchronously (the fake reports a valid position, so the guard
+    /// passes). Mirrors `installSurface` deliberately — this seam used to collapse
+    /// unconditionally, which is why the tests all passed while production ignored
+    /// the persisted state.
     func launch(with surface: MenuBarSurface) {
         attach(surface)
-        collapse()
+        if wantsCollapsedOnLaunch { collapse() }
     }
 
     /// Wire a surface (real or fake) and apply the current persisted state.

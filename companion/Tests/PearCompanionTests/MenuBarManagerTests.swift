@@ -266,8 +266,44 @@ final class MenuBarManagerTests: XCTestCase {
         let fake = FakeSurface()
         manager.launch(with: fake)
 
-        XCTAssertTrue(manager.isCollapsed, "launch collapses regardless of persisted state")
+        // Launch used to collapse regardless, which made the persisted value —
+        // written on every expand/collapse — dead state: "leave the zone expanded"
+        // could never survive a quit, and no setting could change that.
+        XCTAssertFalse(manager.isCollapsed, "a quit-while-expanded session comes back expanded")
+        XCTAssertEqual(fake.separatorLength, MenuBarManager.hiddenSeparatorLength)
+    }
+
+    func testFirstRunCollapsesWithNothingPersisted() throws {
+        let suite = "MenuBarTests-firstrun"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let manager = MenuBarManager(defaults: defaults, keyPrefix: "mb")
+        let fake = FakeSurface()
+        manager.launch(with: fake)
+
+        // No stored value: the tool must still declutter on first run.
+        XCTAssertTrue(manager.isCollapsed)
         XCTAssertEqual(fake.separatorLength, MenuBarManager.collapsedLength)
+    }
+
+    func testDisableDoesNotOverwriteTheCollapsedPreference() throws {
+        let suite = "MenuBarTests-disable-pref"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let manager = MenuBarManager(defaults: defaults, keyPrefix: "mb")
+        manager.launch(with: FakeSurface())
+        XCTAssertTrue(manager.isCollapsed, "first run collapses")
+
+        // Disabling the tool reveals everything, but that reveal is teardown, not
+        // a user choice — persisting it would silently flip the preference.
+        manager.uninstallSurface()
+
+        let reloaded = MenuBarManager(defaults: defaults, keyPrefix: "mb")
+        XCTAssertTrue(reloaded.isCollapsed, "a disable must not clear the collapsed preference")
     }
 
     func testUninstallRevealsThenRemovesSurface() throws {

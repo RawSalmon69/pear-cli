@@ -28,6 +28,12 @@ enum DiskDeletion {
         let homeDir = cleaned(home)
         guard !target.isEmpty, !homeDir.isEmpty, target.hasPrefix("/") else { return false }
 
+        // The scanner folds children past its per-directory cap into a synthetic
+        // "N more items" node whose id carries a U+001F sentinel and the whole
+        // group's size. It is not a real file: staging it put phantom gigabytes
+        // into the deletion confirmation and then failed at trash time.
+        guard !target.contains("\u{1F}") else { return false }
+
         // Reject shallow paths outright: "/" (1), "/Users" (2), a mount root (3).
         let components = URL(fileURLWithPath: target).pathComponents
         guard components.count >= 3 else { return false }

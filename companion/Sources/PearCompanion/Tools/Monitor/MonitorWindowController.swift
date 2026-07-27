@@ -14,6 +14,11 @@ final class MonitorWindowController: NSObject, NSWindowDelegate {
 
     func show() {
         if let window {
+            // `windowWillClose` stopped sampling, and `.onAppear` does NOT fire
+            // again on a reused window — its hosting view never left the
+            // hierarchy — so without this the reopened window showed the last
+            // sample from the previous session forever. `start()` is idempotent.
+            model.start()
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -34,6 +39,12 @@ final class MonitorWindowController: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = window
+    }
+
+    /// Closes the window and stops sampling — used when the tool is switched off
+    /// in Settings, so a disabled tool leaves no engine running.
+    func close() {
+        window?.close()
     }
 
     /// Backstop for the view's `.onDisappear` stop: `onDisappear` isn't

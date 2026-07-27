@@ -68,4 +68,21 @@ final class DiskDeletionTests: XCTestCase {
         allowed("/Users/tester/Library/Caches/foo", "~/Library is inside home, unlike /Library")
         allowed("/Users/tester/Documents/Projects/old", "a nested home dir is trashable")
     }
+
+    /// The scanner folds children past its per-directory cap into a synthetic
+    /// "N more items" node carrying the whole group's size. Staging it put
+    /// phantom gigabytes into the deletion confirmation — the one dialog that
+    /// must not lie — and then failed at trash time.
+    func testRefusesSyntheticMoreItemsNode() {
+        refused("/Users/tester/Downloads/\u{1F}more",
+                "the aggregate placeholder is not a real file")
+        refused("/Users/tester/Library/Caches/\u{1F}more",
+                "the sentinel is refused at any depth")
+    }
+
+    func testRealPathsNamedSimilarlyStillAllowed() {
+        allowed("/Users/tester/Downloads/more", "a real folder called `more` is unaffected")
+        allowed("/Users/tester/Downloads/3 more items",
+                "only the U+001F sentinel is refused, not the display name")
+    }
 }

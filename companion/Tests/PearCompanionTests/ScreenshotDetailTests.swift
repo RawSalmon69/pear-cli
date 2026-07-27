@@ -46,7 +46,9 @@ final class ScreenshotInsightsNonBlockingTests: XCTestCase {
     /// is the invariant behind "I can open the big view before it's done".
     func testScanReturnsImmediatelyAndDetailsAreReadyFirst() throws {
         let png = try XCTUnwrap(QRCode.generate(from: "https://example.com")?.pngData())
-        let insights = ScreenshotInsights(imageData: png, fileURL: nil)
+        let url = try CaptureFixture.write(png)
+        defer { CaptureFixture.remove(url) }
+        let insights = ScreenshotInsights(url: url)
 
         insights.scan()
 
@@ -57,6 +59,30 @@ final class ScreenshotInsightsNonBlockingTests: XCTestCase {
         XCTAssertTrue(insights.payloads.isEmpty)
         XCTAssertGreaterThan(insights.details.pixelWidth, 0)
         XCTAssertEqual(insights.details.format, "PNG")
+    }
+
+    /// Scanning reads the capture off disk now, so the file can be gone by the
+    /// time the pass runs. It must finish empty, not trap.
+    func testScanningAMissingFileFinishesEmpty() async throws {
+        let png = try XCTUnwrap(QRCode.generate(from: "https://example.com")?.pngData())
+        let url = try CaptureFixture.write(png)
+        CaptureFixture.remove(url)
+        let insights = ScreenshotInsights(url: url)
+
+        insights.scan()
+        // Proves the pass really ran (and then found nothing) rather than the
+        // empties below being the untouched initial state.
+        XCTAssertTrue(insights.isScanning)
+        var waited = 0
+        while insights.isScanning, waited < 100 {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            waited += 1
+        }
+
+        XCTAssertFalse(insights.isScanning, "scan never finished")
+        XCTAssertTrue(insights.text.isEmpty)
+        XCTAssertTrue(insights.payloads.isEmpty)
+        XCTAssertTrue(insights.colors.isEmpty)
     }
 }
 
@@ -76,26 +102,27 @@ final class ScreenshotDetailsTests: XCTestCase {
         return try XCTUnwrap(rep.representation(using: .png, properties: [:]))
     }
 
-    func testFormatSniffing() throws {
-        XCTAssertEqual(ScreenshotDetails.format(sniffing: try png(width: 4, height: 4)), "PNG")
-        XCTAssertEqual(
-            ScreenshotDetails.format(sniffing: Data([0xFF, 0xD8, 0xFF, 0xE0])), "JPEG")
-        XCTAssertEqual(ScreenshotDetails.format(sniffing: Data([0x01, 0x02])), "Image")
-        XCTAssertEqual(ScreenshotDetails.format(sniffing: Data()), "Image")
+    func testFormatFromImageIOType() {
+        XCTAssertEqual(ScreenshotDetails.format(uti: "public.png"), "PNG")
+        XCTAssertEqual(ScreenshotDetails.format(uti: "public.jpeg"), "JPEG")
+        XCTAssertEqual(ScreenshotDetails.format(uti: "com.compuserve.gif"), "Image")
+        XCTAssertEqual(ScreenshotDetails.format(uti: nil), "Image")
     }
 
     func testDetailsReadDimensionsAndLabels() throws {
         let data = try png(width: 40, height: 25)
+        let url = try CaptureFixture.write(data)
+        defer { CaptureFixture.remove(url) }
         let when = Date(timeIntervalSince1970: 1_770_000_000)
-        let details = ScreenshotDetails.from(
-            imageData: data, fileURL: URL(fileURLWithPath: "/tmp/shot.png"), now: when)
+        let details = ScreenshotDetails.from(url: url, now: when)
 
         XCTAssertEqual(details.pixelWidth, 40)
         XCTAssertEqual(details.pixelHeight, 25)
         XCTAssertEqual(details.dimensionsLabel, "40 × 25")
+        // Read off the file, not a `Data` the card is holding on to.
         XCTAssertEqual(details.byteCount, data.count)
         XCTAssertEqual(details.format, "PNG")
-        XCTAssertEqual(details.path, "/tmp/shot.png")
+        XCTAssertEqual(details.path, url.path)
         XCTAssertFalse(details.sizeLabel.isEmpty)
         XCTAssertFalse(details.timeLabel.isEmpty)
     }
@@ -134,11 +161,25 @@ final class ScreenshotDetailsTests: XCTestCase {
         XCTAssertNil(bare.colorLabel)
     }
 
-    func testDetailsSurviveUnreadableBytes() {
-        let details = ScreenshotDetails.from(imageData: Data([0x00, 0x01]), fileURL: nil)
+    func testDetailsSurviveUnreadableBytes() throws {
+        let url = try CaptureFixture.write(Data([0x00, 0x01]))
+        defer { CaptureFixture.remove(url) }
+        let details = ScreenshotDetails.from(url: url)
         XCTAssertEqual(details.pixelWidth, 0)
         XCTAssertEqual(details.dimensionsLabel, "0 × 0")
-        XCTAssertNil(details.path)
+        XCTAssertEqual(details.format, "Image")
+    }
+
+    /// A card can outlive its file. Reading one that has gone must come back
+    /// empty rather than trap — the caller then dismisses the card.
+    func testDetailsSurviveAMissingFile() {
+        let gone = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PearMissing-\(UUID().uuidString).png")
+        let details = ScreenshotDetails.from(url: gone)
+        XCTAssertEqual(details.pixelWidth, 0)
+        XCTAssertEqual(details.byteCount, 0)
+        XCTAssertEqual(details.format, "Image")
+        XCTAssertNil(CaptureImage.decode(at: gone))
     }
 }
 
@@ -271,5 +312,51 @@ final class PixelSamplerTests: XCTestCase {
         XCTAssertNil(PixelSampler.color(in: image, atX: -1, y: 0))
         XCTAssertNil(PixelSampler.color(in: image, atX: 0, y: 2))
         XCTAssertNil(PixelSampler.color(in: image, atX: 99, y: 99))
+    }
+}
+
+/// The zoom state machine's one piece of arithmetic. It shipped unfitted with a
+/// missing upscale cap, which also broke double-click-to-toggle on small grabs.
+final class ZoomFitTargetTests: XCTestCase {
+    private func fit(viewport: CGSize, document: CGSize) -> CGFloat? {
+        ZoomableImageScrollView.fitTarget(viewport: viewport, document: document)
+    }
+
+    func testLargeCaptureScalesDownToFit() throws {
+        let target = try XCTUnwrap(fit(viewport: CGSize(width: 460, height: 436),
+                                      document: CGSize(width: 6016, height: 3384)))
+        XCTAssertEqual(target, 460.0 / 6016.0, accuracy: 0.0001)
+        XCTAssertLessThan(target, 1, "a 6K shot must be scaled down, not up")
+    }
+
+    func testTightDimensionWins() throws {
+        // Tall document: the height ratio is the binding constraint.
+        let target = try XCTUnwrap(fit(viewport: CGSize(width: 800, height: 200),
+                                      document: CGSize(width: 1000, height: 4000)))
+        XCTAssertEqual(target, 200.0 / 4000.0, accuracy: 0.0001)
+    }
+
+    func testTinyCaptureIsNeverUpscaled() {
+        // A 30×30 region grab used to fill the window at ~1450%.
+        XCTAssertEqual(fit(viewport: CGSize(width: 460, height: 436),
+                           document: CGSize(width: 30, height: 30)), 1)
+    }
+
+    func testFitStaysBelowMaxMagnificationSoDoubleClickToggleWorks() throws {
+        // With an unclamped fit, `fitMagnification` (21.8) exceeded the 16×
+        // ceiling `setMagnification` clamps to, so `magnification >
+        // fitMagnification * 1.05` was permanently false and double-click could
+        // never return to fit.
+        let target = try XCTUnwrap(fit(viewport: CGSize(width: 436, height: 436),
+                                      document: CGSize(width: 20, height: 20)))
+        XCTAssertLessThanOrEqual(target, 16)
+    }
+
+    func testDegenerateSizesYieldNoTarget() {
+        XCTAssertNil(fit(viewport: CGSize(width: 460, height: 436),
+                         document: CGSize(width: 0, height: 100)))
+        XCTAssertNil(fit(viewport: CGSize(width: 460, height: 436),
+                         document: CGSize(width: 100, height: 0)))
+        XCTAssertNil(fit(viewport: .zero, document: CGSize(width: 100, height: 100)))
     }
 }

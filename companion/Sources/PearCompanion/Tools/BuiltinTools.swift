@@ -150,6 +150,12 @@ final class DiskTool: Tool {
     var entry: ToolEntry {
         .action { [window] in window.show() }
     }
+
+    /// Live-disable: closing the window cancels the home-folder walk, which the
+    /// window owns — unregistering the tool alone left it crawling.
+    func stop() {
+        window.close()
+    }
 }
 
 /// Toggles the companion panel. It has no tile of its own — you don't open the

@@ -2,6 +2,7 @@ import AppKit
 import ImageIO
 import Observation
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// File and image facts for the detail view's Details section. Built from the
 /// image header, so making one never decodes the whole capture.
@@ -79,42 +80,61 @@ struct ScreenshotDetails: Sendable, Equatable {
         return formatter.string(from: capturedAt)
     }
 
-    /// Magic bytes only. Pear writes PNGs; JPEG is here for pasted or edited
-    /// data, and anything else stays honest rather than guessing.
-    static func format(sniffing data: Data) -> String {
-        if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return "PNG" }
-        if data.starts(with: [0xFF, 0xD8, 0xFF]) { return "JPEG" }
-        return "Image"
+    /// ImageIO's type identifier → the short label the Details row shows. Pear
+    /// writes PNGs; JPEG is here for pasted or edited data, and anything else
+    /// stays honest rather than guessing.
+    static func format(uti: String?) -> String {
+        switch uti {
+        case UTType.png.identifier: "PNG"
+        case UTType.jpeg.identifier: "JPEG"
+        default: "Image"
+        }
     }
 
-    static func from(imageData: Data, fileURL: URL?, now: Date = Date()) -> ScreenshotDetails {
+    /// Header only — `CGImageSourceCopyPropertiesAtIndex` never touches the
+    /// pixels, so building this off a URL costs no decode at all.
+    static func from(url: URL, now: Date = Date()) -> ScreenshotDetails {
         var width = 0
         var height = 0
         var profile: String?
         var depth = 0
         var alpha = false
         var dpi = 0
-        if let source = CGImageSourceCreateWithData(imageData as CFData, nil),
-           let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
-            width = properties[kCGImagePropertyPixelWidth] as? Int ?? 0
-            height = properties[kCGImagePropertyPixelHeight] as? Int ?? 0
-            profile = properties[kCGImagePropertyProfileName] as? String
-            depth = properties[kCGImagePropertyDepth] as? Int ?? 0
-            alpha = properties[kCGImagePropertyHasAlpha] as? Bool ?? false
-            dpi = (properties[kCGImagePropertyDPIWidth] as? Double).map { Int($0.rounded()) } ?? 0
+        var format = "Image"
+        let source = CGImageSourceCreateWithURL(url as CFURL, nil)
+        if let source {
+            format = Self.format(uti: CGImageSourceGetType(source) as String?)
+            if let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
+                width = properties[kCGImagePropertyPixelWidth] as? Int ?? 0
+                height = properties[kCGImagePropertyPixelHeight] as? Int ?? 0
+                profile = properties[kCGImagePropertyProfileName] as? String
+                depth = properties[kCGImagePropertyDepth] as? Int ?? 0
+                alpha = properties[kCGImagePropertyHasAlpha] as? Bool ?? false
+                dpi = (properties[kCGImagePropertyDPIWidth] as? Double).map { Int($0.rounded()) } ?? 0
+            }
         }
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
         return ScreenshotDetails(
             pixelWidth: width,
             pixelHeight: height,
-            byteCount: imageData.count,
-            format: format(sniffing: imageData),
+            byteCount: size,
+            format: format,
             capturedAt: now,
-            path: fileURL?.path,
+            path: url.path,
             colorProfile: profile,
             bitsPerComponent: depth,
             hasAlpha: alpha,
             dpi: dpi
         )
+    }
+}
+
+/// Full-resolution decode straight from a capture file. One bitmap, no
+/// intermediate `Data` + `NSImage` copy of a multi-megapixel screenshot.
+enum CaptureImage {
+    static func decode(at url: URL) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil)
     }
 }
 
@@ -215,12 +235,12 @@ final class ScreenshotInsights {
     private(set) var colors: [PickedColor] = []
     private(set) var isScanning = false
 
-    @ObservationIgnored private let imageData: Data
+    @ObservationIgnored private let url: URL
     @ObservationIgnored private var didStartScan = false
 
-    init(imageData: Data, fileURL: URL?) {
-        self.imageData = imageData
-        self.details = ScreenshotDetails.from(imageData: imageData, fileURL: fileURL)
+    init(url: URL) {
+        self.url = url
+        self.details = ScreenshotDetails.from(url: url)
     }
 
     var showsQRBadge: Bool { !payloads.isEmpty }
@@ -232,13 +252,21 @@ final class ScreenshotInsights {
         guard !didStartScan else { return }
         didStartScan = true
         isScanning = true
-        let data = imageData
+        let url = self.url
         Task { @MainActor in
             let result = await Task.detached(priority: .utility) {
-                ScreenshotScanResult(
-                    text: OCRText.recognize(inImageData: data),
-                    payloads: QRCode.payloads(inImageData: data),
-                    colors: DominantColors.palette(from: data)
+                // One decode for all three passes, read from the file here
+                // rather than held by the card. OCR and the barcode detect each
+                // used to inflate the full bitmap separately — ~81 MB twice for
+                // a 6K capture, on every shot. A capture whose file has gone
+                // simply yields nothing.
+                guard let cg = CaptureImage.decode(at: url) else {
+                    return ScreenshotScanResult(text: "", payloads: [], colors: [])
+                }
+                return ScreenshotScanResult(
+                    text: OCRText.recognize(in: cg),
+                    payloads: QRCode.decode(in: cg),
+                    colors: DominantColors.palette(from: cg)
                 )
             }.value
             self.text = result.text

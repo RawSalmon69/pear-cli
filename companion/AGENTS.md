@@ -27,7 +27,7 @@ native Apple primitives over custom imitations. See root memory / `[[owner-quali
 ```bash
 cd companion
 swift build            # compile
-swift test             # full suite (~390 tests, must stay green)
+swift test             # full suite (455 tests, must stay green)
 ./build.sh [version]   # assemble build/Pear.app (unsigned dev bundle); `open build/Pear.app`
 ```
 
@@ -75,7 +75,8 @@ AppKit, not custom gesture math), an eyedropper that samples exact image pixels
 (`PixelSampler`), the same actions, and a sidebar of
 `ScreenshotInsights` — full OCR text in its own scroll box, QR payloads, color
 palette, file facts — scanned once off-main *after* the card is on screen, so
-nothing delays capture → preview and the window always opens mid-scan. **OCR / Grab Text**
+nothing delays capture → preview and the window always opens mid-scan. Cards are
+**backed by a file, never by bytes** (see `CaptureStore` below). **OCR / Grab Text**
 (⌃⇧T, Vision), **Background
 removal** (Apple Vision default; opt-in HD BEN2 Core ML — see below), **QR**
 (⌃⇧Q, scan screen region / generate from clipboard, auto QR badge + Copy-text
@@ -87,7 +88,8 @@ Utilities: **Color Picker** (NSColorSampler + WCAG), **Shelf** (⌃⇧V drop-hol
 **Clipboard history** (pins + search), **KeyClu** (⌃⇧K shortcut cheat-sheet, read-only AX).
 System: **Disk** (sunburst/treemap + safe Trash delete), **Monitor** (CPU/mem/net/
 battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
-(8 toggles), **Clean Mode** (screen blanker, default OFF), **RunCat** menu-bar runner.
+(7 toggles — Screen Test was removed after it hard-locked a machine), **Clean Mode**
+(screen blanker, default OFF), **RunCat** menu-bar runner.
 
 ## Key decisions & invariants
 
@@ -112,6 +114,16 @@ battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
   old RMBG-2.0 model (CC-BY-NC, which blocked monetization) on 2026-07-23. Model
   I/O: input `[1,3,1024,1024]` ImageNet-normalized NCHW (the app normalizes);
   output is a **0..1 sigmoid matte** (already sigmoided — do NOT sigmoid again).
+- **Captures are files, not bytes.** A capture is filed the moment it is taken:
+  into the user's screenshot folder when auto-save is on, otherwise into
+  `~/Library/Application Support/PearCompanion/Captures` (`CaptureStore`,
+  7-day retention swept at launch). Preview cards and the detail window hold
+  that URL plus a thumbnail and re-read the file per action — holding the PNG
+  for a card's lifetime cost 30–200 MB resident for a stack of 6K shots. Never
+  put the bytes back on the card, and never point a card at `NSTemporaryDirectory`:
+  macOS reaps it on its own schedule, which is exactly why the bytes were held.
+  A failed read dismisses the card (with `.discard`) rather than leaving buttons
+  that do nothing.
 - **Floating-window positioning**: dock preview follows the dock edge (picks the
   icon's screen by overlap, never the focused-window screen); screenshot preview
   + scratchpad open on the **primary** display; menu-bar hider seeds its
@@ -160,5 +172,20 @@ maintainer before tagging.
   toolchain/launch bugs pass every other check.
 - **Footprint metric**: `top -l1 -pid N -stats mem` (Activity Monitor number),
   NOT `ps` RSS (counts shared framework pages; ~2-3× inflated on macOS 26).
+- **A reused AppKit window never re-fires SwiftUI's `.onAppear`/`.task`/`.onDisappear`.**
+  With `isReleasedWhenClosed = false`, `close()` + a later `makeKeyAndOrderFront`
+  leaves the hosting view in the hierarchy the whole time, so a view-owned engine
+  started in `.onAppear` stays stopped after a reopen and one cancelled in
+  `.onDisappear` is *never* cancelled on close. Any window with a running engine
+  owns that engine on the **controller** and drives it from `show()` /
+  `windowWillClose` (see `MonitorWindowController`, `DiskWindowController`).
+  Measured, not assumed — a probe printed one `onAppear` across close/reopen and
+  no `onDisappear` at all.
+- **Never store a closure on a `@State`-owned object if the closure writes that
+  view's `@State`.** The closure captures the view struct, the view's `State` box
+  owns the object: an unbreakable cycle that leaked a whole screenshot (decoded
+  `NSImage` + PNG `Data`) per detail-window open. `State.wrappedValue`'s
+  `nonmutating set` is what lets it compile. Expose an observed value and use
+  `.onChange` instead (`ZoomController.lastPick`/`pickCount`).
 - Interactive panel/overlay smoke is the **owner's** job — this box's screencapture/
   CGWindowList are permission-gated and AX-driving fights his live session.

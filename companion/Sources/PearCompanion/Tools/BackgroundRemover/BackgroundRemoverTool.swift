@@ -17,6 +17,11 @@ final class BackgroundRemoverTool: Tool {
     private let window = BackgroundRemoverWindowController()
 
     var entry: ToolEntry { .action { [window] in window.show() } }
+
+    /// Live-disable: close the window so a disabled tool leaves no surface up.
+    func stop() {
+        window.close()
+    }
 }
 
 /// A reusable titled window hosting the remover. Reused across opens so the
@@ -47,6 +52,12 @@ final class BackgroundRemoverWindowController: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = window
+    }
+
+    /// Used when the tool is switched off in Settings, so a disabled tool leaves
+    /// no window up.
+    func close() {
+        window?.close()
     }
 }
 

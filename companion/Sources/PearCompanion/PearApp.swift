@@ -21,10 +21,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         runSettingsMigrations()
-        // If the HD background model was already downloaded, compile it now so
-        // the first cutout is instant; no-op (and no download) otherwise.
-        HDBackgroundModelManager.shared.prepare()
+        // If High-quality mode is on AND the model is already downloaded, compile
+        // it now so the first cutout is instant; no-op (and no download)
+        // otherwise. Gated on the pref: compiling and holding a 205 MB Core ML
+        // model resident at every launch for a feature the user turned off is
+        // pure footprint. Flipping the toggle on calls `prepare()` itself.
+        if Prefs.hdBackgroundRemoval {
+            HDBackgroundModelManager.shared.prepare()
+        }
+        // Unsaved captures are kept for a week, then dropped. Launch-time only:
+        // preview cards are in-memory, so nothing from a previous run is still
+        // in use. `sweepStaleTempFiles` clears the temp-dir backlog builds
+        // ≤ 2.14.1 left behind, before captures moved into the store.
+        Task.detached(priority: .background) {
+            CaptureStore.sweep()
+            _ = ScreenshotService.sweepStaleTempFiles()
+        }
         UNUserNotificationCenter.current().delegate = self
+        // Quitting must not orphan a live `pear clean` — least of all the
+        // privileged `--system` variant, which would keep sweeping system caches
+        // with no window, no transcript and nothing left to stop it.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [environment] _ in
+            // `queue: .main` guarantees this body runs on the main thread, so the
+            // hop is an assertion rather than a real isolation change — and it
+            // must be synchronous: a `Task` would not outlive the quit.
+            MainActor.assumeIsolated { environment.cleaner.runner.terminateForQuit() }
+        }
         panelController = PanelController(env: environment)
         // Best-effort: unsigned dev builds have no push entitlement and land in
         // didFailToRegister — that's fine, the foreground poll covers delivery.

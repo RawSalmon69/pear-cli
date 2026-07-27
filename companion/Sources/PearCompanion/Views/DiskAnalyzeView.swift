@@ -15,8 +15,12 @@ struct DiskAnalyzeView: View {
     /// The two-phase deletion pile, shared across all three modes so the pending
     /// section and "Delete all" stay consistent as the user switches views.
     @State private var staging = DiskStagingModel()
+    /// Passed in by the window controller, which cancels it on window close.
+    let scanModel: DiskScanModel
 
-    init() {}
+    init(scanModel: DiskScanModel) {
+        self.scanModel = scanModel
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
@@ -33,7 +37,8 @@ struct DiskAnalyzeView: View {
             case .bars:
                 DiskBarsView(staging: staging)
             case .sunburst, .treemap:
-                DiskChartView(style: mode == .treemap ? .treemap : .sunburst, staging: staging)
+                DiskChartView(style: mode == .treemap ? .treemap : .sunburst,
+                              staging: staging, model: scanModel)
             }
 
             Spacer(minLength: 0)

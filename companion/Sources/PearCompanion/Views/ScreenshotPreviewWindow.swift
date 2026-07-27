@@ -27,12 +27,12 @@ enum PreviewStackLayout {
     }
 }
 
-/// What the detail window needs from the card that spawned it: the full bytes,
-/// the insights, and the very same action closures, so copy / save / reveal /
-/// send have one implementation across both views.
+/// What the detail window needs from the card that spawned it: the backing
+/// file, the insights, and the very same action closures, so copy / save /
+/// reveal / send have one implementation across both views.
 @MainActor
 private struct DetailContext {
-    let imageData: Data
+    let url: URL
     let insights: ScreenshotInsights
     let canMarkup: Bool
     let canSend: Bool
@@ -54,14 +54,22 @@ private struct DetailContext {
 private final class PreviewEntry {
     let id: UUID
     let panel: NSPanel
+    /// The card's backing file. It is the card's whole state — the thumbnail is
+    /// decoded from it once and every action re-reads it — so a card whose file
+    /// has gone can do nothing and is dismissed (`dismissCards(backedBy:)`).
+    let url: URL
     let detailContext: DetailContext
     var detail: ScreenshotDetailWindowController?
     var timer: Timer?
-    var scrollAccumulator: CGFloat = 0
+    /// The scratchpad's tested swipe primitive: horizontal-dominance, momentum
+    /// suppression and one emission per physical gesture. A bare running total
+    /// fired repeatedly through a single fling and never reset on a mouse wheel.
+    var swipe = SwipeAccumulator()
 
-    init(id: UUID, panel: NSPanel, detailContext: DetailContext) {
+    init(id: UUID, panel: NSPanel, url: URL, detailContext: DetailContext) {
         self.id = id
         self.panel = panel
+        self.url = url
         self.detailContext = detailContext
     }
 }
@@ -92,13 +100,15 @@ final class ScreenshotPreviewController {
     private static let margin: CGFloat = 20
     private static let gap: CGFloat = 12
 
+    /// Shows a card for the capture at `url`. The card holds the URL and a
+    /// thumbnail, never the capture's bytes: ten 6K shots left on screen used to
+    /// pin 30–200 MB resident for as long as the user ignored them.
     func show(
-        imageData: Data,
+        url: URL,
         canMarkup: Bool,
         canSend: Bool = FeatureFlags.coupleNote,
         canSave: Bool = false,
         canRemoveBackground: Bool = true,
-        fileURL: URL? = nil,
         onCopy: @escaping () -> Void,
         onCopyText: (() -> Void)? = nil,
         onQRTap: (([String]) -> Void)? = nil,
@@ -110,10 +120,10 @@ final class ScreenshotPreviewController {
     ) {
         // ~2.4× the 208pt thumbnail — headroom for scaledToFill's crop without
         // ever inflating the full capture here.
-        guard let image = Thumbnail.image(from: imageData, maxPixel: 504) else { return }
+        guard let image = Thumbnail.image(at: url, maxPixel: 504) else { return }
 
         let id = UUID()
-        let insights = ScreenshotInsights(imageData: imageData, fileURL: fileURL)
+        let insights = ScreenshotInsights(url: url)
         let content = ScreenshotPreviewView(
             image: image,
             canMarkup: canMarkup,
@@ -164,8 +174,9 @@ final class ScreenshotPreviewController {
         let entry = PreviewEntry(
             id: id,
             panel: panel,
+            url: url,
             detailContext: DetailContext(
-                imageData: imageData,
+                url: url,
                 insights: insights,
                 canMarkup: canMarkup,
                 canSend: canSend,
@@ -209,7 +220,13 @@ final class ScreenshotPreviewController {
             return
         }
         let context = entry.detailContext
-        guard let image = NSImage(data: context.imageData) else { return }
+        guard let image = NSImage(contentsOf: context.url) else {
+            // The file went away under the card; every action it offers would
+            // fail, so say so and drop it rather than open an empty window.
+            SoundEffects.play(.discard)
+            dismiss(id: id)
+            return
+        }
         let close = { [weak entry] in entry?.detail?.close() }
         let content = ScreenshotDetailView(
             image: image,
@@ -321,6 +338,13 @@ final class ScreenshotPreviewController {
         }, completion: { [weak self] in self?.remove(entry) })
     }
 
+    /// Drops every card backed by `url`. Called when a read of that file fails:
+    /// the card can no longer copy, save, open or send, so leaving it on screen
+    /// would just offer buttons that do nothing.
+    func dismissCards(backedBy url: URL) {
+        for id in entries.filter({ $0.url == url }).map(\.id) { dismiss(id: id) }
+    }
+
     private func remove(_ entry: PreviewEntry) {
         entry.timer?.invalidate()
         entry.detail?.close()
@@ -339,6 +363,11 @@ final class ScreenshotPreviewController {
         while entries.count > maxCount {
             let victim = entries.removeLast()
             victim.timer?.invalidate()
+            // Same teardown `remove(_:)` does: the entry is the only strong
+            // holder of its detail-window controller, and `NSWindow.delegate`
+            // is weak — dropping it with the window open strands a window that
+            // nothing can close and whose `onClosed` can never fire.
+            victim.detail?.close()
             animate(0.24, { victim.panel.animator().alphaValue = 0 },
                     completion: { victim.panel.orderOut(nil) })
         }
@@ -378,16 +407,27 @@ final class ScreenshotPreviewController {
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             guard let self, let window = event.window,
                   let entry = self.entries.first(where: { $0.panel === window }) else { return event }
-            entry.scrollAccumulator += event.scrollingDeltaX
-            if abs(entry.scrollAccumulator) > 50 {
+            guard let phase = Self.swipePhase(for: event) else { return event }
+            if entry.swipe.feed(deltaX: event.scrollingDeltaX,
+                                deltaY: event.scrollingDeltaY,
+                                phase: phase) != nil {
                 self.dismiss(id: entry.id)
                 return nil
             }
-            if event.phase == .ended || event.momentumPhase == .ended {
-                entry.scrollAccumulator = 0
-            }
             return event
         }
+    }
+
+    /// `NSEvent` scroll → `SwipePhase`; `nil` for a classic mouse wheel, which
+    /// has no phase at all (so a running total never reset and drifted into a
+    /// dismissal). Swipe-to-dismiss is a trackpad gesture, same as the
+    /// scratchpad's swipe-to-switch.
+    private static func swipePhase(for event: NSEvent) -> SwipePhase? {
+        if !event.momentumPhase.isEmpty { return .momentum }
+        if event.phase.contains(.began) { return .began }
+        if event.phase.contains(.changed) { return .changed }
+        if event.phase.contains(.ended) || event.phase.contains(.cancelled) { return .ended }
+        return nil
     }
 
     // MARK: Animation
