@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import Vision
 @testable import PearCompanion
 
 /// Window-sizing clamp for the screenshot detail view.
@@ -104,6 +105,61 @@ final class ScreenshotDetailsTests: XCTestCase {
         XCTAssertEqual(details.pixelWidth, 0)
         XCTAssertEqual(details.dimensionsLabel, "0 × 0")
         XCTAssertNil(details.path)
+    }
+}
+
+/// Vision's default `recognitionLanguages` is `["en_US"]`, which returns
+/// *nothing at all* for Thai, Japanese, Korean, or Chinese — measured on
+/// macOS 26, Vision revision 3. `OCRText` therefore sets
+/// `automaticallyDetectsLanguage`, and this pins it: delete that line and these
+/// fail. A narrow explicit language list is deliberately NOT used — it drops
+/// scripts outside the list (also measured).
+final class OCRLanguageTests: XCTestCase {
+    private func render(_ text: String) throws -> CGImage {
+        let size = NSSize(width: 900, height: 200)
+        let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: Int(size.width), height: Int(size.height), bitsPerComponent: 8,
+            bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
+        context.fill(CGRect(origin: .zero, size: size))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+        NSAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: 64),
+            .foregroundColor: NSColor.black,
+        ]).draw(at: NSPoint(x: 20, y: 60))
+        NSGraphicsContext.restoreGraphicsState()
+        return try XCTUnwrap(context.makeImage())
+    }
+
+    private func skipUnlessSupported(_ language: String) throws {
+        let supported = (try? VNRecognizeTextRequest.supportedRecognitionLanguages(
+            for: .accurate, revision: VNRecognizeTextRequest.currentRevision)) ?? []
+        try XCTSkipUnless(
+            supported.contains(language),
+            "\(language) recognition unavailable on this host")
+    }
+
+    func testRecognizesThai() throws {
+        try skipUnlessSupported("th-TH")
+        let text = OCRText.recognize(in: try render("สวัสดีครับ"))
+        XCTAssertTrue(text.contains("สวัสดี"), "expected Thai text, got \(text.debugDescription)")
+    }
+
+    func testRecognizesJapanese() throws {
+        try skipUnlessSupported("ja-JP")
+        let text = OCRText.recognize(in: try render("こんにちは"))
+        XCTAssertFalse(text.isEmpty, "Japanese came back empty")
+    }
+
+    /// Scripts mixed in one shot must all survive — the common case for a
+    /// screenshot of a localized UI.
+    func testRecognizesMixedScripts() throws {
+        try skipUnlessSupported("th-TH")
+        let text = OCRText.recognize(in: try render("Hello สวัสดี"))
+        XCTAssertTrue(text.contains("Hello"), "lost the English half: \(text.debugDescription)")
+        XCTAssertTrue(text.contains("สวัสดี"), "lost the Thai half: \(text.debugDescription)")
     }
 }
 
