@@ -61,7 +61,7 @@ struct SettingsPopover: View {
                 .font(Theme.body)
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
-                .onChange(of: hdEnabled) { _, on in on ? hd.prepare() : hd.unload() }
+                .onChange(of: hdEnabled) { _, _ in hd.prepare() }
             Text(hdEnabled
                 ? "On-device AI model for remove.bg-class cutouts (hair, fine edges). One-time \(HDBackgroundModelManager.downloadSizeText) download; fully offline after."
                 : "Uses Apple's built-in cutout — instant, no download. Turn on for much sharper edges via a one-time \(HDBackgroundModelManager.downloadSizeText) model download.")
@@ -95,7 +95,7 @@ struct SettingsPopover: View {
                 Spacer()
                 Button("Remove") { hd.remove() }
                     .font(Theme.caption)
-                    .help("Delete the model and free \(HDBackgroundModelManager.downloadSizeText)")
+                    .help("Delete the model and the compiled copy beside it, freeing the disk they use")
             }
         case .failed(let message):
             VStack(alignment: .leading, spacing: 4) {

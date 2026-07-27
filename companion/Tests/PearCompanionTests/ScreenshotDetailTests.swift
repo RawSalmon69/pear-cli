@@ -463,28 +463,54 @@ final class ZoomStateMachineTests: XCTestCase {
     }
 }
 
-/// The HD background model is ~160 MB resident once loaded (measured on the
-/// owner's Mac: 177 MB total footprint with it up, ~20 MB without). Launch must
-/// therefore never load it — only note whether it is on disk.
+/// How the HD background-removal model is loaded. Measured on an M-series Mac:
+/// `MLModel.compileModel` takes 0.24s and writes a fresh **196 MB** copy into
+/// the temp directory on EVERY call, while reloading an already-compiled
+/// directory takes 0.08s. So the compile is cached on disk and the loaded model
+/// is never retained between cutouts.
 @MainActor
-final class HDModelLazyLoadTests: XCTestCase {
-    func testPreparingDoesNotLoadTheModel() {
+final class HDModelLoadingTests: XCTestCase {
+    func testPreparingNeverLoadsOrCompiles() {
         let manager = HDBackgroundModelManager.shared
 
         manager.prepare()
 
-        XCTAssertNil(manager.model, "launch must not pull 160 MB of weights into memory")
-        // Whether the model is downloaded differs per machine; either state is
-        // fine, but it must be one of the two that means "not loaded".
+        XCTAssertNotEqual(manager.state, .preparing,
+                          "launch must only stat the model, never compile or load it")
         XCTAssertTrue(manager.state == .ready || manager.state == .absent,
                       "unexpected state after prepare(): \(manager.state)")
     }
 
-    func testUnloadLeavesNothingResident() {
+    /// Skipped where the model was never downloaded (CI). Where it is present,
+    /// this is the anti-litter guarantee: two cutouts must not leave two 196 MB
+    /// compiled copies behind in the temp directory.
+    func testTheCompileIsCachedSoNoTempCopiesAccumulate() async throws {
         let manager = HDBackgroundModelManager.shared
+        try XCTSkipUnless(manager.isDownloaded, "HD model not downloaded on this machine")
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: Prefs.hdBackgroundRemovalKey)
+        defaults.set(true, forKey: Prefs.hdBackgroundRemovalKey)
+        defer {
+            if let previous { defaults.set(previous, forKey: Prefs.hdBackgroundRemovalKey) }
+            else { defaults.removeObject(forKey: Prefs.hdBackgroundRemovalKey) }
+        }
 
-        manager.unload()
+        let before = Self.tempCompiledCopies()
+        let first = await manager.prepared()
+        let second = await manager.prepared()
 
-        XCTAssertNil(manager.model, "turning the toggle off must free the weights")
+        XCTAssertNotNil(first, "the model is on disk and enabled; it must load")
+        XCTAssertNotNil(second)
+        XCTAssertFalse(first === second, "each cutout gets its own instance, so ARC can free it")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: manager.compiledDir.path),
+                      "the compile must be cached beside the download")
+        XCTAssertEqual(Self.tempCompiledCopies(), before,
+                       "a cached compile must not write another 196 MB copy into /tmp")
+    }
+
+    private static func tempCompiledCopies() -> Int {
+        let temp = FileManager.default.temporaryDirectory
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: temp.path)) ?? []
+        return names.filter { $0.hasSuffix(".mlmodelc") }.count
     }
 }

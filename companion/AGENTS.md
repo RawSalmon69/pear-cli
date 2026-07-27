@@ -162,6 +162,14 @@ maintainer before tagging.
   turn (re-entrant constraint pass crashes).
 - **Every new `NSStatusItem` needs an `autosaveName` + a right-edge position
   seed**, or the menu-bar hider's length trick eats it.
+- **Core ML numbers for BEN2, measured — do not re-guess them.** Loading the
+  compiled model plus one inference costs **+15-20 MB** of phys_footprint, NOT
+  the ~160 MB a `vmmap` MALLOC_SMALL line implies: Core ML memory-maps the fp16
+  weights, so they are clean, evictable, file-backed pages. `compileModel` costs
+  0.24s and writes a fresh **196 MB copy into the temp directory on every call**,
+  so the compile is cached in Application Support and its output MOVED there;
+  reloading from that cache is 0.08s. Consequence: the model is loaded per cutout
+  and never retained, and nothing about it is compiled or loaded at launch.
 - **HD bg model (BEN2) must load with `computeUnits = .cpuOnly`.** Verified by
   PyTorch-vs-CoreML parity: `.all`/ANE is wrong (maxΔ 0.89, 26s compile),
   `.cpuAndGPU` **miscomputes** it (NaN mask), `.cpuOnly` matches the reference

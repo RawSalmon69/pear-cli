@@ -108,10 +108,22 @@ final class BEN2Model: @unchecked Sendable {
 
 /// Opt-in manager for the high-quality background-removal model: downloads it
 /// from the project's GitHub release on request, tracks state for the settings
-/// UI, loads it lazily on the first cutout, and can delete it to reclaim the
-/// ~205MB. Loading is deferred because the compiled model is ~160 MB resident
-/// (measured) and a session that never removes a background should not pay it;
-/// the cost is ~1s on the first cutout only.
+/// UI, loads it per cutout, and can delete it to reclaim the disk.
+///
+/// The model is NEVER held between cutouts: `prepared()` hands out an instance
+/// the caller owns and ARC frees when the cutout ends. Measured on an M-series
+/// Mac, which is why this shape is cheap rather than a sacrifice:
+///  • `MLModel(contentsOf:)` from a cached compile: **0.08s**
+///  • `MLModel.compileModel`: 0.24s AND a fresh **196 MB copy into the temp
+///    directory on every call** — hence the on-disk compile cache; compiling per
+///    cutout would litter 196 MB each time
+///  • load + one inference: **+15-20 MB** of phys_footprint, not the ~160 MB a
+///    vmmap malloc line suggests. Core ML memory-maps the fp16 weights, so they
+///    are clean file-backed pages the kernel can evict, not app dirty memory.
+///    A second load+inference cycle costs the same as the first (1.7s vs 1.6s),
+///    so holding the model buys almost nothing.
+/// The launch-time compile this replaced was the real footprint cost: it churned
+/// ~196 MB through the allocator, which then sat on the freed pages.
 /// Singleton so the settings view and the (static-call) removal sites share one
 /// instance without threading it through every service.
 @MainActor
@@ -128,12 +140,6 @@ final class HDBackgroundModelManager {
     }
 
     private(set) var state: State = .absent
-    /// The loaded model, or nil when it has not been loaded yet (or was
-    /// unloaded). Sendable, so removal sites can hand it to an off-main `Task`.
-    /// Read it through `prepared()`, which loads on demand; a nil here does NOT
-    /// mean the user opted out.
-    private(set) var model: BEN2Model?
-
     /// The download's approximate size, for the opt-in notice.
     static let downloadBytes = 205 * 1024 * 1024
     static var downloadSizeText: String {
@@ -168,45 +174,49 @@ final class HDBackgroundModelManager {
         return size == Self.weightsBytes
     }
 
+    /// The compiled model, kept beside the download. `MLModel.compileModel`
+    /// writes a **fresh 196 MB copy into the temp directory on every call**
+    /// (measured), so compiling per cutout would litter ~196 MB each time.
+    /// Compiled once and moved here, a reload costs 0.08s against 0.24s + a full
+    /// copy (both measured on an M-series Mac).
+    var compiledDir: URL {
+        modelDir.deletingLastPathComponent()
+            .appendingPathComponent("BEN2-matting-1024.mlmodelc", isDirectory: true)
+    }
+
     /// Reflects whether the model is on disk. Deliberately does NOT load it:
-    /// the compiled model is ~160 MB resident, and most sessions never remove a
-    /// single background, so loading waits for the first cutout (`prepared()`).
-    /// Cheap enough to call on launch — it stats one file.
+    /// loaded weights are ~160 MB resident, and the app must not hold that
+    /// between cutouts. Cheap enough to call on launch — it stats one file.
     func prepare() {
         guard loadTask == nil else { return } // a load in flight owns `state`
         state = isDownloaded ? .ready : .absent
     }
 
-    /// The model for a cutout, loaded on first use. nil ⇒ the caller falls back
-    /// to Apple Vision, which is the intended behaviour when the user has not
-    /// opted in or nothing is downloaded.
+    /// A model for ONE cutout. Nothing is cached: the caller's reference is the
+    /// only one, so ARC frees the ~160 MB of weights the moment that cutout
+    /// finishes. That is deliberate (owner's call) — a menu-bar app should not
+    /// sit on a neural network between uses, and reloading is 0.08s once the
+    /// compile is cached. nil ⇒ the caller falls back to Apple Vision, which is
+    /// correct when the user has not opted in or nothing is downloaded.
     func prepared() async -> BEN2Model? {
         guard Prefs.hdBackgroundRemoval, isDownloaded else { return nil }
-        if let model { return model }
         return await load()
     }
 
-    /// Drops the compiled model, keeping the download. Turning High-quality mode
-    /// off used to leave the whole ~160 MB resident until the next launch.
-    func unload() {
-        model = nil
-        guard loadTask == nil else { return }
-        state = isDownloaded ? .ready : .absent
-    }
-
-    /// In-flight load, so two cutouts started at once compile once and both wait
-    /// on the same result.
+    /// In-flight load, so two cutouts started at once load once and both wait on
+    /// the same result rather than pulling two copies into memory.
     private var loadTask: Task<BEN2Model?, Never>?
 
     private func load() async -> BEN2Model? {
         if let loadTask { return await loadTask.value }
         state = .preparing
         let dir = modelDir
+        let cache = compiledDir
         // Build the Sendable BEN2Model wrapper inside the detached task —
         // MLModel itself isn't Sendable, so it must not cross the boundary.
         let task = Task<BEN2Model?, Never> {
             await Task.detached(priority: .userInitiated) {
-                guard let url = try? MLModel.compileModel(at: dir) else { return nil }
+                guard let url = Self.compiled(package: dir, cache: cache) else { return nil }
                 let cfg = MLModelConfiguration()
                 // CPU-only, deliberately. Verified by PyTorch-vs-Core ML parity
                 // on this BEN2 model:
@@ -216,31 +226,54 @@ final class HDBackgroundModelManager {
                 // CPU is the reference backend here: correct and fast. Same
                 // pattern as the old RMBG model — do not "optimize" to ANE/GPU.
                 cfg.computeUnits = .cpuOnly
-                guard let m = try? MLModel(contentsOf: url, configuration: cfg) else { return nil }
+                if let m = try? MLModel(contentsOf: url, configuration: cfg) {
+                    return BEN2Model(model: m)
+                }
+                // A cached compile can go stale — a macOS update can change the
+                // format. Drop it and compile once more rather than silently
+                // falling back to Vision for the rest of the install's life.
+                guard url == cache else { return nil }
+                try? FileManager.default.removeItem(at: cache)
+                guard let fresh = Self.compiled(package: dir, cache: cache),
+                      let m = try? MLModel(contentsOf: fresh, configuration: cfg) else { return nil }
                 return BEN2Model(model: m)
             }.value
         }
         loadTask = task
         let built = await task.value
         loadTask = nil
-        // Compiling takes about a second, and the user can turn the toggle off
-        // or press Remove inside it. Re-check the preconditions rather than
-        // resurrecting weights they just asked to be rid of.
+        // Loading takes a moment, and the user can turn the toggle off or press
+        // Remove inside it. Re-check rather than handing back weights they just
+        // asked to be rid of.
         guard Prefs.hdBackgroundRemoval, isDownloaded else {
             state = isDownloaded ? .ready : .absent
             return nil
         }
-        if let built {
-            model = built
-            state = .ready
-        } else {
-            state = .failed("Could not load the model.")
-        }
+        state = built == nil ? .failed("Could not load the model.") : .ready
         return built
     }
 
+    /// The compiled model directory, compiling once if it isn't there yet.
+    /// `compileModel` always writes to a NEW temp directory, so its output is
+    /// moved into the cache; left alone it accumulates ~196 MB per compile.
+    nonisolated private static func compiled(package: URL, cache: URL) -> URL? {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: cache.path) { return cache }
+        guard let temp = try? MLModel.compileModel(at: package) else { return nil }
+        do {
+            try fm.createDirectory(at: cache.deletingLastPathComponent(),
+                                   withIntermediateDirectories: true)
+            try fm.moveItem(at: temp, to: cache)
+            return cache
+        } catch {
+            // Could not cache it (disk full, or another load won the race and
+            // put it there first). Loading from the temp copy still works.
+            return fm.fileExists(atPath: cache.path) ? cache : temp
+        }
+    }
+
     /// Downloads the model files from GitHub with progress, verifies the
-    /// weights size, then compiles. Safe to call repeatedly.
+    /// weights size, then reflects readiness. Safe to call repeatedly.
     func download() {
         guard downloadTask == nil else { return }
         state = .downloading(0)
@@ -282,11 +315,13 @@ final class HDBackgroundModelManager {
         return "\(fmt.string(fromByteCount: done)) of \(fmt.string(fromByteCount: Self.weightsBytes))"
     }
 
-    /// Deletes the on-disk model and drops the loaded one, reclaiming the space.
+    /// Deletes the download AND the compiled copy beside it. Nothing to unload:
+    /// no model is ever held between cutouts, so a cutout in flight simply keeps
+    /// the instance it already has and the next one falls back to Vision.
     func remove() {
         downloadTask?.cancel(); downloadTask = nil
-        model = nil
         try? FileManager.default.removeItem(at: modelDir)
+        try? FileManager.default.removeItem(at: compiledDir)
         state = .absent
     }
 
