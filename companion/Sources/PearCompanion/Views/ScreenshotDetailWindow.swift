@@ -257,10 +257,12 @@ struct ScreenshotDetailView: View {
     private var colorSection: some View {
         DetailSection(
             title: "Colors",
-            subtitle: copiedValue.map { "\($0) copied" } ?? (zoom.isPicking ? "click the shot" : nil),
+            subtitle: zoom.isPicking
+                ? "click a pixel"
+                : copiedValue.map { "\($0) copied" },
             action: DetailSection.Action(
                 symbol: zoom.isPicking ? "eyedropper.halffull" : "eyedropper",
-                help: zoom.isPicking ? "Stop picking" : "Pick a color from the shot",
+                help: zoom.isPicking ? "Cancel" : "Pick a color from the shot",
                 run: { zoom.isPicking.toggle() }
             )
         ) {
@@ -580,6 +582,9 @@ final class ZoomableImageScrollView: NSScrollView {
         guard controller?.isPicking == true,
               let document = documentView,
               let image = sourceImage else { return }
+        // One pick per arming: the eyedropper disarms itself rather than
+        // leaving a mode running that the user has to remember to switch off.
+        defer { controller?.isPicking = false }
         let point = document.convert(sender.location(in: self), from: self)
         let scaleX = CGFloat(image.width) / document.bounds.width
         let scaleY = CGFloat(image.height) / document.bounds.height
