@@ -21,14 +21,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         runSettingsMigrations()
-        // If High-quality mode is on AND the model is already downloaded, compile
-        // it now so the first cutout is instant; no-op (and no download)
-        // otherwise. Gated on the pref: compiling and holding a 205 MB Core ML
-        // model resident at every launch for a feature the user turned off is
-        // pure footprint. Flipping the toggle on calls `prepare()` itself.
-        if Prefs.hdBackgroundRemoval {
-            HDBackgroundModelManager.shared.prepare()
-        }
+        // Notes whether the HD model is on disk, for the settings UI. It is NOT
+        // loaded here: compiled, it is ~160 MB resident for a feature most
+        // sessions never touch, so the first cutout loads it (`prepared()`).
+        HDBackgroundModelManager.shared.prepare()
         // Unsaved captures are kept for a week, then dropped. Launch-time only:
         // preview cards are in-memory, so nothing from a previous run is still
         // in use. `sweepStaleTempFiles` clears the temp-dir backlog builds

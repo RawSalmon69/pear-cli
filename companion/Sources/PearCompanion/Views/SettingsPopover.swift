@@ -61,7 +61,7 @@ struct SettingsPopover: View {
                 .font(Theme.body)
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
-                .onChange(of: hdEnabled) { _, on in if on { hd.prepare() } }
+                .onChange(of: hdEnabled) { _, on in on ? hd.prepare() : hd.unload() }
             Text(hdEnabled
                 ? "On-device AI model for remove.bg-class cutouts (hair, fine edges). One-time \(HDBackgroundModelManager.downloadSizeText) download; fully offline after."
                 : "Uses Apple's built-in cutout — instant, no download. Turn on for much sharper edges via a one-time \(HDBackgroundModelManager.downloadSizeText) model download.")

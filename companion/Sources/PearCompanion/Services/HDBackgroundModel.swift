@@ -108,7 +108,10 @@ final class BEN2Model: @unchecked Sendable {
 
 /// Opt-in manager for the high-quality background-removal model: downloads it
 /// from the project's GitHub release on request, tracks state for the settings
-/// UI, compiles it once per launch, and can delete it to reclaim the ~205MB.
+/// UI, loads it lazily on the first cutout, and can delete it to reclaim the
+/// ~205MB. Loading is deferred because the compiled model is ~160 MB resident
+/// (measured) and a session that never removes a background should not pay it;
+/// the cost is ~1s on the first cutout only.
 /// Singleton so the settings view and the (static-call) removal sites share one
 /// instance without threading it through every service.
 @MainActor
@@ -125,8 +128,10 @@ final class HDBackgroundModelManager {
     }
 
     private(set) var state: State = .absent
-    /// Compiled model when ready+enabled, else nil. Sendable, so removal sites
-    /// can hand it to an off-main `Task`. nil ⇒ callers use the Vision fallback.
+    /// The loaded model, or nil when it has not been loaded yet (or was
+    /// unloaded). Sendable, so removal sites can hand it to an off-main `Task`.
+    /// Read it through `prepared()`, which loads on demand; a nil here does NOT
+    /// mean the user opted out.
     private(set) var model: BEN2Model?
 
     /// The download's approximate size, for the opt-in notice.
@@ -163,28 +168,44 @@ final class HDBackgroundModelManager {
         return size == Self.weightsBytes
     }
 
-    /// Called on launch and when the toggle flips on: if downloaded, compile the
-    /// model off-main and go ready; else reflect absence. No-op if already busy.
+    /// Reflects whether the model is on disk. Deliberately does NOT load it:
+    /// the compiled model is ~160 MB resident, and most sessions never remove a
+    /// single background, so loading waits for the first cutout (`prepared()`).
+    /// Cheap enough to call on launch — it stats one file.
     func prepare() {
-        if isDownloaded {
-            if model == nil { compile() } else { state = .ready }
-        } else {
-            state = .absent
-        }
+        guard loadTask == nil else { return } // a load in flight owns `state`
+        state = isDownloaded ? .ready : .absent
     }
 
-    private func compile() {
-        // Guard only against a re-entrant compile (already preparing). It MUST
-        // run from the download-completion path, where state is still
-        // .downloading(1.0) — guarding on .downloading there left the model
-        // downloaded-but-never-activated (stuck on a full bar).
-        if case .preparing = state { return }
+    /// The model for a cutout, loaded on first use. nil ⇒ the caller falls back
+    /// to Apple Vision, which is the intended behaviour when the user has not
+    /// opted in or nothing is downloaded.
+    func prepared() async -> BEN2Model? {
+        guard Prefs.hdBackgroundRemoval, isDownloaded else { return nil }
+        if let model { return model }
+        return await load()
+    }
+
+    /// Drops the compiled model, keeping the download. Turning High-quality mode
+    /// off used to leave the whole ~160 MB resident until the next launch.
+    func unload() {
+        model = nil
+        guard loadTask == nil else { return }
+        state = isDownloaded ? .ready : .absent
+    }
+
+    /// In-flight load, so two cutouts started at once compile once and both wait
+    /// on the same result.
+    private var loadTask: Task<BEN2Model?, Never>?
+
+    private func load() async -> BEN2Model? {
+        if let loadTask { return await loadTask.value }
         state = .preparing
         let dir = modelDir
-        Task { [weak self] in
-            // Build the Sendable BEN2Model wrapper inside the detached task —
-            // MLModel itself isn't Sendable, so it must not cross the boundary.
-            let built: BEN2Model? = await Task.detached(priority: .userInitiated) {
+        // Build the Sendable BEN2Model wrapper inside the detached task —
+        // MLModel itself isn't Sendable, so it must not cross the boundary.
+        let task = Task<BEN2Model?, Never> {
+            await Task.detached(priority: .userInitiated) {
                 guard let url = try? MLModel.compileModel(at: dir) else { return nil }
                 let cfg = MLModelConfiguration()
                 // CPU-only, deliberately. Verified by PyTorch-vs-Core ML parity
@@ -198,14 +219,24 @@ final class HDBackgroundModelManager {
                 guard let m = try? MLModel(contentsOf: url, configuration: cfg) else { return nil }
                 return BEN2Model(model: m)
             }.value
-            guard let self else { return }
-            if let built {
-                self.model = built
-                self.state = .ready
-            } else {
-                self.state = .failed("Could not load the model.")
-            }
         }
+        loadTask = task
+        let built = await task.value
+        loadTask = nil
+        // Compiling takes about a second, and the user can turn the toggle off
+        // or press Remove inside it. Re-check the preconditions rather than
+        // resurrecting weights they just asked to be rid of.
+        guard Prefs.hdBackgroundRemoval, isDownloaded else {
+            state = isDownloaded ? .ready : .absent
+            return nil
+        }
+        if let built {
+            model = built
+            state = .ready
+        } else {
+            state = .failed("Could not load the model.")
+        }
+        return built
     }
 
     /// Downloads the model files from GitHub with progress, verifies the
@@ -236,7 +267,8 @@ final class HDBackgroundModelManager {
             await MainActor.run {
                 self?.downloadTask = nil
                 guard let self else { return }
-                if self.isDownloaded { self.compile() }
+                // Downloaded, not loaded: the first cutout compiles it.
+                if self.isDownloaded { self.prepare() }
                 else { self.state = .failed("The download was incomplete."); try? FileManager.default.removeItem(at: dir) }
             }
         }
@@ -256,11 +288,6 @@ final class HDBackgroundModelManager {
         model = nil
         try? FileManager.default.removeItem(at: modelDir)
         state = .absent
-    }
-
-    /// The model to use right now: only when the user opted in AND it's ready.
-    var activeModel: BEN2Model? {
-        (Prefs.hdBackgroundRemoval && state == .ready) ? model : nil
     }
 
     // MARK: - Download plumbing

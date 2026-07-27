@@ -45,9 +45,9 @@ final class BackgroundRemoverModel {
     private func process(_ data: Data) {
         state = .working
         cutout = nil; cutoutData = nil; savedURL = nil
-        let hd = HDBackgroundModelManager.shared.activeModel
-        usedHD = hd != nil
         Task { [weak self] in
+            let hd = await HDBackgroundModelManager.shared.prepared()
+            self?.usedHD = hd != nil
             let out = await Task.detached(priority: .userInitiated) {
                 BackgroundRemovalService.cutout(imageData: data, using: hd)
             }.value

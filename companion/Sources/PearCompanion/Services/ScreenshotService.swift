@@ -364,8 +364,9 @@ final class ScreenshotService {
     /// original and re-show it.
     private func removeBackground(at fileURL: URL) {
         guard let data = bytes(at: fileURL) else { return }
-        let hd = HDBackgroundModelManager.shared.activeModel
         Task { @MainActor in
+            // Loads the HD model on first use; nil falls back to Apple Vision.
+            let hd = await HDBackgroundModelManager.shared.prepared()
             let cutout = await Task.detached(priority: .userInitiated) {
                 BackgroundRemovalService.cutout(imageData: data, using: hd)
             }.value

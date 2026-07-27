@@ -360,3 +360,131 @@ final class ZoomFitTargetTests: XCTestCase {
         XCTAssertNil(fit(viewport: .zero, document: CGSize(width: 100, height: 100)))
     }
 }
+
+/// The live zoom state machine, driven the way AppKit drives it. `fitTarget` is
+/// pure arithmetic and was already covered; what was NOT covered is when the
+/// auto-fit is allowed to run, which is where "my zoom doesn't stick" lives.
+@MainActor
+final class ZoomStateMachineTests: XCTestCase {
+    private func scrollView(document: NSSize, viewport: NSSize) -> ZoomableImageScrollView {
+        let scrollView = ZoomableImageScrollView(frame: NSRect(origin: .zero, size: viewport))
+        let clip = CenteringClipView()
+        clip.drawsBackground = false
+        scrollView.contentView = clip
+        scrollView.documentView = NSView(frame: NSRect(origin: .zero, size: document))
+        scrollView.allowsMagnification = true
+        scrollView.maxMagnification = 16
+        return scrollView
+    }
+
+    /// `layout()` defers its fit by a runloop turn, so the test has to let that
+    /// turn happen before asserting.
+    private func settle() {
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    }
+
+    func testFirstLayoutFitsTheImage() {
+        let scrollView = self.scrollView(document: NSSize(width: 6016, height: 3384),
+                                        viewport: NSSize(width: 1200, height: 700))
+        scrollView.layout()
+        settle()
+
+        XCTAssertEqual(scrollView.magnification, 1200.0 / 6016.0, accuracy: 0.001)
+    }
+
+    /// ⌘-scroll and two-finger magnify-by-scroll do NOT go through
+    /// `magnify(with:)` — AppKit changes `magnification` from `scrollWheel`. So
+    /// nothing marks the zoom as user-owned, and the next layout pass throws it
+    /// away. From the user's side the gesture simply does not take.
+    func testACommandScrollZoomSurvivesTheNextLayoutPass() {
+        let scrollView = self.scrollView(document: NSSize(width: 6016, height: 3384),
+                                        viewport: NSSize(width: 1200, height: 700))
+        scrollView.layout()
+        settle()
+
+        scrollView.magnification = 1.0 // what ⌘-scroll leaves behind
+        scrollView.layout()
+        settle()
+
+        XCTAssertEqual(scrollView.magnification, 1.0, accuracy: 0.001,
+                       "a zoom the user asked for must not be undone by a relayout")
+    }
+
+    /// The ownership guard specifically: a resize is a real geometry change, so
+    /// the geometry guard lets it through, and only "does the magnification still
+    /// match the fit we applied?" stops the user's scroll zoom being discarded.
+    func testAResizeDoesNotUndoAScrollWheelZoom() {
+        let scrollView = self.scrollView(document: NSSize(width: 6016, height: 3384),
+                                        viewport: NSSize(width: 1200, height: 700))
+        scrollView.layout()
+        settle()
+
+        scrollView.magnification = 1.0 // ⌘-scroll, never sees magnify(with:)
+        scrollView.setFrameSize(NSSize(width: 1000, height: 600))
+        scrollView.layout()
+        settle()
+
+        XCTAssertEqual(scrollView.magnification, 1.0, accuracy: 0.001,
+                       "resizing the window must not discard a deliberate zoom")
+    }
+
+    /// The other side of that guard: while the user has NOT zoomed, a resize
+    /// should still re-fit. This is the behaviour the guards must not break.
+    func testAResizeStillRefitsWhenTheUserHasNotZoomed() {
+        let scrollView = self.scrollView(document: NSSize(width: 6016, height: 3384),
+                                        viewport: NSSize(width: 1200, height: 700))
+        scrollView.layout()
+        settle()
+
+        scrollView.setFrameSize(NSSize(width: 600, height: 350))
+        scrollView.layout()
+        settle()
+
+        XCTAssertEqual(scrollView.magnification, 600.0 / 6016.0, accuracy: 0.001,
+                       "an unzoomed image should keep fitting the window")
+    }
+
+    /// A layout pass with unchanged geometry has no fitting to do. Re-fitting
+    /// anyway calls back into the controller, which invalidates the SwiftUI body
+    /// that owns the readout, which lays out again.
+    func testRepeatedLayoutAtTheSameSizeDoesNotKeepRefitting() {
+        let scrollView = self.scrollView(document: NSSize(width: 6016, height: 3384),
+                                        viewport: NSSize(width: 1200, height: 700))
+        scrollView.layout()
+        settle()
+        let fits = scrollView.fitCount
+
+        for _ in 0..<5 {
+            scrollView.layout()
+            settle()
+        }
+
+        XCTAssertEqual(scrollView.fitCount, fits, "nothing changed; nothing to re-fit")
+    }
+}
+
+/// The HD background model is ~160 MB resident once loaded (measured on the
+/// owner's Mac: 177 MB total footprint with it up, ~20 MB without). Launch must
+/// therefore never load it — only note whether it is on disk.
+@MainActor
+final class HDModelLazyLoadTests: XCTestCase {
+    func testPreparingDoesNotLoadTheModel() {
+        let manager = HDBackgroundModelManager.shared
+
+        manager.prepare()
+
+        XCTAssertNil(manager.model, "launch must not pull 160 MB of weights into memory")
+        // Whether the model is downloaded differs per machine; either state is
+        // fine, but it must be one of the two that means "not loaded".
+        XCTAssertTrue(manager.state == .ready || manager.state == .absent,
+                      "unexpected state after prepare(): \(manager.state)")
+    }
+
+    func testUnloadLeavesNothingResident() {
+        let manager = HDBackgroundModelManager.shared
+
+        manager.unload()
+
+        XCTAssertNil(manager.model, "turning the toggle off must free the weights")
+    }
+}

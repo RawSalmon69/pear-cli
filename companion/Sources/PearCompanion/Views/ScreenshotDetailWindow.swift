@@ -404,7 +404,15 @@ final class ZoomController {
     }
 
     fileprivate func report(_ magnification: CGFloat) {
-        percent = max(1, Int((magnification * 100).rounded()))
+        let value = max(1, Int((magnification * 100).rounded()))
+        // Observation does NOT compare before notifying, so writing the same
+        // value still invalidates every view that reads it — here, the whole
+        // detail window, including the sidebar's full OCR text and palette. A
+        // pinch delivers events far faster than the readout can change, so
+        // without this the window re-rendered itself dozens of times per second
+        // mid-gesture, on the same main thread the gesture is delivered on.
+        guard value != percent else { return }
+        percent = value
     }
 }
 
@@ -514,6 +522,9 @@ final class ZoomableImageScrollView: NSScrollView {
 
     private var didFit = false
     private var fitMagnification: CGFloat = 1
+    /// Viewport the last fit was computed for. A layout pass that did not change
+    /// the viewport has nothing to fit.
+    private var lastFitViewport: NSSize = .zero
     /// Once the user zooms deliberately, a window resize must not yank them
     /// back to fit.
     private var userAdjusted = false
@@ -521,8 +532,24 @@ final class ZoomableImageScrollView: NSScrollView {
     override func layout() {
         super.layout()
         guard bounds.width > 1, documentView != nil else { return }
-        guard !didFit || !userAdjusted else { return }
+        if didFit {
+            // An unchanged viewport has nothing to fit, and re-fitting anyway is
+            // not free: the fit reports to the zoom controller, whose `percent`
+            // the hosting SwiftUI body reads, so the readout invalidates the
+            // view tree that lays this view out. Measured before this guard: six
+            // fits for six layout passes, forever, while the window sat idle.
+            guard bounds.size != lastFitViewport else { return }
+            // Whether the user owns the zoom cannot be tracked by intercepting
+            // gestures alone: ⌘-scroll and two-finger magnify-by-scroll are
+            // handled inside AppKit's `scrollWheel` and never reach
+            // `magnify(with:)`, so `userAdjusted` missed them and the next
+            // layout pass silently threw their zoom away — the gesture looked
+            // like it had not registered. Comparing against the fit actually
+            // applied catches every path, including ones added later.
+            guard !userAdjusted, abs(magnification - fitMagnification) < 0.001 else { return }
+        }
         didFit = true
+        lastFitViewport = bounds.size
         // Deferred: never change scroll geometry inside the layout pass that
         // asked for it (the re-entrant-constraint rule this app learned the
         // hard way with its panels).
@@ -533,6 +560,7 @@ final class ZoomableImageScrollView: NSScrollView {
     func resetFit() {
         didFit = false
         userAdjusted = false
+        lastFitViewport = .zero
         needsLayout = true
     }
 
@@ -550,7 +578,13 @@ final class ZoomableImageScrollView: NSScrollView {
         return target
     }
 
+    /// How many times the auto-fit has actually run. Only meaningful to tests,
+    /// where "did a layout pass quietly reset the user's zoom?" is otherwise
+    /// invisible.
+    private(set) var fitCount = 0
+
     func fitToWindow(animated: Bool) {
+        fitCount += 1
         guard let document = documentView, document.bounds.width > 0,
               let target = Self.fitTarget(viewport: bounds.size, document: document.bounds.size)
         else { return }
