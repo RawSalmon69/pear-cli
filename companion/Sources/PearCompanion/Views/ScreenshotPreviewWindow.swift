@@ -157,7 +157,7 @@ final class ScreenshotPreviewController {
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        let host = NSHostingView(rootView: content)
+        let host = PreviewHostingView(rootView: content)
         host.clipToCard(radius: 12)
         panel.contentView = host
 
@@ -409,6 +409,14 @@ final class ScreenshotPreviewController {
 /// Borderless panels refuse key status by default; buttons need it.
 private final class NonActivatingPanel: NSPanel {
     override var canBecomeKey: Bool { true }
+}
+
+/// A non-activating panel eats the first click to take key status, so opening
+/// the detail view took two clicks — one to wake the card, one to hit it. First
+/// mouse goes straight through to the content, same fix the companion panel and
+/// the shelf already carry.
+private final class PreviewHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 /// A sleek CleanShot-style card: just the thumbnail at rest; a slim icon-only

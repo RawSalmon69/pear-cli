@@ -103,11 +103,17 @@ struct ScreenshotDetailView: View {
     let onRemoveBackground: () -> Void
     let onSend: () -> Void
 
+    @State private var zoom = ZoomController()
+    @State private var picked: PickedColor?
+    @State private var copiedValue: String?
+    @State private var copiedResetToken = 0
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                ZoomableImage(image: image)
+                ZoomableImage(image: image, controller: zoom)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay(alignment: .bottomLeading) { zoomBar }
                 Divider()
                 sidebar
                     .frame(width: ScreenshotDetailLayout.sidebarWidth)
@@ -117,6 +123,53 @@ struct ScreenshotDetailView: View {
         }
         .frame(minWidth: ScreenshotDetailLayout.minimum.width,
                minHeight: ScreenshotDetailLayout.minimum.height)
+        .onAppear {
+            zoom.onPick = { color in
+                picked = color
+                copy(color)
+            }
+        }
+    }
+
+    /// Zoom chrome over the image's bottom-left: out / readout / in, then fit
+    /// and 1:1. ⌘−, ⌘+ and ⌘0 do the same from the keyboard.
+    private var zoomBar: some View {
+        HStack(spacing: 2) {
+            ZoomButton(symbol: "minus.magnifyingglass", help: "Zoom out", action: zoom.zoomOut)
+                .keyboardShortcut("-", modifiers: .command)
+            Text("\(zoom.percent)%")
+                .font(Theme.caption)
+                .monospacedDigit()
+                .frame(width: 46)
+            ZoomButton(symbol: "plus.magnifyingglass", help: "Zoom in", action: zoom.zoomIn)
+                .keyboardShortcut("+", modifiers: .command)
+            Divider().frame(height: 14)
+            ZoomButton(symbol: "arrow.up.left.and.arrow.down.right", help: "Fit", action: zoom.fit)
+                .keyboardShortcut("0", modifiers: .command)
+            ZoomButton(symbol: "1.magnifyingglass", help: "Actual size", action: zoom.actualSize)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
+        .padding(12)
+    }
+
+    /// Copies a color in the user's chosen format and flashes a confirmation —
+    /// the palette used to copy silently, which reads as "nothing happened".
+    private func copy(_ color: PickedColor) {
+        let value = Prefs.colorFormat.value(for: color)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
+        SoundEffects.play(.copy)
+        withAnimation(.easeOut(duration: 0.12)) { copiedValue = value }
+        copiedResetToken += 1
+        let token = copiedResetToken
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            guard token == copiedResetToken else { return }
+            withAnimation(.easeOut(duration: 0.2)) { copiedValue = nil }
+        }
     }
 
     private var sidebar: some View {
@@ -127,7 +180,7 @@ struct ScreenshotDetailView: View {
                 // see that recognition is still running rather than missing.
                 textSection
                 if !insights.payloads.isEmpty { qrSection }
-                if !insights.colors.isEmpty { colorSection }
+                colorSection
                 detailSection
             }
             .padding(14)
@@ -199,37 +252,75 @@ struct ScreenshotDetailView: View {
         }
     }
 
+    /// Palette plus the eyedropper's pick. Clicking any swatch copies it in the
+    /// user's chosen format and says so.
     private var colorSection: some View {
-        DetailSection(title: "Colors") {
-            HStack(spacing: 6) {
-                ForEach(insights.colors, id: \.self) { swatch in
-                    Button {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(swatch.hex, forType: .string)
-                        SoundEffects.play(.copy)
-                    } label: {
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(swatch.color)
-                            .frame(width: 30, height: 24)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .strokeBorder(.white.opacity(0.15), lineWidth: 0.5)
-                            }
+        DetailSection(
+            title: "Colors",
+            subtitle: copiedValue.map { "\($0) copied" } ?? (zoom.isPicking ? "click the shot" : nil),
+            action: DetailSection.Action(
+                symbol: zoom.isPicking ? "eyedropper.halffull" : "eyedropper",
+                help: zoom.isPicking ? "Stop picking" : "Pick a color from the shot",
+                run: { zoom.isPicking.toggle() }
+            )
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                if let picked {
+                    HStack(spacing: 8) {
+                        Swatch(color: picked, size: CGSize(width: 44, height: 26),
+                               copied: copiedValue == Prefs.colorFormat.value(for: picked)) {
+                            copy(picked)
+                        }
+                        Text(Prefs.colorFormat.value(for: picked))
+                            .font(Theme.body)
+                            .monospacedDigit()
+                            .textSelection(.enabled)
                     }
-                    .buttonStyle(.plain)
-                    .focusable(false)
-                    .help("Copy \(swatch.hex)")
+                }
+                if insights.colors.isEmpty {
+                    if insights.isScanning {
+                        Text("Reading colors…").font(Theme.body).foregroundStyle(.secondary)
+                    }
+                } else {
+                    HStack(spacing: 6) {
+                        ForEach(insights.colors) { swatch in
+                            Swatch(color: swatch, size: CGSize(width: 30, height: 24),
+                                   copied: copiedValue == Prefs.colorFormat.value(for: swatch)) {
+                                copy(swatch)
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
     private var detailSection: some View {
-        DetailSection(title: "Details") {
+        let details = insights.details
+        return DetailSection(title: "Details") {
             VStack(alignment: .leading, spacing: 4) {
-                DetailRow(label: "Size", value: insights.details.dimensionsLabel)
-                DetailRow(label: "File", value: "\(insights.details.format) · \(insights.details.sizeLabel)")
-                DetailRow(label: "Taken", value: insights.details.timeLabel)
+                DetailRow(label: "Dimensions", value: details.dimensionsLabel)
+                if let megapixels = details.megapixelsLabel {
+                    DetailRow(label: "Pixels", value: megapixels)
+                }
+                if let aspect = details.aspectLabel {
+                    DetailRow(label: "Aspect", value: aspect)
+                }
+                DetailRow(label: "File", value: "\(details.format) · \(details.sizeLabel)")
+                if let color = details.colorLabel {
+                    DetailRow(label: "Color", value: color)
+                }
+                if details.dpi > 0 {
+                    DetailRow(
+                        label: "Resolution",
+                        value: [String(details.dpi) + " dpi", details.scaleLabel]
+                            .compactMap { $0 }.joined(separator: " · "))
+                }
+                DetailRow(label: "Alpha", value: details.hasAlpha ? "Yes" : "No")
+                DetailRow(label: "Taken", value: details.timeLabel)
+                if let name = details.fileName {
+                    DetailRow(label: "Name", value: name)
+                }
                 if let path = insights.details.path {
                     Button(action: onReveal) {
                         Text(path)
@@ -273,12 +364,40 @@ struct ScreenshotDetailView: View {
     }
 }
 
+/// Bridge between the SwiftUI chrome (zoom buttons, ⌘+/⌘−/⌘0, the eyedropper
+/// toggle) and the AppKit scroll view that does the actual zooming.
+@MainActor
+@Observable
+final class ZoomController {
+    /// Current magnification as a percentage of actual size, for the readout.
+    private(set) var percent: Int = 100
+    /// While true, a click samples the pixel under the cursor instead of doing
+    /// nothing, and the cursor becomes a crosshair.
+    var isPicking = false {
+        didSet { scrollView?.refreshCursor(picking: isPicking) }
+    }
+    /// Called with the sampled color when the eyedropper is used.
+    @ObservationIgnored var onPick: ((PickedColor) -> Void)?
+
+    @ObservationIgnored weak var scrollView: ZoomableImageScrollView?
+
+    func zoomIn() { scrollView?.step(by: 1.4) }
+    func zoomOut() { scrollView?.step(by: 1 / 1.4) }
+    func fit() { scrollView?.fitToWindow(animated: true) }
+    func actualSize() { scrollView?.setMagnification(1, animated: true) }
+
+    fileprivate func report(_ magnification: CGFloat) {
+        percent = max(1, Int((magnification * 100).rounded()))
+    }
+}
+
 /// The shot, zoomable the way macOS zooms: an `NSScrollView` with magnification
-/// on, which is what Preview and Quick Look use. Pinch, ⌘-scroll, and two-finger
+/// on, which is what Preview and Quick Look use. Pinch, ⌘-scroll and two-finger
 /// pan all come from AppKit; double-click toggles fit ↔ 100%. No custom gesture
-/// math — the system path already handles trackpad, mouse, and accessibility.
+/// math — the system path already handles trackpad, mouse and accessibility.
 struct ZoomableImage: NSViewRepresentable {
     let image: NSImage
+    let controller: ZoomController
 
     /// True pixels where the bitmap knows them; a Retina PNG reports half-size
     /// `NSImage.size`, and zooming should reach the real resolution.
@@ -296,68 +415,179 @@ struct ZoomableImage: NSViewRepresentable {
         imageView.image = image
         imageView.frame = NSRect(origin: .zero, size: pixelSize)
 
+        // Centering clip view: without it a fitted shot sits in the bottom-left
+        // corner of the viewport instead of the middle, which is most of what
+        // made zooming feel wrong.
+        let clipView = CenteringClipView()
+        clipView.drawsBackground = false
+        scrollView.contentView = clipView
         scrollView.documentView = imageView
         scrollView.allowsMagnification = true
-        scrollView.minMagnification = 0.02
-        scrollView.maxMagnification = 8
+        scrollView.maxMagnification = 16
         scrollView.hasHorizontalScroller = true
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
-        scrollView.contentView.drawsBackground = false
+        // Free two-axis panning; the default snaps to whichever axis you
+        // started on, which fights a diagonal drag around a zoomed shot.
+        scrollView.usesPredominantAxisScrolling = false
+        scrollView.sourceImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        scrollView.controller = controller
+        controller.scrollView = scrollView
 
         let doubleClick = NSClickGestureRecognizer(
-            target: scrollView, action: #selector(ZoomableImageScrollView.toggleZoom(_:)))
+            target: scrollView, action: #selector(ZoomableImageScrollView.handleDoubleClick(_:)))
         doubleClick.numberOfClicksRequired = 2
         scrollView.addGestureRecognizer(doubleClick)
+
+        let click = NSClickGestureRecognizer(
+            target: scrollView, action: #selector(ZoomableImageScrollView.handleClick(_:)))
+        click.numberOfClicksRequired = 1
+        scrollView.addGestureRecognizer(click)
         return scrollView
     }
 
     func updateNSView(_ scrollView: ZoomableImageScrollView, context: Context) {
-        guard let imageView = scrollView.documentView as? NSImageView else { return }
-        guard imageView.image !== image else { return }
+        guard let imageView = scrollView.documentView as? NSImageView,
+              imageView.image !== image else { return }
         imageView.image = image
         imageView.frame = NSRect(origin: .zero, size: pixelSize)
+        scrollView.sourceImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
         scrollView.resetFit()
     }
 }
 
-/// Holds the fit magnification so double-click can toggle against it, and does
-/// the initial fit once the view actually has a size.
+/// Keeps the document centered when it's smaller than the viewport.
+final class CenteringClipView: NSClipView {
+    override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
+        var rect = super.constrainBoundsRect(proposedBounds)
+        guard let documentView else { return rect }
+        let document = documentView.frame
+        if rect.width > document.width {
+            rect.origin.x = (document.width - rect.width) / 2
+        }
+        if rect.height > document.height {
+            rect.origin.y = (document.height - rect.height) / 2
+        }
+        return rect
+    }
+}
+
+/// Owns fit state, the zoom steps, and the eyedropper hit-test.
 final class ZoomableImageScrollView: NSScrollView {
+    weak var controller: ZoomController?
+    var sourceImage: CGImage?
+
     private var didFit = false
     private var fitMagnification: CGFloat = 1
+    /// Once the user zooms deliberately, a window resize must not yank them
+    /// back to fit.
+    private var userAdjusted = false
 
     override func layout() {
         super.layout()
-        guard !didFit, bounds.width > 1, documentView != nil else { return }
+        guard bounds.width > 1, documentView != nil else { return }
+        guard !didFit || !userAdjusted else { return }
         didFit = true
         // Deferred: never change scroll geometry inside the layout pass that
         // asked for it (the re-entrant-constraint rule this app learned the
-        // hard way with panels).
-        DispatchQueue.main.async { [weak self] in self?.fit() }
+        // hard way with its panels).
+        DispatchQueue.main.async { [weak self] in self?.fitToWindow(animated: false) }
     }
 
     /// Re-fit for a new image.
     func resetFit() {
         didFit = false
+        userAdjusted = false
         needsLayout = true
     }
 
-    private func fit() {
-        guard let document = documentView else { return }
-        magnify(toFit: document.bounds)
-        fitMagnification = magnification
+    func fitToWindow(animated: Bool) {
+        guard let document = documentView, document.bounds.width > 0 else { return }
+        let target = min(
+            bounds.width / document.bounds.width,
+            bounds.height / document.bounds.height
+        )
+        guard target.isFinite, target > 0 else { return }
+        fitMagnification = target
+        // Never zoom out past fit: an image floating in a sea of empty window
+        // is nobody's idea of zoomed out.
+        minMagnification = min(target, 1)
+        userAdjusted = false
+        setMagnification(target, animated: animated)
     }
 
-    @objc func toggleZoom(_ sender: NSClickGestureRecognizer) {
-        guard let document = documentView else { return }
+    func step(by factor: CGFloat) {
+        setMagnification(magnification * factor, animated: true)
+        userAdjusted = true
+    }
+
+    func setMagnification(_ value: CGFloat, animated: Bool) {
+        let clamped = min(max(value, minMagnification), maxMagnification)
+        guard abs(clamped - magnification) > 0.001 else {
+            controller?.report(magnification)
+            return
+        }
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                animator().magnification = clamped
+            }
+        } else {
+            magnification = clamped
+        }
+        controller?.report(clamped)
+    }
+
+    func refreshCursor(picking: Bool) {
+        window?.invalidateCursorRects(for: self)
+        if picking { NSCursor.crosshair.set() } else { NSCursor.arrow.set() }
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        if controller?.isPicking == true {
+            addCursorRect(bounds, cursor: .crosshair)
+        }
+    }
+
+    /// Pinch and ⌘-scroll are AppKit's; this just keeps the readout honest and
+    /// remembers that the user took control.
+    override func magnify(with event: NSEvent) {
+        super.magnify(with: event)
+        userAdjusted = true
+        controller?.report(magnification)
+    }
+
+    @objc func handleDoubleClick(_ sender: NSClickGestureRecognizer) {
+        guard controller?.isPicking != true, let document = documentView else { return }
         if magnification > fitMagnification * 1.05 {
-            fit()
+            fitToWindow(animated: true)
         } else {
             let point = document.convert(sender.location(in: self), from: self)
-            setMagnification(1, centeredAt: point)
+            userAdjusted = true
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                animator().setMagnification(1, centeredAt: point)
+            }
+            controller?.report(1)
         }
+    }
+
+    @objc func handleClick(_ sender: NSClickGestureRecognizer) {
+        guard controller?.isPicking == true,
+              let document = documentView,
+              let image = sourceImage else { return }
+        let point = document.convert(sender.location(in: self), from: self)
+        let scaleX = CGFloat(image.width) / document.bounds.width
+        let scaleY = CGFloat(image.height) / document.bounds.height
+        // Document coordinates run bottom-up; CGImage rows run top-down.
+        let x = Int((point.x * scaleX).rounded(.down))
+        let y = Int(((document.bounds.height - point.y) * scaleY).rounded(.down))
+        guard let color = PixelSampler.color(in: image, atX: x, y: y) else { return }
+        controller?.onPick?(color)
     }
 }
 
@@ -405,11 +635,77 @@ private struct DetailRow: View {
     let value: String
 
     var body: some View {
-        HStack {
+        HStack(alignment: .firstTextBaseline) {
             Text(label).font(Theme.caption).foregroundStyle(.secondary)
-            Spacer()
-            Text(value).font(Theme.body)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(Theme.body)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
         }
+    }
+}
+
+/// A color chip that copies on click and says so — a checkmark in whichever of
+/// black or white actually contrasts with the swatch (WCAG luminance, the same
+/// math the color picker tool uses).
+private struct Swatch: View {
+    let color: PickedColor
+    let size: CGSize
+    let copied: Bool
+    let action: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(color.swiftUIColor)
+                .frame(width: size.width, height: size.height)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(.white.opacity(hovering ? 0.7 : 0.18),
+                                      lineWidth: hovering ? 1 : 0.5)
+                }
+                .overlay {
+                    if copied {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(color.luminance > 0.4 ? .black : .white)
+                    }
+                }
+                .scaleEffect(hovering ? 1.06 : 1)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help("Copy \(color.hexString)")
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .animation(.easeOut(duration: 0.12), value: copied)
+    }
+}
+
+/// Icon-only control for the zoom capsule.
+private struct ZoomButton: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(hovering ? Theme.accent : .primary)
+                .frame(width: 24, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help(help)
+        .onHover { hovering = $0 }
     }
 }
 

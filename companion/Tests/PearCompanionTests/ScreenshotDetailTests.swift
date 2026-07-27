@@ -100,6 +100,40 @@ final class ScreenshotDetailsTests: XCTestCase {
         XCTAssertFalse(details.timeLabel.isEmpty)
     }
 
+    private func details(width: Int, height: Int, dpi: Int = 72) -> ScreenshotDetails {
+        ScreenshotDetails(
+            pixelWidth: width, pixelHeight: height, byteCount: 1000, format: "PNG",
+            capturedAt: Date(timeIntervalSince1970: 0), path: nil, colorProfile: "sRGB",
+            bitsPerComponent: 8, hasAlpha: false, dpi: dpi)
+    }
+
+    func testAspectRatioReducesWhenRecognizableAndFallsBackToDecimal() {
+        XCTAssertEqual(details(width: 1920, height: 1080).aspectLabel, "16:9")
+        XCTAssertEqual(details(width: 2560, height: 1600).aspectLabel, "16:10")
+        XCTAssertEqual(details(width: 100, height: 100).aspectLabel, "1:1")
+        // Reduces to 1234:713 — exact and useless, so a decimal is shown.
+        XCTAssertEqual(details(width: 1234, height: 713).aspectLabel, "1.73:1")
+        XCTAssertNil(details(width: 0, height: 0).aspectLabel)
+    }
+
+    func testMegapixelsAndRetinaScale() {
+        XCTAssertEqual(details(width: 2560, height: 1600).megapixelsLabel, "4.1 MP")
+        XCTAssertEqual(details(width: 6016, height: 3384).megapixelsLabel, "20 MP")
+        XCTAssertNil(details(width: 40, height: 25).megapixelsLabel)
+
+        XCTAssertEqual(details(width: 100, height: 100, dpi: 144).scaleLabel, "@2x")
+        XCTAssertNil(details(width: 100, height: 100, dpi: 72).scaleLabel, "1x needs no badge")
+    }
+
+    func testColorLabelDegradesWhenTheFileSaysNothing() {
+        XCTAssertEqual(details(width: 10, height: 10).colorLabel, "sRGB · 8-bit")
+        let bare = ScreenshotDetails(
+            pixelWidth: 10, pixelHeight: 10, byteCount: 1, format: "PNG",
+            capturedAt: Date(timeIntervalSince1970: 0), path: nil, colorProfile: nil,
+            bitsPerComponent: 0, hasAlpha: false, dpi: 0)
+        XCTAssertNil(bare.colorLabel)
+    }
+
     func testDetailsSurviveUnreadableBytes() {
         let details = ScreenshotDetails.from(imageData: Data([0x00, 0x01]), fileURL: nil)
         XCTAssertEqual(details.pixelWidth, 0)
@@ -188,14 +222,54 @@ final class DominantColorsTests: XCTestCase {
         XCTAssertLessThan(palette[1].red, 0.2)
     }
 
-    func testHexFormatting() {
-        XCTAssertEqual(PaletteColor(red: 1, green: 0, blue: 0).hex, "#FF0000")
-        XCTAssertEqual(PaletteColor(red: 0, green: 1, blue: 0).hex, "#00FF00")
-        XCTAssertEqual(PaletteColor(red: 0, green: 0, blue: 0).hex, "#000000")
-        XCTAssertEqual(PaletteColor(red: 1, green: 1, blue: 1).hex, "#FFFFFF")
+    /// Swatches are `PickedColor`s — the same type the eyedropper tool
+    /// produces — so they copy in whatever format the user picked.
+    func testSwatchesAreOrdinaryPickedColors() {
+        XCTAssertEqual(PickedColor(red: 1, green: 0, blue: 0).hexString, "#FF0000")
+        XCTAssertEqual(ColorFormat.rgb.value(for: PickedColor(red: 1, green: 1, blue: 1)),
+                       "rgb(255, 255, 255)")
     }
 
     func testZeroCountAndGarbageDataYieldNoSwatches() {
         XCTAssertTrue(DominantColors.palette(from: Data([0x00]), count: 6).isEmpty)
+    }
+}
+
+/// The detail view's eyedropper: a point in image pixel space, a color out.
+final class PixelSamplerTests: XCTestCase {
+    /// 2×2 image: red top-left, green top-right, blue bottom-left, white
+    /// bottom-right. Sampling must respect top-left origin, not AppKit's
+    /// bottom-left one.
+    private func quadrants() throws -> CGImage {
+        let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: 2, height: 2, bitsPerComponent: 8, bytesPerRow: 0,
+            space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.interpolationQuality = .none
+        // CGContext origin is bottom-left, so the "top" row is drawn last.
+        context.setFillColor(red: 0, green: 0, blue: 1, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+        context.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
+        context.fill(CGRect(x: 1, y: 0, width: 1, height: 1))
+        context.setFillColor(red: 1, green: 0, blue: 0, alpha: 1)
+        context.fill(CGRect(x: 0, y: 1, width: 1, height: 1))
+        context.setFillColor(red: 0, green: 1, blue: 0, alpha: 1)
+        context.fill(CGRect(x: 1, y: 1, width: 1, height: 1))
+        return try XCTUnwrap(context.makeImage())
+    }
+
+    func testSamplesEachPixelByTopLeftCoordinates() throws {
+        let image = try quadrants()
+        XCTAssertEqual(PixelSampler.color(in: image, atX: 0, y: 0)?.hexString, "#FF0000")
+        XCTAssertEqual(PixelSampler.color(in: image, atX: 1, y: 0)?.hexString, "#00FF00")
+        XCTAssertEqual(PixelSampler.color(in: image, atX: 0, y: 1)?.hexString, "#0000FF")
+        XCTAssertEqual(PixelSampler.color(in: image, atX: 1, y: 1)?.hexString, "#FFFFFF")
+    }
+
+    func testOutOfBoundsSamplesAreRejected() throws {
+        let image = try quadrants()
+        XCTAssertNil(PixelSampler.color(in: image, atX: -1, y: 0))
+        XCTAssertNil(PixelSampler.color(in: image, atX: 0, y: 2))
+        XCTAssertNil(PixelSampler.color(in: image, atX: 99, y: 99))
     }
 }

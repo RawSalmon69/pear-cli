@@ -69,8 +69,10 @@ markup, background-remove), **Full-screen Shot** (⌃⇧F, whole main display
 instantly) and **Window Shot** (⌃⇧W, click a window) — all three are
 `ScreenshotTool` modes sharing one preview/markup/send flow. Clicking a preview
 card opens the **detail window** (`ScreenshotDetailWindow.swift`): the shot in a
-magnifying `NSScrollView` (pinch / ⌘-scroll / double-click to fit ↔ 100%, native
-AppKit — not custom gesture math), the same actions, and a sidebar of
+magnifying `NSScrollView` (pinch / ⌘-scroll / double-click / ⌘+ ⌘− ⌘0 / zoom
+capsule, with a centering clip view and fit as the zoom-out floor — native
+AppKit, not custom gesture math), an eyedropper that samples exact image pixels
+(`PixelSampler`), the same actions, and a sidebar of
 `ScreenshotInsights` — full OCR text in its own scroll box, QR payloads, color
 palette, file facts — scanned once off-main *after* the card is on screen, so
 nothing delays capture → preview and the window always opens mid-scan. **OCR / Grab Text**
