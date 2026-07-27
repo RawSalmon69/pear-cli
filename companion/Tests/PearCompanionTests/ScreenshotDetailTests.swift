@@ -38,6 +38,27 @@ final class ScreenshotDetailLayoutTests: XCTestCase {
     }
 }
 
+@MainActor
+final class ScreenshotInsightsNonBlockingTests: XCTestCase {
+    /// The detail window must open mid-scan. `scan()` therefore has to return
+    /// to its caller immediately, leaving the sections to fill in later — this
+    /// is the invariant behind "I can open the big view before it's done".
+    func testScanReturnsImmediatelyAndDetailsAreReadyFirst() throws {
+        let png = try XCTUnwrap(QRCode.generate(from: "https://example.com")?.pngData())
+        let insights = ScreenshotInsights(imageData: png, fileURL: nil)
+
+        insights.scan()
+
+        // Synchronously after scan(): nothing recognized yet, but the window
+        // already has details to draw and a scanning state to show.
+        XCTAssertTrue(insights.isScanning)
+        XCTAssertTrue(insights.text.isEmpty)
+        XCTAssertTrue(insights.payloads.isEmpty)
+        XCTAssertGreaterThan(insights.details.pixelWidth, 0)
+        XCTAssertEqual(insights.details.format, "PNG")
+    }
+}
+
 final class ScreenshotDetailsTests: XCTestCase {
     /// Built through CGContext, not `NSImage.lockFocus`, so the PNG is exactly
     /// the requested pixel size — lockFocus draws at the backing scale (2× on a

@@ -106,11 +106,8 @@ struct ScreenshotDetailView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFit()
+                ZoomableImage(image: image)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(12)
                 Divider()
                 sidebar
                     .frame(width: ScreenshotDetailLayout.sidebarWidth)
@@ -125,13 +122,10 @@ struct ScreenshotDetailView: View {
     private var sidebar: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.sectionGap) {
-                if insights.isScanning && insights.text.isEmpty && insights.payloads.isEmpty {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.small)
-                        Text("Reading the shot…").font(Theme.caption).foregroundStyle(.secondary)
-                    }
-                }
-                if !insights.text.isEmpty { textSection }
+                // Text always has a section, even mid-scan or empty, so the
+                // window is readable the instant it opens and the reader can
+                // see that recognition is still running rather than missing.
+                textSection
                 if !insights.payloads.isEmpty { qrSection }
                 if !insights.colors.isEmpty { colorSection }
                 detailSection
@@ -141,16 +135,46 @@ struct ScreenshotDetailView: View {
         }
     }
 
+    /// Recognized text in its own bordered, independently scrolling box — the
+    /// whole thing, never truncated, with a line count so it reads as a
+    /// transcript of the shot rather than a caption on it.
     private var textSection: some View {
-        DetailSection(title: "Text", action: onCopyText.map { copy in
-            DetailSection.Action(symbol: "doc.on.doc", help: "Copy text", run: copy)
-        }) {
-            Text(insights.text)
-                .font(Theme.body)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(12)
+        DetailSection(
+            title: "Extracted text",
+            subtitle: textSubtitle,
+            action: insights.text.isEmpty ? nil : onCopyText.map { copy in
+                DetailSection.Action(symbol: "doc.on.doc", help: "Copy all text", run: copy)
+            }
+        ) {
+            if !insights.text.isEmpty {
+                ScrollView {
+                    Text(insights.text)
+                        .font(Theme.body)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                }
+                .frame(height: 190)
+                .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.5)))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
+                }
+            } else if insights.isScanning {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Reading text…").font(Theme.body).foregroundStyle(.secondary)
+                }
+            } else {
+                Text("No text found").font(Theme.body).foregroundStyle(.secondary)
+            }
         }
+    }
+
+    private var textSubtitle: String? {
+        guard !insights.text.isEmpty else { return nil }
+        let lines = insights.text.split(separator: "\n").count
+        return lines == 1 ? "1 line" : "\(lines) lines"
     }
 
     private var qrSection: some View {
@@ -249,6 +273,94 @@ struct ScreenshotDetailView: View {
     }
 }
 
+/// The shot, zoomable the way macOS zooms: an `NSScrollView` with magnification
+/// on, which is what Preview and Quick Look use. Pinch, ⌘-scroll, and two-finger
+/// pan all come from AppKit; double-click toggles fit ↔ 100%. No custom gesture
+/// math — the system path already handles trackpad, mouse, and accessibility.
+struct ZoomableImage: NSViewRepresentable {
+    let image: NSImage
+
+    /// True pixels where the bitmap knows them; a Retina PNG reports half-size
+    /// `NSImage.size`, and zooming should reach the real resolution.
+    private var pixelSize: NSSize {
+        if let rep = image.representations.first, rep.pixelsWide > 0, rep.pixelsHigh > 0 {
+            return NSSize(width: rep.pixelsWide, height: rep.pixelsHigh)
+        }
+        return image.size
+    }
+
+    func makeNSView(context: Context) -> ZoomableImageScrollView {
+        let scrollView = ZoomableImageScrollView()
+        let imageView = NSImageView()
+        imageView.imageScaling = .scaleAxesIndependently
+        imageView.image = image
+        imageView.frame = NSRect(origin: .zero, size: pixelSize)
+
+        scrollView.documentView = imageView
+        scrollView.allowsMagnification = true
+        scrollView.minMagnification = 0.02
+        scrollView.maxMagnification = 8
+        scrollView.hasHorizontalScroller = true
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = false
+        scrollView.contentView.drawsBackground = false
+
+        let doubleClick = NSClickGestureRecognizer(
+            target: scrollView, action: #selector(ZoomableImageScrollView.toggleZoom(_:)))
+        doubleClick.numberOfClicksRequired = 2
+        scrollView.addGestureRecognizer(doubleClick)
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: ZoomableImageScrollView, context: Context) {
+        guard let imageView = scrollView.documentView as? NSImageView else { return }
+        guard imageView.image !== image else { return }
+        imageView.image = image
+        imageView.frame = NSRect(origin: .zero, size: pixelSize)
+        scrollView.resetFit()
+    }
+}
+
+/// Holds the fit magnification so double-click can toggle against it, and does
+/// the initial fit once the view actually has a size.
+final class ZoomableImageScrollView: NSScrollView {
+    private var didFit = false
+    private var fitMagnification: CGFloat = 1
+
+    override func layout() {
+        super.layout()
+        guard !didFit, bounds.width > 1, documentView != nil else { return }
+        didFit = true
+        // Deferred: never change scroll geometry inside the layout pass that
+        // asked for it (the re-entrant-constraint rule this app learned the
+        // hard way with panels).
+        DispatchQueue.main.async { [weak self] in self?.fit() }
+    }
+
+    /// Re-fit for a new image.
+    func resetFit() {
+        didFit = false
+        needsLayout = true
+    }
+
+    private func fit() {
+        guard let document = documentView else { return }
+        magnify(toFit: document.bounds)
+        fitMagnification = magnification
+    }
+
+    @objc func toggleZoom(_ sender: NSClickGestureRecognizer) {
+        guard let document = documentView else { return }
+        if magnification > fitMagnification * 1.05 {
+            fit()
+        } else {
+            let point = document.convert(sender.location(in: self), from: self)
+            setMagnification(1, centeredAt: point)
+        }
+    }
+}
+
 /// Sidebar section: a small caps-y heading, an optional copy button, content.
 private struct DetailSection<Content: View>: View {
     struct Action {
@@ -258,15 +370,21 @@ private struct DetailSection<Content: View>: View {
     }
 
     let title: String
+    var subtitle: String?
     var action: Action?
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 6) {
                 Text(title.uppercased())
                     .font(Theme.caption)
                     .foregroundStyle(.secondary)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(Theme.caption)
+                        .foregroundStyle(.tertiary)
+                }
                 Spacer()
                 if let action {
                     Button(action: action.run) {

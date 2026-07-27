@@ -11,6 +11,11 @@ enum OCRText {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
+        // Don't assume English: a shot of a non-English UI should still come
+        // back with its text rather than nothing.
+        request.automaticallyDetectsLanguage = true
+        // Observations are returned in Vision's own reading order and every one
+        // of them is kept — the detail view scrolls rather than truncating.
 
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
