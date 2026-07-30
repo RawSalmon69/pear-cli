@@ -3,9 +3,12 @@ name: Companion
 on:
   push:
     branches: [main]
-    paths: ["companion/**"]
+    # The workflow file itself is in the trigger: a change to this job could not
+    # otherwise be validated by pushing it, which is how a broken assemble step
+    # sat here unnoticed.
+    paths: ["companion/**", ".github/workflows/companion.yml"]
   pull_request:
-    paths: ["companion/**"]
+    paths: ["companion/**", ".github/workflows/companion.yml"]
 
 permissions:
   contents: read
