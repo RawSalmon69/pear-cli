@@ -87,6 +87,8 @@ private final class PreviewEntry {
 final class ScreenshotPreviewController {
     static let shared = ScreenshotPreviewController()
 
+    private init() { observeCaptures() }
+
     private var entries: [PreviewEntry] = [] // index 0 = newest, nearest edge
     private var scrollMonitor: Any?
     /// Visible frame the stack lives in — the primary display, resolved when the
@@ -336,6 +338,38 @@ final class ScreenshotPreviewController {
             entry.panel.animator().setFrame(off, display: true)
             entry.panel.animator().alphaValue = 0
         }, completion: { [weak self] in self?.remove(entry) })
+    }
+
+    // MARK: Staying out of the shot
+
+    /// Takes the stack off the screen for the duration of a capture, and puts it
+    /// back after. Cards sit in the bottom-right corner, which a full-screen shot
+    /// includes and a region drag has to be worked around.
+    ///
+    /// Nothing is remembered about which panels were hidden: `entries` is the
+    /// only source of truth, so a card auto-dismissed while hidden cannot be
+    /// resurrected by the restore.
+    private func setStackVisible(_ visible: Bool) {
+        for entry in entries {
+            if visible {
+                entry.panel.orderFrontRegardless()
+            } else {
+                entry.panel.orderOut(nil)
+            }
+        }
+    }
+
+    /// Registered once, for the app's lifetime — the controller is a singleton,
+    /// so there is nothing to tear down.
+    private func observeCaptures() {
+        for (name, visible) in [(Notification.Name.pearHideForCapture, false),
+                                (Notification.Name.pearRestoreAfterCapture, true)] {
+            NotificationCenter.default.addObserver(
+                forName: name, object: nil, queue: nil
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.setStackVisible(visible) }
+            }
+        }
     }
 
     /// Drops every card backed by `url`. Called when a read of that file fails:

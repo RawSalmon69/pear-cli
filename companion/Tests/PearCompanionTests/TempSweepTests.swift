@@ -278,3 +278,50 @@ final class CleanerTranscriptTrimTests: XCTestCase {
         XCTAssertEqual(trimmed.count, 100, "no newline to cut at — bound it anyway")
     }
 }
+
+/// Getting Pear's own floating UI out of the shot. A capture started from a panel
+/// tile used to leave the panel over the region being grabbed — and inside a
+/// full-screen shot — because the panel is non-activating and so never loses
+/// focus to `screencapture`.
+final class CaptureCurtainTests: XCTestCase {
+    /// Thread-safe: the launcher runs on a global queue, the notifications on main.
+    private final class Recorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var events: [String] = []
+        func add(_ event: String) { lock.lock(); events.append(event); lock.unlock() }
+        var all: [String] { lock.lock(); defer { lock.unlock() }; return events }
+    }
+
+    func testPanelsAreHiddenBeforeTheCaptureStartsAndRestoredAfter() async {
+        let recorder = Recorder()
+        let center = NotificationCenter.default
+        let hide = center.addObserver(forName: .pearHideForCapture, object: nil, queue: nil) { _ in
+            recorder.add("hide")
+        }
+        let restore = center.addObserver(
+            forName: .pearRestoreAfterCapture, object: nil, queue: nil) { _ in
+            recorder.add("restore")
+        }
+        defer { center.removeObserver(hide); center.removeObserver(restore) }
+
+        // A launcher that grabs nothing: calling the real screencapture from a
+        // test would take a screenshot of whoever is running the suite.
+        let wrote = await ScreenCapture.run(
+            ["-x", "/dev/null"],
+            writing: URL(fileURLWithPath: "/nonexistent/pear-capture-test.png"),
+            launch: { _ in recorder.add("launch") })
+
+        XCTAssertFalse(wrote, "no file was written, so the capture must report failure")
+        // The ordering is the whole fix. A `queue: .main` observer would land
+        // AFTER the launch here, which is exactly the bug being pinned.
+        XCTAssertEqual(Array(recorder.all.prefix(2)), ["hide", "launch"])
+
+        var waited = 0
+        while !recorder.all.contains("restore"), waited < 50 {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            waited += 1
+        }
+        XCTAssertEqual(recorder.all, ["hide", "launch", "restore"],
+                       "the preview stack has to come back after the capture")
+    }
+}

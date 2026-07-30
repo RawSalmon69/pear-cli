@@ -8,6 +8,14 @@ extension Notification.Name {
     /// the controller (created later by the AppDelegate), so neither needs a
     /// reference to the other.
     static let pearTogglePanel = Notification.Name("pearTogglePanel")
+
+    /// Posted by `ScreenCapture` immediately before `screencapture` runs: Pear's
+    /// own floating UI has to get out of the shot. The companion panel closes for
+    /// good (you asked for a capture, not for the panel back), while the preview
+    /// stack hides and comes back with `pearRestoreAfterCapture` — those cards
+    /// may hold captures the user has not saved.
+    static let pearHideForCapture = Notification.Name("pearHideForCapture")
+    static let pearRestoreAfterCapture = Notification.Name("pearRestoreAfterCapture")
 }
 
 /// Owns the menu-bar status item and the companion panel, replacing the old
@@ -79,6 +87,19 @@ final class PanelController: NSObject {
             forName: .pearTogglePanel, object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor in self?.toggle() }
+        }
+        // Starting a capture from a panel tile used to leave the panel sitting
+        // over the very thing being captured — and in a full-screen shot, in it.
+        // The panel is non-activating, so it never loses focus to `screencapture`
+        // and the close-on-focus-loss setting never fired.
+        // `queue: nil`, deliberately: with a queue the block is enqueued and can
+        // run AFTER `screencapture` has already started, which is the whole bug.
+        // The notification is documented as main-thread-only, so this is
+        // synchronous and ordered before the capture.
+        NotificationCenter.default.addObserver(
+            forName: .pearHideForCapture, object: nil, queue: nil
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.hide() }
         }
 
         trackButton()

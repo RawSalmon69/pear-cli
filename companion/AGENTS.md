@@ -27,7 +27,7 @@ native Apple primitives over custom imitations. See root memory / `[[owner-quali
 ```bash
 cd companion
 swift build            # compile
-swift test             # full suite (466 tests, must stay green)
+swift test             # full suite (467 tests, must stay green)
 ./build.sh [version]   # assemble build/Pear.app (unsigned dev bundle); `open build/Pear.app`
 ```
 
@@ -195,6 +195,17 @@ maintainer before tagging.
   `NSImage` + PNG `Data`) per detail-window open. `State.wrappedValue`'s
   `nonmutating set` is what lets it compile. Expose an observed value and use
   `.onChange` instead (`ZoomController.lastPick`/`pickCount`).
+- **A non-activating `NSPanel` never loses focus, so it never auto-closes.**
+  `screencapture` does not steal key status from one, so `panelClosesOnFocusLoss`
+  never fired and the companion panel sat over — and inside — every capture
+  started from a tile. Every capture now posts `pearHideForCapture` from
+  `ScreenCapture` (one seam, so hotkeys and any future caller behave the same);
+  the panel closes for good and the preview stack comes back on
+  `pearRestoreAfterCapture`. Register those observers with **`queue: nil`**: with
+  `queue: .main` the block is enqueued and can run after `screencapture` has
+  already started, which is the bug. Full-screen capture additionally waits
+  160 ms for the window server to actually drop the panels; the interactive modes
+  get that for free while the user is still dragging.
 - **`@Observable` does not compare before notifying.** Writing the same value
   still invalidates every view that read it. Anything written per input event —
   a zoom readout, a scroll offset, a live counter — must dedupe (`guard new !=
