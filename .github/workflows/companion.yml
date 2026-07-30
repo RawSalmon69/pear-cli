@@ -18,6 +18,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
+      # `build.sh` compiles the bundled `analyze-go` helper, so this job needs Go
+      # exactly like the release job does. Without it the assemble step dies with
+      # `go: command not found` — which is how the size gate added in 2.15.0
+      # managed to fail on every push while the release workflow stayed green.
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
       - name: Build
         working-directory: companion
         run: swift build
