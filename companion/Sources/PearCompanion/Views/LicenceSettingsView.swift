@@ -24,7 +24,7 @@ struct LicenceSettingsView: View {
     /// the honest thing, and it is what the couple key in this same popover
     /// already does.
     static let activatedMessage =
-        "Licence verified — thank you. Quit and reopen Pear to bring the tools back."
+        "Licence verified — thank you. Every tool is back on."
 
     /// The line under the field after an attempt. Pure, so the mapping is
     /// testable: a rejected licence must surface the rejecting check's *own*

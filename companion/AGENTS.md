@@ -27,7 +27,7 @@ native Apple primitives over custom imitations. See root memory / `[[owner-quali
 ```bash
 cd companion
 swift build            # compile
-swift test             # full suite (599 tests, must stay green)
+swift test             # full suite (618 tests, must stay green)
 ./build.sh [version]   # assemble build/Pear.app (unsigned dev bundle); `open build/Pear.app`
 ```
 

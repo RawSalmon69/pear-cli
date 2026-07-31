@@ -165,7 +165,7 @@ final class LockedCopyTests: XCTestCase {
         let message = LicenceSettingsView.status(after: .valid(LicenceFixture.sample()))
         XCTAssertEqual(message, LicenceSettingsView.activatedMessage)
         XCTAssertEqual(
-            message, "Licence verified — thank you. Quit and reopen Pear to bring the tools back.")
+            message, "Licence verified — thank you. Every tool is back on.")
     }
 
     // MARK: - End to end through the real store

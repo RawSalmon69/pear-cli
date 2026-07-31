@@ -134,6 +134,64 @@ final class EntitlementGateTests: XCTestCase {
         XCTAssertNil(registry.conflictingTool(for: chord, excluding: "gate.content"))
     }
 
+    // MARK: - Unlocking mid-session
+
+    /// Entering a licence has to bring the tools back without a relaunch.
+    /// `isLocked` is read live, so new *checks* see the unlock, but nothing
+    /// re-registers a hotkey or calls `start()` — which left the panel showing an
+    /// almost-empty grid with the locked card already gone.
+    func testUnlockingMidSessionBringsThePaidToolsBack() {
+        scrub()
+        defer { scrub() }
+        var locked = true
+        let registry = ToolRegistry()
+        registry.isLocked = { locked }
+        let paid = FakeTool(id: "gate.paid")
+        registry.offer(paid)
+        XCTAssertEqual(paid.startCount, 0)
+
+        locked = false
+        registry.reregister()
+
+        XCTAssertEqual(paid.startCount, 1, "the tool starts without a relaunch")
+        XCTAssertEqual(registry.all.count, 1, "and its tile comes back")
+    }
+
+    func testLockingMidSessionStopsThePaidToolsButNotTheContentOnes() {
+        scrub()
+        defer { scrub() }
+        var locked = false
+        let registry = ToolRegistry()
+        registry.isLocked = { locked }
+        let paid = FakeTool(id: "gate.paid")
+        let content = FakeTool(id: "gate.content", survivesExpiry: true)
+        registry.offer(paid)
+        registry.offer(content)
+
+        locked = true
+        registry.reregister()
+
+        XCTAssertEqual(paid.stopCount, 1)
+        XCTAssertEqual(content.stopCount, 0, "the user's own content stays reachable")
+        XCTAssertEqual(registry.all.map(\.id), ["gate.content"])
+    }
+
+    /// `reregister` runs on every entitlement change, so it must be idempotent —
+    /// otherwise a repeated refresh stacks `start()` calls on a live engine.
+    func testReregisterIsIdempotent() {
+        scrub()
+        defer { scrub() }
+        let registry = ToolRegistry()
+        let paid = FakeTool(id: "gate.paid")
+        registry.offer(paid)
+
+        registry.reregister()
+        registry.reregister()
+
+        XCTAssertEqual(paid.startCount, 1, "an already-live tool is not started again")
+        XCTAssertEqual(paid.stopCount, 0)
+    }
+
     // MARK: - Entitlement precedence
 
     func testEntitlementUnlocksToolsOnlyWhenNotExpired() {

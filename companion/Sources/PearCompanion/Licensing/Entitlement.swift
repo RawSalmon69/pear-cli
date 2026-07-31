@@ -77,6 +77,11 @@ final class EntitlementStore {
     @ObservationIgnored private let trial: TrialState
     @ObservationIgnored private let verifier: LicenceVerifier?
 
+    /// Fired when the entitlement actually changes value. `AppEnvironment` hangs
+    /// the tool registry's `reregister()` here, so a licence entered mid-session
+    /// brings the tools back without a relaunch.
+    @ObservationIgnored var onChange: (() -> Void)?
+
     init(
         licenceStore: LicenceFileStore = LicenceFileStore(),
         revocationStore: RevocationStore = RevocationStore(),
@@ -123,6 +128,8 @@ final class EntitlementStore {
     ///    as absent rather than as an error state, so a corrupt file cannot lock
     ///    out someone whose trial is still running.
     func refresh() {
+        let before = entitlement
+        defer { if entitlement != before { onChange?() } }
         licenceHash = nil
         if let text = licenceStore.read(), let verifier {
             switch verifier.check(text) {

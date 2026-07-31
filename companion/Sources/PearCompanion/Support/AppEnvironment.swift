@@ -61,6 +61,10 @@ final class AppEnvironment {
         tools.offer(CleanModeTool())
         tools.offer(KeyCluTool())
         tools.offer(PanelTool())
+        // A licence entered mid-session must bring the tools back without a
+        // relaunch: `isLocked` is read live, but only re-registration restores
+        // hotkeys and restarts engines.
+        entitlement.onChange = { [weak tools] in tools?.reregister() }
         self.tools = tools
 
         runner.start() // no-op unless the user enabled it

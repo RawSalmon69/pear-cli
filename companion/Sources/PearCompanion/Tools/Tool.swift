@@ -127,6 +127,8 @@ final class ToolRegistry {
     /// ready for `setEnabled` to start it without replaying the offer list.
     @ObservationIgnored private var catalog: [(id: String, tool: any Tool)] = []
     @ObservationIgnored private var hotkeyTokens: [String: HotKeyManager.Token] = [:]
+    /// Ids currently live, so activation is idempotent.
+    @ObservationIgnored private var activated: Set<String> = []
 
     /// Whether the paid tools are locked. Injected by `AppEnvironment` from the
     /// `EntitlementStore`; a registry built without it is unlocked, which keeps
@@ -236,14 +238,31 @@ final class ToolRegistry {
 
     // MARK: - Internals
 
+    /// Idempotent: a tool already live is not started twice, and one already
+    /// torn down is not stopped twice. `reregister` leans on that, and so does a
+    /// settings toggle flipped faster than the UI can keep up.
     private func activate(_ tool: any Tool) {
+        guard activated.insert(tool.id).inserted else { return }
         registerHotkey(tool)
         tool.start()
     }
 
     private func deactivate(_ tool: any Tool) {
+        guard activated.remove(tool.id) != nil else { return }
         unregisterHotkey(tool.id)
         tool.stop()
+    }
+
+    /// Re-evaluates every catalogued tool against the gate and brings the live
+    /// set back in line. Called when the entitlement changes: a licence entered
+    /// mid-session must bring the tools back without a relaunch, and `isLocked`
+    /// being read live is not enough — nothing would re-register the hotkeys or
+    /// call `start()`.
+    func reregister() {
+        for entry in catalog {
+            if shouldRun(entry.tool) { activate(entry.tool) } else { deactivate(entry.tool) }
+        }
+        rebuildAll()
     }
 
     private func rebuildAll() {
