@@ -75,7 +75,7 @@ if not isinstance(d['serial'], int):
     sys.exit('serial is not an integer')
 if not d['signature']:
     sys.exit('signature is empty')
-" 2>/dev/null; then
+" 2> /dev/null; then
         pass "revoked.json present and well formed"
     else
         fail "revoked.json is malformed" "regenerate it with revoke.sh --init"
@@ -111,7 +111,7 @@ fi
 
 # 5. Licences carry maxMajor 3, so a 3.x build must be what ships.
 if [[ -f $info_plist ]]; then
-    short=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$info_plist" 2>/dev/null || echo "")
+    short=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$info_plist" 2> /dev/null || echo "")
     case $short in
         3.*) pass "app version is $short, matching maxMajor 3 licences" ;;
         "") fail "could not read CFBundleShortVersionString" ;;
