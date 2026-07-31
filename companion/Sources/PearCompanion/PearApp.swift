@@ -32,6 +32,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             CaptureStore.sweep()
             _ = ScreenshotService.sweepStaleTempFiles()
         }
+        // The weekly refund check. Background priority and off the launch path
+        // because it makes a network request, and gated on the paywall flag so
+        // the app reaches the network for this only once the feature is real and
+        // the privacy policy lists it. Fail-open throughout: a 404 or a dead
+        // domain cannot touch anyone's entitlement.
+        if FeatureFlags.paywall {
+            let entitlement = environment.entitlement
+            Task(priority: .background) { await entitlement.checkRevocationIfDue() }
+        }
         UNUserNotificationCenter.current().delegate = self
         // Quitting must not orphan a live `pear clean` — least of all the
         // privileged `--system` variant, which would keep sweeping system caches

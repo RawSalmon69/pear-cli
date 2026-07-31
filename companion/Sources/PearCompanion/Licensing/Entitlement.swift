@@ -68,6 +68,10 @@ struct LicenceFileStore: Sendable {
 final class EntitlementStore {
     private(set) var entitlement: Entitlement = .expired(.trialEnded)
 
+    /// SHA-256 of the licensed order id, or nil when no valid licence is stored.
+    /// The revocation list is public, so it carries hashes and never order ids.
+    @ObservationIgnored private(set) var licenceHash: String?
+
     @ObservationIgnored private let licenceStore: LicenceFileStore
     @ObservationIgnored private let revocationStore: RevocationStore
     @ObservationIgnored private let trial: TrialState
@@ -119,9 +123,11 @@ final class EntitlementStore {
     ///    as absent rather than as an error state, so a corrupt file cannot lock
     ///    out someone whose trial is still running.
     func refresh() {
+        licenceHash = nil
         if let text = licenceStore.read(), let verifier {
             switch verifier.check(text) {
             case .valid(let licence):
+                licenceHash = licence.orderHash
                 if revocationStore.isRevoked {
                     entitlement = .expired(.licenceRefunded)
                 } else {
@@ -141,5 +147,18 @@ final class EntitlementStore {
         case .expired:
             entitlement = .expired(.trialEnded)
         }
+    }
+
+    /// Runs the weekly revocation check, if it is due, and folds the verdict in.
+    ///
+    /// Call from a background task, never from a launch path: it makes a network
+    /// request. Every failure mode is fail-open inside `RevocationChecker`, so a
+    /// dead domain or a 404 cannot touch entitlement — and there is nothing to do
+    /// at all without a licence to check.
+    func checkRevocationIfDue() async {
+        guard let hash = licenceHash, let key = LicenceKey.publicKey else { return }
+        let checker = RevocationChecker(publicKey: key, store: revocationStore)
+        guard case .revoked = await checker.checkIfDue(licenceHash: hash) else { return }
+        refresh()
     }
 }
