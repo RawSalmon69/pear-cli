@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Privacy · Pear</title>
-<meta name="description" content="Pear runs entirely on your Mac. No accounts, no analytics, no telemetry. Two optional network connections, both listed.">
+<title>Privacy policy &middot; Pear</title>
+<meta name="description" content="What Pear stores on your Mac, and the only two network connections it makes.">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0c0e">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f6f4">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 138'%3E%3Cpath fill='%23aee34f' d='M60 40c-9 0-13 8-15 17-2 10-5 15-12 24-9 11-12 25-6 37 6 11 19 16 33 16s27-5 33-16c6-12 3-26-6-37-7-9-10-14-12-24-2-9-6-17-15-17Z'/%3E%3Cpath fill='%234fe08c' d='M64 24c8-11 23-13 31-8-4 11-17 16-30 10Z'/%3E%3C/svg%3E">
@@ -12,7 +12,7 @@
 </head>
 <body class="doc-page">
 
-<header class="bar">
+<header class="bar" id="top">
   <a class="brand" href="/" aria-label="Pear, home">
     <svg class="pear" viewBox="0 0 120 138" aria-hidden="true">
       <path style="fill:var(--accent)" d="M60 40c-9 0-13 8-15 17-2 10-5 15-12 24-9 11-12 25-6 37 6 11 19 16 33 16s27-5 33-16c6-12 3-26-6-37-7-9-10-14-12-24-2-9-6-17-15-17Z"/>
@@ -20,109 +20,108 @@
     </svg>
     <span>Pear</span>
   </a>
-  <nav class="nav" aria-label="Pages">
-    <a href="/">Overview</a>
+  <nav class="nav" aria-label="Main">
+    <a href="/#tools">Tools</a>
     <a href="/pricing">Pricing</a>
-    <a href="/terms">Terms</a>
+    <a href="/privacy" aria-current="page">Privacy</a>
+    <a href="https://github.com/RawSalmon69/pear-cli" rel="noopener">Source</a>
   </nav>
-  <a class="dl" href="/pricing">Buy<span class="dl-arrow" aria-hidden="true">→</span></a>
+  <a class="dl" href="https://github.com/RawSalmon69/pear-cli/releases" data-download>Download<span class="dl-arrow" aria-hidden="true">&#8595;</span></a>
 </header>
 
 <main class="doc">
-  <p class="eyebrow"><span class="dot"></span>Privacy policy</p>
-  <h1>Nothing <span class="em">leaves</span> your Mac.</h1>
-  <p class="lede">Not a slogan. Pear contains no analytics library, no crash
-  reporter, no accounts, and no server of ours to talk to. This page lists every
-  exception, and there are two.</p>
-  <p class="fine">Last updated: 31 July 2026</p>
+  <h1>Privacy policy</h1>
+  <p class="updated">Last updated 31 July 2026</p>
+  <p class="lede">Pear has no accounts, no analytics and no server of ours to
+  send anything to. This policy lists what is stored on your Mac, and the only
+  two connections the app makes.</p>
 
   <section class="doc-section">
-    <h2>What Pear stores, and where</h2>
-    <p>All of it stays in your own user folder, readable by you and deletable at
-    any time:</p>
-    <ul>
-      <li><strong>Screenshots</strong> — saved to the folder you choose. Captures you
-      haven't saved are kept in <code>~/Library/Application Support/PearCompanion/Captures</code>
-      for seven days, then removed.</li>
-      <li><strong>Recognised text, QR contents, colour swatches</strong> — produced on
-      device by Apple's Vision framework and kept only as long as the preview card
-      that owns them.</li>
-      <li><strong>Clipboard history, scratchpad notes, shelf items</strong> — stored under
-      <code>~/Library/Application Support/PearCompanion</code>.</li>
-      <li><strong>Settings</strong> — standard macOS preferences for this app.</li>
-      <li><strong>Your licence</strong> — a signed file. Verified locally. It contains the
-      email address you bought with.</li>
-    </ul>
-    <p>Pear does not read, index or transmit any of it. There is nowhere for it
-    to go.</p>
+    <h2>1. What Pear stores, and where</h2>
+    <p>All of it is in your own user folder, readable and deletable by you.</p>
+    <dl class="defs">
+      <dt>Screenshots</dt>
+      <dd>Saved to the folder you choose. Captures you have not saved are kept in
+      <code>~/Library/Application&nbsp;Support/PearCompanion/Captures</code> for seven
+      days, then deleted.</dd>
+      <dt>Recognised text, QR contents, colour swatches</dt>
+      <dd>Produced on your Mac by Apple's Vision framework, kept only as long as
+      the preview card that owns them.</dd>
+      <dt>Clipboard history, scratchpad notes, shelf items</dt>
+      <dd>Stored in <code>~/Library/Application&nbsp;Support/PearCompanion</code>.</dd>
+      <dt>Settings</dt>
+      <dd>Standard macOS preferences for this app.</dd>
+      <dt>Your licence</dt>
+      <dd>A signed file containing the email address you bought with. Verified on
+      your Mac.</dd>
+    </dl>
+    <p>None of it is read, indexed or transmitted by Pear.</p>
   </section>
 
   <section class="doc-section">
-    <h2>The only two network connections</h2>
+    <h2>2. Network connections</h2>
+    <p>The app makes two, and no others.</p>
     <ol>
       <li><strong>Update checks.</strong> Pear asks GitHub whether a newer version
-      exists. GitHub sees your IP address and the request, as any website would.
-      No identifier of ours is attached.</li>
-      <li><strong>The optional high-quality background-removal model.</strong> Only if
-      you switch on High-quality mode does Pear download a ~195&nbsp;MB machine-learning
-      model from our GitHub release page. It then runs entirely on your Mac,
-      forever offline. If you never turn that on, this never happens.</li>
+      exists. GitHub sees your IP address, as it would for any web request. No
+      identifier of ours is attached.</li>
+      <li><strong>The optional background-removal model.</strong> If you turn on
+      High-quality mode, Pear downloads a machine-learning model of about 195&nbsp;MB
+      from our GitHub release page, once. It then runs entirely on your Mac. If you
+      leave that setting off, this never happens.</li>
     </ol>
-    <p>That is the complete list. Your licence is <em>not</em> checked over the
-    network — there is no activation server, so Pear keeps working with no
-    internet at all.</p>
+    <p>Licences are not checked over the network. Pear works with no internet
+    connection at all.</p>
   </section>
 
   <section class="doc-section">
-    <h2>System permissions</h2>
-    <p>macOS will ask you for some of these. Each is used locally, for the tool
-    that needs it, and nothing captured is transmitted:</p>
-    <ul>
-      <li><strong>Screen Recording</strong> — to take screenshots and show window previews.</li>
-      <li><strong>Accessibility</strong> — to move windows, read menu shortcuts, and
-      arrange menu-bar items.</li>
-      <li><strong>Files and folders</strong> — to save screenshots where you asked and to
-      show disk usage.</li>
-      <li><strong>Notifications</strong> — to tell you a capture or scan finished. Since
-      version 2.15, notifications never quote the contents of what was scanned.</li>
-    </ul>
+    <h2>3. System permissions</h2>
+    <p>macOS asks you for these. Each is used locally by the tool that needs it,
+    and nothing captured is transmitted.</p>
+    <dl class="defs">
+      <dt>Screen Recording</dt><dd>Screenshots and window previews.</dd>
+      <dt>Accessibility</dt><dd>Moving windows, reading menu shortcuts, arranging menu-bar items.</dd>
+      <dt>Files and folders</dt><dd>Saving screenshots where you asked, and reading disk usage.</dd>
+      <dt>Notifications</dt><dd>Telling you a capture or scan finished. Notification text
+      never includes the contents of what was scanned.</dd>
+    </dl>
   </section>
 
   <section class="doc-section">
-    <h2>Buying Pear</h2>
-    <p>Purchases are handled by <strong>Paddle.com</strong>, which is the Merchant of
-    Record and processes payment on our behalf. Paddle receives your name, email
-    address, billing country and payment details under
-    <a class="link" href="https://www.paddle.com/legal/privacy" rel="noopener">their privacy policy</a>.
-    We never see or store your card details.</p>
+    <h2>4. Purchases and support</h2>
+    <p>Purchases are handled by Paddle.com, the Merchant of Record. Paddle
+    receives your name, email address, billing country and payment details under
+    <a class="link" href="https://www.paddle.com/legal/privacy" rel="noopener">its own privacy policy</a>.
+    We never see or store card details.</p>
     <p>From Paddle we receive your email address, order reference and country, so
-    we can issue your licence and honour refunds and support. We keep that for as
-    long as we are required to for accounting, and we do not sell it, rent it, or
-    send you marketing you didn't ask for.</p>
-    <p>If you email support, we have your email and whatever you tell us. That's
-    it.</p>
+    that we can issue your licence and handle refunds and support. We keep those
+    records for as long as accounting requires. We do not sell or rent them, and we
+    do not send marketing you did not ask for.</p>
+    <p>If you write to support, we hold your email address and the contents of
+    your message.</p>
   </section>
 
   <section class="doc-section">
-    <h2>Your rights</h2>
-    <p>Because Pear collects nothing, most data requests concern only your
-    purchase record held by us and by Paddle. Write to
+    <h2>5. Your rights</h2>
+    <p>Because the app collects nothing, a data request concerns only your
+    purchase record, held by us and by Paddle. Write to
     <a class="link" href="mailto:contact@phanthawas.dev">contact@phanthawas.dev</a>
     and we will confirm, correct, export or delete what we hold, subject to
-    accounting obligations. If you are in the EEA or UK, that includes your rights
-    under the GDPR; if you are in California, your rights under the CCPA.</p>
-    <p>Pear is not directed at children and collects nothing from anyone.</p>
+    accounting obligations. In the EEA and the UK this includes your rights under
+    the GDPR; in California, your rights under the CCPA.</p>
+    <p>Pear is not directed at children.</p>
   </section>
 
   <section class="doc-section">
-    <h2>Changes</h2>
-    <p>If this policy changes in a way that matters, the app's release notes will
-    say so. The date at the top of this page always reflects the current version.</p>
+    <h2>6. Changes</h2>
+    <p>Material changes will be noted in the app's release notes. The date at the
+    top of this page reflects the current version.</p>
   </section>
 
   <section class="doc-section">
-    <h2>Contact</h2>
-    <p>Phanthawas Jirakiattikun, Ideo Q Chula Samyan 660/250, Bangkok 10500, Thailand<br>
+    <h2>7. Contact</h2>
+    <p>Phanthawas Jirakiattikun<br>
+    Ideo Q Chula Samyan 660/250, Bangkok 10500, Thailand<br>
     <a class="link" href="mailto:contact@phanthawas.dev">contact@phanthawas.dev</a></p>
   </section>
 </main>
@@ -137,8 +136,26 @@
     <a href="/privacy">Privacy</a>
     <a href="/terms">Terms</a>
     <a href="/refunds">Refunds</a>
+    <a href="https://github.com/RawSalmon69/pear-cli" rel="noopener">Source</a>
+    <a href="https://github.com/RawSalmon69/pear-cli/releases" rel="noopener">Releases</a>
+    <a href="https://github.com/RawSalmon69/pear-cli/tree/main/companion/Sources/PearCompanion/Resources/Licenses" rel="noopener">Licenses</a>
   </nav>
-  <p class="fine">Pear is made by Phanthawas Jirakiattikun.</p>
+  <p class="fine">Pear is made by Phanthawas Jirakiattikun.
+  Contact <a class="link" href="mailto:contact@phanthawas.dev">contact@phanthawas.dev</a>.<br>
+  Optional HD background removal uses BEN2&nbsp;Base (MIT, &copy;&nbsp;Prama&nbsp;LLC).
+  Type set in Space&nbsp;Grotesk and Fraunces (OFL).</p>
 </footer>
+
+<script>
+(async () => {
+  try {
+    const res = await fetch('https://api.github.com/repos/RawSalmon69/pear-cli/releases?per_page=15');
+    if (!res.ok) return;
+    const rel = (await res.json()).find(r => r.tag_name && r.tag_name.startsWith('companion-v') && !r.draft && !r.prerelease);
+    const asset = rel && (rel.assets || []).find(a => a.name && a.name.endsWith('.zip'));
+    if (asset) document.querySelectorAll('[data-download]').forEach(el => { el.href = asset.browser_download_url; });
+  } catch { /* the fallback href already points at the releases page */ }
+})();
+</script>
 </body>
 </html>

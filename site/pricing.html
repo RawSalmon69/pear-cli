@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pricing · Pear</title>
-<meta name="description" content="Pear for Mac: one-time purchase, 14-day free trial, no account required. Everything runs on your machine.">
+<title>Pricing &middot; Pear</title>
+<meta name="description" content="Pear for Mac: one-time purchase, fourteen-day free trial, no account.">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0c0e">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f6f4">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 138'%3E%3Cpath fill='%23aee34f' d='M60 40c-9 0-13 8-15 17-2 10-5 15-12 24-9 11-12 25-6 37 6 11 19 16 33 16s27-5 33-16c6-12 3-26-6-37-7-9-10-14-12-24-2-9-6-17-15-17Z'/%3E%3Cpath fill='%234fe08c' d='M64 24c8-11 23-13 31-8-4 11-17 16-30 10Z'/%3E%3C/svg%3E">
@@ -12,7 +12,7 @@
 </head>
 <body class="doc-page">
 
-<header class="bar">
+<header class="bar" id="top">
   <a class="brand" href="/" aria-label="Pear, home">
     <svg class="pear" viewBox="0 0 120 138" aria-hidden="true">
       <path style="fill:var(--accent)" d="M60 40c-9 0-13 8-15 17-2 10-5 15-12 24-9 11-12 25-6 37 6 11 19 16 33 16s27-5 33-16c6-12 3-26-6-37-7-9-10-14-12-24-2-9-6-17-15-17Z"/>
@@ -20,79 +20,88 @@
     </svg>
     <span>Pear</span>
   </a>
-  <nav class="nav" aria-label="Pages">
-    <a href="/">Overview</a>
+  <nav class="nav" aria-label="Main">
+    <a href="/#tools">Tools</a>
+    <a href="/pricing" aria-current="page">Pricing</a>
     <a href="/privacy">Privacy</a>
-    <a href="/terms">Terms</a>
+    <a href="https://github.com/RawSalmon69/pear-cli" rel="noopener">Source</a>
   </nav>
-  <a class="dl" href="#buy">Buy<span class="dl-arrow" aria-hidden="true">→</span></a>
+  <a class="dl" href="https://github.com/RawSalmon69/pear-cli/releases" data-download>Download<span class="dl-arrow" aria-hidden="true">&#8595;</span></a>
 </header>
 
 <main class="doc">
-  <p class="eyebrow"><span class="dot"></span>Pricing</p>
-  <h1>Buy it once. <span class="em">Keep</span> it.</h1>
-  <p class="lede">Pear is a one-time purchase with a 14-day free trial. No
-  account, no subscription, no telemetry, and nothing to log into. The trial is
-  the whole app — every tool, no watermarks, no locked features.</p>
+  <h1>Pricing</h1>
+  <p class="lede">One-time purchase. Fourteen-day free trial. No account, no
+  subscription.</p>
 
   <section id="buy" class="plans plans-single">
     <article class="plan">
       <h2>Pear 3</h2>
-      <p class="price"><span class="amount">$19</span> <span class="once">one-time, early price</span></p>
+      <p class="price"><span class="amount">$19</span> <span class="once">one-time</span></p>
       <ul>
         <li>Every tool in the app</li>
-        <li>All Pear 3.x updates, forever</li>
-        <li>Use it on any Mac you own</li>
-        <li>Works completely offline, no account</li>
+        <li>All Pear 3.x updates</li>
+        <li>Any Mac you own</li>
+        <li>Works offline</li>
       </ul>
       <a class="btn" href="[PADDLE_CHECKOUT_URL]">Buy Pear 3</a>
-      <p class="fine">$19 while Pear 3 is new; the price goes to $29 later. Your
-      licence never expires and covers every Pear 3 update. If there is ever a
-      Pear 4, it will be a discounted upgrade &mdash; and Pear 3 will keep
-      working.</p>
     </article>
-  </section>
-
-  <p class="vat fine">Prices are in USD and exclude VAT or sales tax. Tax, where
-  it applies to you, is calculated and shown at checkout. Our order process is
-  conducted by our online reseller Paddle.com, which is the Merchant of Record
-  for all orders.</p>
-
-  <section class="doc-section">
-    <h2>Try it first</h2>
-    <p>Download Pear and it runs in full for 14 days. No card, no email, no
-    sign-up — the trial starts when you first open the app and ends quietly. If
-    you decide not to buy, your notes, shelf items and saved screenshots stay
-    yours and stay accessible.</p>
-    <p><a class="link" href="https://github.com/RawSalmon69/pear-cli/releases" rel="noopener" data-download>Download Pear</a> · macOS 14 or later · Apple&nbsp;Silicon</p>
+    <div class="plan-notes">
+      <h3>What the price covers</h3>
+      <p>$19 is the introductory price while Pear 3 is new. It will rise to $29.
+      Your licence does not expire and includes every Pear 3.x update.</p>
+      <p>If a Pear 4 is released, it will be a separate purchase at a discount for
+      existing owners. Pear 3 keeps working.</p>
+      <h3>Tax</h3>
+      <p>Prices are in US dollars and exclude VAT or sales tax, which is
+      calculated at checkout where it applies. Our order process is conducted by
+      our online reseller Paddle.com, which is the Merchant of Record for all
+      orders.</p>
+    </div>
   </section>
 
   <section class="doc-section">
-    <h2>Questions people actually ask</h2>
+    <h2>Free trial</h2>
+    <p>Pear runs with every feature for fourteen days. No card, no email, no
+    sign-up. The trial starts the first time you open the app.</p>
+    <p>When it ends, the tools stop until you enter a licence. Anything you
+    created stays accessible: scratchpad notes, shelf items and saved
+    screenshots.</p>
+    <p><a class="link" href="https://github.com/RawSalmon69/pear-cli/releases" rel="noopener" data-download>Download Pear</a></p>
+  </section>
 
-    <h3>How many Macs can I use it on?</h3>
-    <p>Any Mac you personally own or use. One licence per person, not per
-    machine. Please don't hand your licence to other people — it carries your
-    email address.</p>
+  <section class="doc-section">
+    <h2>Requirements</h2>
+    <ul>
+      <li>macOS 14 or later</li>
+      <li>Apple silicon</li>
+    </ul>
+  </section>
 
-    <h3>Does it phone home?</h3>
-    <p>No. Your licence is a signed file the app verifies on your Mac. There is
-    no activation server, so Pear works on a plane, behind a firewall, and in ten
-    years when this website is gone. See <a class="link" href="/privacy">Privacy</a>.</p>
+  <section class="doc-section">
+    <h2>Questions</h2>
 
-    <h3>What if I don't like it?</h3>
-    <p>14 days to change your mind, no reason needed. See
-    <a class="link" href="/refunds">Refunds</a>.</p>
+    <h3>How many Macs can I use one licence on?</h3>
+    <p>Any Mac you own or personally use. One licence per person, not per
+    machine. Your licence carries your email address, so please do not pass it
+    on.</p>
 
-    <h3>What about the Mac cleanup features?</h3>
-    <p>Cleanup, disk analysis and system stats come from the
-    <strong>pear</strong> command-line tool, which is free, open source
-    (GPL-3.0), and completely separate from this app. Install it and those tiles
-    light up. Don't, and the rest of Pear works exactly the same.</p>
+    <h3>Does Pear need an internet connection?</h3>
+    <p>No. Licences are signed files verified on your Mac. There is no
+    activation server to reach.</p>
 
-    <h3>Do you get my screenshots, my clipboard, or my text?</h3>
-    <p>No. None of it leaves your Mac. That isn't a policy choice we could
-    quietly reverse — the app has no analytics and no server to send it to.</p>
+    <h3>Can I get a refund?</h3>
+    <p>Yes, within fourteen days, without giving a reason. See the
+    <a class="link" href="/refunds">refund policy</a>.</p>
+
+    <h3>What about the cleanup, disk and stats tools?</h3>
+    <p>Those come from <code>pear</code>, a separate command-line tool that is
+    free and open source under the GPL-3.0. Install it and those tiles work.
+    Without it, the rest of the app is unaffected.</p>
+
+    <h3>What data leaves my Mac?</h3>
+    <p>Nothing from your work. The app has no analytics and no server of ours to
+    reach. See the <a class="link" href="/privacy">privacy policy</a>.</p>
   </section>
 </main>
 
@@ -106,9 +115,14 @@
     <a href="/privacy">Privacy</a>
     <a href="/terms">Terms</a>
     <a href="/refunds">Refunds</a>
+    <a href="https://github.com/RawSalmon69/pear-cli" rel="noopener">Source</a>
+    <a href="https://github.com/RawSalmon69/pear-cli/releases" rel="noopener">Releases</a>
+    <a href="https://github.com/RawSalmon69/pear-cli/tree/main/companion/Sources/PearCompanion/Resources/Licenses" rel="noopener">Licenses</a>
   </nav>
-  <p class="fine">Pear is made by Phanthawas Jirakiattikun. Support:
-  <a class="link" href="mailto:contact@phanthawas.dev">contact@phanthawas.dev</a></p>
+  <p class="fine">Pear is made by Phanthawas Jirakiattikun.
+  Contact <a class="link" href="mailto:contact@phanthawas.dev">contact@phanthawas.dev</a>.<br>
+  Optional HD background removal uses BEN2&nbsp;Base (MIT, &copy;&nbsp;Prama&nbsp;LLC).
+  Type set in Space&nbsp;Grotesk and Fraunces (OFL).</p>
 </footer>
 
 <script>
