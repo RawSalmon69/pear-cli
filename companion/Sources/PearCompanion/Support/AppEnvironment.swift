@@ -40,7 +40,9 @@ final class AppEnvironment {
         // hotkey is claimed and no engine starts. Set before the first `offer`,
         // because `offer` is what consults it.
         let entitlement = self.entitlement
-        tools.isLocked = { !entitlement.entitlement.unlocksTools }
+        tools.isLocked = {
+            FeatureFlags.paywall && !entitlement.entitlement.unlocksTools
+        }
         tools.offer(ScreenshotTool(messaging: messaging))
         tools.offer(ScreenshotTool(mode: .fullScreen, messaging: messaging))
         tools.offer(ScreenshotTool(mode: .window, messaging: messaging))
