@@ -14,6 +14,14 @@ struct PanelView: View {
                 ConnectionBanner()
                 NotesSection()
             }
+            // `unlocksTools` is false exactly when the entitlement is `.expired`,
+            // and the reason decides the wording — so match on it here. The grid
+            // stays below on purpose: while locked it holds only the two tools
+            // that survive expiry, and those tiles are the user's way back to
+            // their own notes and shelf items.
+            if case .expired(let reason) = env.entitlement.entitlement {
+                LockedStateCard(reason: reason)
+            }
             ToolsSection()
             StatsSection()
             BottomBar()
@@ -556,6 +564,32 @@ struct BottomBar: View {
     @State private var showHelp = false
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            buttonRow
+            trialNotice
+        }
+    }
+
+    /// The trial's last few days, said in exactly one place: a footnote under the
+    /// panel's own chrome, next to the version and the gear that opens the licence
+    /// pane. Not a modal, not a badge, and nothing at all until day three — the
+    /// point is that a user who is fine can ignore it and a user who is deciding
+    /// knows where to go.
+    @ViewBuilder private var trialNotice: some View {
+        if case .trial(let days) = env.entitlement.entitlement,
+            let notice = LockedCopy.trialNotice(daysRemaining: days) {
+            HStack(spacing: 4) {
+                Text(notice)
+                    .foregroundStyle(.tertiary)
+                Link("Buy a licence", destination: LockedCopy.pricingURL)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+            }
+            .font(Theme.caption)
+        }
+    }
+
+    private var buttonRow: some View {
         HStack(spacing: Theme.itemGap) {
             Button { env.cleaner.run(command: "clean") } label: {
                 Label("Clean", systemImage: "sparkles").font(Theme.body)

@@ -3,10 +3,10 @@ import AppKit
 
 /// Settings, split into a few tabs so a dozen tools' worth of controls read
 /// as small groups instead of one long scroll. General = look and capture,
-/// Tools = per-tool on/off, Menu Bar = the runner.
+/// Tools = per-tool on/off, Menu Bar = the runner, Licence = trial and key.
 struct SettingsPopover: View {
     @Environment(AppEnvironment.self) private var env
-    @State private var tab: Tab = .general
+    @State private var tab: Tab
     @State private var showAccentWheel = false
     @State private var keyField = ""
     @State private var role = CoupleKey.deviceRole
@@ -25,9 +25,15 @@ struct SettingsPopover: View {
     @AppStorage(Prefs.cleanSystemCachesKey) private var cleanSystemCaches = false
     @State private var hd = HDBackgroundModelManager.shared
 
-    private enum Tab: String, CaseIterable, Identifiable {
-        case general = "General", tools = "Tools", menuBar = "Menu Bar"
+    enum Tab: String, CaseIterable, Identifiable {
+        case general = "General", tools = "Tools", menuBar = "Menu Bar", licence = "Licence"
         var id: String { rawValue }
+    }
+
+    /// Opens on `tab`. The locked state passes `.licence`, so "I have a licence"
+    /// lands on the field instead of on General.
+    init(tab: Tab = .general) {
+        _tab = State(initialValue: tab)
     }
 
     var body: some View {
@@ -44,6 +50,7 @@ struct SettingsPopover: View {
                     case .general: generalTab
                     case .tools: toolsTab
                     case .menuBar: RunnerSettingsView(runner: env.runner)
+                    case .licence: LicenceSettingsView()
                     }
                 }
                 .padding(.top, 4)
