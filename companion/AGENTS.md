@@ -27,7 +27,7 @@ native Apple primitives over custom imitations. See root memory / `[[owner-quali
 ```bash
 cd companion
 swift build            # compile
-swift test             # full suite (523 tests, must stay green)
+swift test             # full suite (595 tests, must stay green)
 ./build.sh [version]   # assemble build/Pear.app (unsigned dev bundle); `open build/Pear.app`
 ```
 
@@ -115,6 +115,40 @@ battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
   **1.47.0**, the first release containing `clean --system` — and render
   `CLIRequirementCard` when the CLI is missing or older. Raising that minimum
   means cutting a CLI release *first*, or every user is told their CLI is too old.
+- **Licensing is offline, asymmetric, and fails in a chosen direction.** $19 (rising
+  to $29), perpetual for all 3.x, sold direct through Paddle. 14-day trial, no
+  account or card. The app verifies an **Ed25519-signed licence** against a public
+  key baked into `LicenceKey.publicKeyBase64` — there is **no activation server**,
+  so it works offline forever and survives Paddle disappearing. Rules that must not
+  be softened:
+  - **Never HMAC or any shared secret.** A symmetric key verified in-app ships the
+    signing secret in the binary, and one extraction is a keygen for everybody.
+  - **The stored artefact is the signed licence string**, re-verified every launch.
+    There is deliberately no `licensed = true` boolean anywhere to flip.
+  - **The revocation list fails open in every failure mode** — network error, 404,
+    bad JSON, bad signature, dead domain, unparseable date, stale serial. A
+    refunded user keeping the app is an acceptable loss; a paying user locked out
+    by a DNS blip is not. It is sticky and monotonic in the other direction: once
+    revoked, never un-revoked, and an older `serial` can never roll it back.
+  - Licence and revocation signatures are **domain-separated** (`pear-licence-v1`
+    / `pear-revocation-v1`) via `SigningDomain`, so neither can be replayed as the
+    other. One assembly point; do not add a second.
+  - **The private key never enters this repo.** `companion/scripts/license-keygen.sh`
+    generates it under `~/.pear-licensing/` and refuses any path inside a git repo
+    or worktree. macOS's `/usr/bin/openssl` is LibreSSL and **cannot do Ed25519** —
+    the scripts probe for a capable one and tell you to `brew install openssl@3`.
+  - The committed public key is a **placeholder** whose private half was never
+    written to disk. While it stands, licences fail closed and the revocation list
+    fails open. It is a real curve point rather than zeros on purpose: an all-zero
+    Ed25519 public key is a small-order point that *accepts forged signatures*.
+- **The paywall is one gate, in `ToolRegistry`.** `isLocked` + `Tool.survivesExpiry`
+  decide registration, so a locked tool never claims a hotkey and never has
+  `start()` called — the same mechanism that already makes a user-disabled tool
+  inert. **Do not add `if licensed` checks to individual tools.** `ScratchpadTool`
+  and `ShelfTool` set `survivesExpiry = true` because `site/terms.html` §2 promises
+  in writing that notes and shelf items stay accessible and exportable after the
+  trial ends; that is a commitment, not a preference. Saved screenshots need no
+  exemption — they are plain files in a folder.
 - **Bundle ID `com.rawsalmon69.pear.companion`, SPM module `PearCompanion`, the
   resource-bundle name, and entitlements/provisionprofile filenames MUST NOT
   change** — changing the bundle ID breaks Sparkle auto-update, the CloudKit
