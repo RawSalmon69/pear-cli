@@ -50,7 +50,7 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; scroll-padding-top: 5rem; }
 
 body {
   margin: 0;
@@ -349,8 +349,9 @@ footer nav a:hover { color: var(--ink); }
 }
 @media (max-width: 560px) {
   body { font-size: 16px; }
-  .nav { display: none; }
-  .bar { gap: 1rem; }
+  .nav { gap: 0.85rem; font-size: 0.8rem; margin-left: 0; }
+  .brand span { display: none; }
+  .bar { gap: 0.75rem; padding-left: 1rem; padding-right: 1rem; }
   .hero-art { display: block; min-height: 0; }
   .hero-art .pear-xl { width: 12rem; margin: 0 auto; transform: none; }
   .hero-art .wire { width: 100%; margin: 1.5rem 0 0; align-self: auto; justify-self: auto; }
@@ -454,3 +455,18 @@ footer nav a:hover { color: var(--ink); }
   .plans { grid-template-columns: 1fr; gap: 1.5rem; }
   .doc { padding: 3rem 1.25rem 4rem; }
 }
+
+/* Keyboard users land here first; visible only when focused. */
+.skip {
+  position: absolute;
+  left: 0.75rem;
+  top: -3rem;
+  z-index: 50;
+  padding: 0.5rem 0.9rem;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #0b0c0e;
+  font-size: 0.9rem;
+  transition: top 0.15s ease;
+}
+.skip:focus { top: 0.75rem; }
