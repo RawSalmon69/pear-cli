@@ -141,6 +141,16 @@ final class EntitlementStore {
                 break // fall through to the trial
             }
         }
+        // The trial clock must not start before the paywall exists. Reading
+        // `trial.status()` is what *begins* a trial, so calling it in a build
+        // where `FeatureFlags.paywall` is off would silently burn 14 days for
+        // everyone who has the app today — and they would be locked out the
+        // instant the flag flipped, which is precisely the auto-update-into-a-
+        // paywall failure this whole rollout is shaped to avoid.
+        guard FeatureFlags.paywall else {
+            entitlement = .trial(daysRemaining: TrialState.trialDays)
+            return
+        }
         switch trial.status() {
         case .active(let daysRemaining):
             entitlement = .trial(daysRemaining: daysRemaining)
