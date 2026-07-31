@@ -69,7 +69,10 @@ if [[ -n "${IDENTITY:-}" ]]; then
         done < <(find "$FW" -name "*.xpc" -type d)
         while IFS= read -r nested; do
             sign "$nested"
-        done < <(find "$FW" -name "Autoupdate" -type f; find "$FW" -name "Updater.app" -type d)
+        done < <(
+            find "$FW" -name "Autoupdate" -type f
+            find "$FW" -name "Updater.app" -type d
+        )
         sign "$FW"
     fi
 

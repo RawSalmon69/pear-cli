@@ -56,8 +56,8 @@ litsub() {
 optsub() {
     local label="$1" file="$2" re="$3" rep="$4"
     [[ -f "$file" ]] || fail "$label: file not found: $file"
-    RB_RE="$re" RB_REP="$rep" perl -0777 -pi -e 's/$ENV{RB_RE}/$ENV{RB_REP}/g' "$file" \
-        || fail "$label: perl error on $file"
+    RB_RE="$re" RB_REP="$rep" perl -0777 -pi -e 's/$ENV{RB_RE}/$ENV{RB_REP}/g' "$file" ||
+        fail "$label: perl error on $file"
 }
 
 del_file() {
@@ -76,12 +76,12 @@ ren_file() {
 # ---------------------------------------------------------------------------
 # Phase 1 - deletions (rule 6 + protected README.md, regenerated from ours)
 # ---------------------------------------------------------------------------
-del_file del-trademark        TRADEMARK.md
+del_file del-trademark TRADEMARK.md
 del_file del-contributors-svg CONTRIBUTORS.svg
-del_file del-funding          .github/FUNDING.yml
-del_file del-macapp-bug       .github/ISSUE_TEMPLATE/mac_app_bug.yml
-del_file del-macapp-feature   .github/ISSUE_TEMPLATE/mac_app_feature.yml
-del_file del-update-contrib   .github/workflows/update-contributors.yml
+del_file del-funding .github/FUNDING.yml
+del_file del-macapp-bug .github/ISSUE_TEMPLATE/mac_app_bug.yml
+del_file del-macapp-feature .github/ISSUE_TEMPLATE/mac_app_feature.yml
+del_file del-update-contrib .github/workflows/update-contributors.yml
 del_file del-readme-protected README.md
 
 # ---------------------------------------------------------------------------
@@ -112,17 +112,17 @@ optsub agents-mac-diagnostics AGENTS.md \
 '
 
 # 2.2 cmd/status/view.go: mascot identifiers become cat*, not pear* (rule 5)
-resub view-molebody      cmd/status/view.go 'moleBody'     'catBody'     4
-resub view-getmoleframe  cmd/status/view.go 'getMoleFrame' 'getCatFrame' 3
-resub view-molewidth     cmd/status/view.go 'moleWidth'    'catWidth'    2
-litsub view-comment-body   cmd/status/view.go 'Mole body frames (facing right).'  'Cat body frames (facing right).'
+resub view-molebody cmd/status/view.go 'moleBody' 'catBody' 4
+resub view-getmoleframe cmd/status/view.go 'getMoleFrame' 'getCatFrame' 3
+resub view-molewidth cmd/status/view.go 'moleWidth' 'catWidth' 2
+litsub view-comment-body cmd/status/view.go 'Mole body frames (facing right).' 'Cat body frames (facing right).'
 litsub view-comment-mirror cmd/status/view.go 'Mirror mole body frames (facing left).' 'Mirror cat body frames (facing left).'
 litsub view-comment-render cmd/status/view.go 'renders the animated mole.' 'renders the animated cat.'
 
 # 2.3 cmd/status/view_test.go: mascot test names + frame wording
-litsub viewtest-once   cmd/status/view_test.go 'TestRenderHeaderErrorReturnsMoleOnce'  'TestRenderHeaderErrorReturnsCatOnce'
-litsub viewtest-single cmd/status/view_test.go 'TestModelViewErrorRendersSingleMole'   'TestModelViewErrorRendersSingleCat'
-litsub viewtest-frame  cmd/status/view_test.go 'one mole frame' 'one cat frame' 2
+litsub viewtest-once cmd/status/view_test.go 'TestRenderHeaderErrorReturnsMoleOnce' 'TestRenderHeaderErrorReturnsCatOnce'
+litsub viewtest-single cmd/status/view_test.go 'TestModelViewErrorRendersSingleMole' 'TestModelViewErrorRendersSingleCat'
+litsub viewtest-frame cmd/status/view_test.go 'one mole frame' 'one cat frame' 2
 
 # 2.4 cmd/status/metrics_battery.go: comment no longer references the Mac app
 litsub battery-comment cmd/status/metrics_battery.go \
@@ -243,8 +243,8 @@ grep -v '\.go$' "$TEXT_LIST" | xargs perl -0777 -pi -e \
 # ---------------------------------------------------------------------------
 # Phase 4 - file renames (rule 4)
 # ---------------------------------------------------------------------------
-ren_file rename-cli         mole pear
-ren_file rename-alias       mo   pe
+ren_file rename-cli mole pear
+ren_file rename-alias mo pe
 ren_file rename-fileops-test tests/file_ops_mole_delete.bats tests/file_ops_pear_delete.bats
 ren_file rename-cursor-rule .cursor/rules/mole-test-safety.mdc .cursor/rules/pear-test-safety.mdc
 
@@ -263,12 +263,12 @@ fi
 # tw93 may remain only as: CDN image host, the MiaoYan bundle id, an example
 # username in protected-path fixtures, the sponsors helper, and the
 # release-notes contributor-exclusion rule.
-RESIDUAL_TW93=$(grep -rIn --exclude-dir=.git 'tw93' . \
-    | grep -v 'cdn\.tw93\.fun' \
-    | grep -v 'com\.tw93\.MiaoYan' \
-    | grep -v '/Users/tw93' \
-    | grep -v '^\./\.claude/skills/release-notes/scripts/sponsors\.sh:' \
-    | grep -v 'Exclude `tw93` and bots' || true)
+RESIDUAL_TW93=$(grep -rIn --exclude-dir=.git 'tw93' . |
+    grep -v 'cdn\.tw93\.fun' |
+    grep -v 'com\.tw93\.MiaoYan' |
+    grep -v '/Users/tw93' |
+    grep -v '^\./\.claude/skills/release-notes/scripts/sponsors\.sh:' |
+    grep -v 'Exclude `tw93` and bots' || true)
 if [[ -n "$RESIDUAL_TW93" ]]; then
     echo "$RESIDUAL_TW93" >&2
     fail "post-check: residual 'tw93' reference outside the allowed exceptions"
@@ -281,7 +281,7 @@ if grep -rIn --exclude-dir=.git '🐹' . > /dev/null 2>&1; then
 fi
 # Standalone `mo` may remain only in Go sources and the project.sh month label.
 RESIDUAL_MO=$(grep -v '\.go$' "$TEXT_LIST" | xargs perl -ne \
-    'print "$ARGV:$.: $_" if /(?<!\)\))\bmo\b/; close ARGV if eof' 2>/dev/null || true)
+    'print "$ARGV:$.: $_" if /(?<!\)\))\bmo\b/; close ARGV if eof' 2> /dev/null || true)
 if [[ -n "$RESIDUAL_MO" ]]; then
     echo "$RESIDUAL_MO" >&2
     fail "post-check: residual standalone 'mo' outside Go sources"
