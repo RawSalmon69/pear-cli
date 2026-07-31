@@ -1,0 +1,51 @@
+Pear.app — attribution and modification notice for Apache-2.0 material
+======================================================================
+
+This file exists to satisfy sections 4(b), 4(c) and 4(d) of the Apache
+License, Version 2.0, for the third-party work Pear.app redistributes.
+Full licence texts travel beside it: RunCat365-LICENSE.txt and
+RunnerGallery-LICENSE.txt.
+
+
+1. Menu-bar runner artwork
+--------------------------
+
+  RunCat365 — https://github.com/runcat-dev/RunCat365 — Apache-2.0
+    The "cat", "parrot" and "horse" frame sets.
+
+  Runner Gallery — https://github.com/runcat-dev/RunnerGallery — Apache-2.0
+    Every other runner shipped under Resources/Runners/.
+
+  MODIFICATIONS: the PNG frames themselves are redistributed unchanged.
+  Pear renders them as template images and, at draw time only, crops each
+  frame to the union of its opaque pixels before scaling, so runners with
+  differing transparent margins appear the same size in the menu bar. That
+  is a runtime transform; no shipped frame file has been altered.
+
+
+2. Runner frame cadence
+-----------------------
+
+  RunCat (menubar_runcat) — https://github.com/Kyome22/menubar_runcat
+    — Apache-2.0, Copyright Takuto Nakamura (Kyome22).
+
+  Pear's CPU-load-to-frame-interval mapping is adopted from this project's
+  AppDelegate, which computes:
+
+      interval = 0.2 / max(1, min(20, cpuPercent / 5))
+
+  MODIFICATIONS: Pear changed the lower bound of that interval from 10 ms
+  (upstream's clamp of speed at 20) to 50 ms. Upstream swaps `button.image`
+  on a bare NSStatusItem; Pear's frame swap re-renders a SwiftUI menu-bar
+  label, which is far more expensive per tick. At 10 ms the redraw churn
+  alone held the app near 28% CPU on a loaded machine, and that burn fed
+  the very load signal that sets the cadence, so the sprint sustained
+  itself. The idle endpoint (0.2 s), the divisor (5) and the clamp shape
+  are unchanged. See RunnerCadence in Tools/RunCat/RunnerModel.swift.
+
+  No other Apache-2.0 material in this app has been modified.
+
+
+Everything else Pear vendors is MIT or BSD licensed; those notices live in
+Resources/Licenses/. Pear.app itself is proprietary and contains no
+GPL-licensed code.

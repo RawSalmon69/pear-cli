@@ -12,10 +12,15 @@ import Observation
 /// Pure CPU-load → frame-interval mapping. Kept free of any state or actor so
 /// it is trivially unit-testable without hardware.
 ///
-/// Adopted verbatim from menubar_runcat (Apache-2.0), whose `AppDelegate`
-/// computes `interval = 0.2 / max(1, min(20, usage% / 5))`: the interval is flat
-/// at the idle amble for the first 5% of load, then shrinks hyperbolically as the
+/// Adopted from menubar_runcat (Apache-2.0), whose `AppDelegate` computes
+/// `interval = 0.2 / max(1, min(20, usage% / 5))`: the interval is flat at the
+/// idle amble for the first 5% of load, then shrinks hyperbolically as the
 /// clamped `speed` rises, bottoming out at 10 ms once the machine is pegged.
+///
+/// **Modified**, per Apache-2.0 §4(b): the lower bound is 50 ms here, not
+/// upstream's 10 ms — see `peggedInterval` for why, and
+/// `Resources/Runners/NOTICE.txt` for the notice that ships with the app. The
+/// idle endpoint, the divisor and the clamp shape are unchanged.
 enum RunnerCadence {
     /// Seconds per frame at 0% CPU — a slow amble. `speed` clamps to 1 here.
     static let idleInterval: Double = 0.200
