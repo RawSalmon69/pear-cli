@@ -25,13 +25,31 @@ final class HotkeyOverrideTests: XCTestCase {
         func stop() { stopCount += 1 }
     }
 
+    /// A tool that owns a set of chords it registers itself, like the Windows
+    /// tool. `hotkey` stays nil so nothing reaches the real HotKeyManager.
+    private final class MultiChordTool: Tool {
+        let id: String
+        let title: String
+        let icon = "star"
+        let hotkey: HotKeyChord? = nil
+        let extraChords: [HotKeyChord]
+
+        init(id: String, title: String, extra: [HotKeyChord]) {
+            self.id = id
+            self.title = title
+            self.extraChords = extra
+        }
+
+        var entry: ToolEntry { .action {} }
+    }
+
     /// The registry reads/writes UserDefaults.standard for enabled state and
     /// overrides (only the override *round-trip* accepts an injected suite), so
     /// scrub any keys a test touches at its start and end. Overriding
     /// `setUp`/`tearDown` would cross the `@MainActor` boundary, so tests scrub
     /// inline with `defer` — the pattern the other suites here use.
     private func scrub() {
-        for id in ["fake.a", "fake.b"] {
+        for id in ["fake.a", "fake.b", "fake.multi"] {
             UserDefaults.standard.removeObject(forKey: Prefs.toolEnabledKey(id))
             UserDefaults.standard.removeObject(forKey: Prefs.toolHotkeyKey(id))
         }
@@ -107,6 +125,40 @@ final class HotkeyOverrideTests: XCTestCase {
         // Same key, different modifiers → free.
         let other = HotKeyChord(keyCode: kVK_ANSI_9, modifiers: cmdKey | optionKey, label: "⌘⌥9")
         XCTAssertNil(registry.conflictingTool(for: other, excluding: "fake.b"))
+    }
+
+    /// A tool that registers its own set of chords (the Windows tool and its
+    /// ⌃⌥ snapping family) never routes them through the registry, so the
+    /// recorder can only know about them through `extraChords`. Without this the
+    /// user is told a chord is free and it then silently loses at runtime.
+    func testConflictSeesToolOwnedExtraChords() {
+        scrub()
+        defer { scrub() }
+        let owned = HotKeyChord(keyCode: kVK_LeftArrow, modifiers: controlKey | optionKey, label: "⌃⌥←")
+        let registry = ToolRegistry()
+        registry.offer(MultiChordTool(id: "fake.multi", title: "Multi", extra: [owned]))
+        registry.offer(FakeTool(id: "fake.b", title: "Beta"))
+
+        XCTAssertEqual(registry.conflictingTool(for: owned, excluding: "fake.b"), "Multi")
+        XCTAssertNil(registry.conflictingTool(for: owned, excluding: "fake.multi"))
+
+        // A different chord is still free.
+        let free = HotKeyChord(keyCode: kVK_RightArrow, modifiers: controlKey | optionKey, label: "⌃⌥→")
+        XCTAssertNil(registry.conflictingTool(for: free, excluding: "fake.b"))
+    }
+
+    /// Disabled tools register nothing, so their owned chords are not conflicts
+    /// either — same rule the single-`hotkey` path already follows.
+    func testDisabledToolsExtraChordsAreNotConflicts() {
+        scrub()
+        defer { scrub() }
+        let owned = HotKeyChord(keyCode: kVK_UpArrow, modifiers: controlKey | optionKey, label: "⌃⌥↑")
+        let registry = ToolRegistry()
+        registry.offer(MultiChordTool(id: "fake.multi", title: "Multi", extra: [owned]))
+        registry.offer(FakeTool(id: "fake.b", title: "Beta"))
+
+        registry.setEnabled("fake.multi", false)
+        XCTAssertNil(registry.conflictingTool(for: owned, excluding: "fake.b"))
     }
 
     // MARK: - Live enable / disable

@@ -325,8 +325,8 @@ final class AXWindowMover: WindowMover {
     private func write(_ goal: CGRect, to window: AXUIElement, steps: [Step]) {
         for step in steps {
             switch step {
-            case .position: set(goal.origin, .cgPoint, kAXPositionAttribute, on: window)
-            case .size: set(goal.size, .cgSize, kAXSizeAttribute, on: window)
+            case .position: setPosition(goal.origin, on: window)
+            case .size: setSize(goal.size, on: window)
             }
         }
     }
@@ -345,18 +345,25 @@ final class AXWindowMover: WindowMover {
     /// `kAXPosition` and `kAXSize` are the boxed attributes: they take an
     /// `AXValue`, never a bare `CGPoint`/`CGSize`, and a raw struct is rejected
     /// without complaint.
-    private func set<T>(
-        _ value: T, _ type: AXValueType, _ attribute: String, on window: AXUIElement
-    ) {
-        var value = value
-        guard let boxed = AXValueCreate(type, &value) else { return }
-        _ = AXUIElementSetAttributeValue(window, attribute as CFString, boxed)
+    ///
+    /// Spelled out per type rather than generically. Taking `&value` on an
+    /// unconstrained `T` warns — correctly, since a `T` holding an object
+    /// reference must not be handed to `AXValueCreate` as raw bytes — and the
+    /// only two types that are ever boxed here are these.
+    private func setPosition(_ point: CGPoint, on window: AXUIElement) {
+        var point = point
+        guard let boxed = AXValueCreate(.cgPoint, &point) else { return }
+        _ = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, boxed)
+    }
+
+    private func setSize(_ size: CGSize, on window: AXUIElement) {
+        var size = size
+        guard let boxed = AXValueCreate(.cgSize, &size) else { return }
+        _ = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, boxed)
     }
 
     private func frame(of window: AXUIElement) -> CGRect? {
-        guard let origin: CGPoint = unboxed(window, kAXPositionAttribute, .cgPoint, .zero),
-            let size: CGSize = unboxed(window, kAXSizeAttribute, .cgSize, .zero)
-        else { return nil }
+        guard let origin = position(of: window), let size = size(of: window) else { return nil }
         return CGRect(origin: origin, size: size)
     }
 
@@ -364,15 +371,25 @@ final class AXWindowMover: WindowMover {
     /// `as?` can bridge, which an `AXValue` is not, so the unboxing lives here —
     /// but the read itself still goes through `AXRead`, keeping the
     /// messaging-timeout cap and the nil-on-any-failure contract in one place.
-    private func unboxed<T>(
-        _ window: AXUIElement, _ attribute: String, _ type: AXValueType, _ empty: T
-    ) -> T? {
+    private func position(of window: AXUIElement) -> CGPoint? {
+        guard let boxed = axValue(window, kAXPositionAttribute) else { return nil }
+        var out = CGPoint.zero
+        guard AXValueGetValue(boxed, .cgPoint, &out) else { return nil }
+        return out
+    }
+
+    private func size(of window: AXUIElement) -> CGSize? {
+        guard let boxed = axValue(window, kAXSizeAttribute) else { return nil }
+        var out = CGSize.zero
+        guard AXValueGetValue(boxed, .cgSize, &out) else { return nil }
+        return out
+    }
+
+    private func axValue(_ window: AXUIElement, _ attribute: String) -> AXValue? {
         guard let raw = AXRead.value(window, attribute),
             CFGetTypeID(raw as CFTypeRef) == AXValueGetTypeID()
         else { return nil }
-        var out = empty
-        guard AXValueGetValue(raw as! AXValue, type, &out) else { return nil }
-        return out
+        return (raw as! AXValue)
     }
 }
 

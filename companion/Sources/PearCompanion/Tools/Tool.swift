@@ -53,6 +53,11 @@ protocol Tool: AnyObject {
     /// the `panel` pseudo-tool opts out — you don't open the panel from inside
     /// it — while still registering a rebindable hotkey through the registry.
     var showsTile: Bool { get }
+    /// Chords the tool registers itself in `start()`, beyond its single
+    /// rebindable `hotkey`. Defaults empty. The registry does not register these
+    /// — it only needs to know about them so the shortcut recorder can report a
+    /// conflict instead of letting the user bind a chord that silently loses.
+    var extraChords: [HotKeyChord] { get }
     /// Hotkey behavior; defaults to the tile action for `.action` tools.
     func hotkeyFired()
     /// Launch-time hook for always-on engines. Default no-op.
@@ -68,6 +73,7 @@ extension Tool {
     var summary: String { "" }
     var defaultEnabled: Bool { true }
     var showsTile: Bool { true }
+    var extraChords: [HotKeyChord] { [] }
 
     func start() {}
     func stop() {}
@@ -179,12 +185,19 @@ final class ToolRegistry {
 
     /// Title of an enabled tool already bound to `chord`, or nil if it's free.
     /// Matches keyCode+modifiers (labels are cosmetic) against every enabled
-    /// tool's effective chord.
+    /// tool's effective chord, plus any `extraChords` a tool registers itself —
+    /// those never pass through this registry, so without them the recorder would
+    /// happily hand out a chord that loses to a tool-owned one at runtime.
     func conflictingTool(for chord: HotKeyChord, excluding id: String) -> String? {
+        func matches(_ other: HotKeyChord) -> Bool {
+            other.keyCode == chord.keyCode && other.modifiers == chord.modifiers
+        }
         for entry in catalog where entry.id != id {
             guard Prefs.isToolEnabled(entry.id, default: entry.tool.defaultEnabled) else { continue }
-            if let existing = effectiveChord(for: entry.tool),
-               existing.keyCode == chord.keyCode, existing.modifiers == chord.modifiers {
+            if let existing = effectiveChord(for: entry.tool), matches(existing) {
+                return entry.tool.title
+            }
+            if entry.tool.extraChords.contains(where: matches) {
                 return entry.tool.title
             }
         }

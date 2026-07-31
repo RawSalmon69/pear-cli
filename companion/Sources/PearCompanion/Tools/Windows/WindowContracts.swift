@@ -27,7 +27,10 @@ struct WindowZone: Equatable, Sendable, Identifiable {
 enum WindowAction: Equatable, Sendable {
     case snap(WindowZone)
     case center           // keep the current size, centre it
-    case restore          // back to the frame from before the last snap
+    /// Back to the frame the window had before the *first* snap of a run, so
+    /// left-half then right-half then restore lands where the user started
+    /// rather than one step back. Undo, not a step backwards.
+    case restore
 }
 
 /// A slot on the radial ring: eight around, one hub.

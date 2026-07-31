@@ -79,6 +79,11 @@ final class CleanModeTests: XCTestCase {
         let rig = makeRig(defaults: defaults)
 
         rig.controller.enter()
+        // `isAnyActive` is process-wide, so a test that ends still-active leaks
+        // "Clean Mode is on" into every later test in the run — which any input
+        // feature that consults it then suppresses itself against, failing on
+        // suite order alone.
+        defer { rig.controller.exit() }
 
         XCTAssertTrue(rig.controller.isActive)
         XCTAssertEqual(rig.controller.state, .active(keyboardLocked: true))
@@ -93,6 +98,7 @@ final class CleanModeTests: XCTestCase {
 
         rig.controller.enter()
         rig.controller.enter()
+        defer { rig.controller.exit() } // see testEnterActivates
 
         // Nothing stacks: one cover, one tap.
         XCTAssertEqual(rig.blanker.coverCount, 1)
@@ -149,6 +155,7 @@ final class CleanModeTests: XCTestCase {
         rig.controller.enter()
         rig.blanker.onDone?()
         rig.controller.enter()
+        defer { rig.controller.exit() } // see testEnterActivates
 
         XCTAssertTrue(rig.controller.isActive)
         XCTAssertEqual(rig.blanker.coverCount, 2)
