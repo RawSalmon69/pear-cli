@@ -27,7 +27,7 @@ native Apple primitives over custom imitations. See root memory / `[[owner-quali
 ```bash
 cd companion
 swift build            # compile
-swift test             # full suite (595 tests, must stay green)
+swift test             # full suite (599 tests, must stay green)
 ./build.sh [version]   # assemble build/Pear.app (unsigned dev bundle); `open build/Pear.app`
 ```
 
@@ -141,6 +141,15 @@ battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
     written to disk. While it stands, licences fail closed and the revocation list
     fails open. It is a real curve point rather than zeros on purpose: an all-zero
     Ed25519 public key is a small-order point that *accepts forged signatures*.
+- **`FeatureFlags.paywall` gates the lock, and the rollout order is load-bearing.**
+  While it is off, the licensing code is fully present and testable but nothing
+  locks **and the trial clock never starts** — reading the trial is what begins
+  it, so a pre-launch build that consulted it would burn everyone's 14 days and
+  lock them out the moment the flag flipped. Flip it only after, in this order:
+  the owner's real key is pasted into `LicenceKey`, `site/revoked.json` exists,
+  the privacy policy lists the third network connection, and every existing
+  friends-and-family install has been issued a licence. The bundle ID has never
+  changed, so those installs auto-update through the same appcast.
 - **The paywall is one gate, in `ToolRegistry`.** `isLocked` + `Tool.survivesExpiry`
   decide registration, so a locked tool never claims a hotkey and never has
   `start()` called — the same mechanism that already makes a user-disabled tool
