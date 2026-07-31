@@ -27,7 +27,7 @@ native Apple primitives over custom imitations. See root memory / `[[owner-quali
 ```bash
 cd companion
 swift build            # compile
-swift test             # full suite (494 tests, must stay green)
+swift test             # full suite (523 tests, must stay green)
 ./build.sh [version]   # assemble build/Pear.app (unsigned dev bundle); `open build/Pear.app`
 ```
 
@@ -269,5 +269,15 @@ maintainer before tagging.
   `CleanModeController.isAnyActive` is consulted by the window trigger, and three
   CleanMode tests used to end still-active, so 13 unrelated tests failed on suite
   order alone. Any test that flips a global must undo it in a `defer`.
+- **The legacy Keychain ignores `kSecUseAuthenticationUIFail`.** A keychain item is
+  ACL'd to the code identity that created it, so on a *dev* build every rebuild is
+  a new identity and the read hits a "wants to use your confidential information"
+  prompt — which that flag does not suppress (measured: the dialog appeared
+  anyway). Signed builds share one Developer ID identity and never see it. Any
+  Keychain read must therefore treat failure as *no evidence*, never as a negative
+  answer, and have a second store behind it (`TrialState`). Do not reach for
+  `kSecUseDataProtectionKeychain` to dodge this: it needs a `keychain-access-groups`
+  entitlement the app does not carry, and getting it wrong fails silently in
+  production only.
 - Interactive panel/overlay smoke is the **owner's** job — this box's screencapture/
   CGWindowList are permission-gated and AX-driving fights his live session.
