@@ -1,6 +1,6 @@
 # Pear Security Audit
 
-This document describes the security-relevant behavior of the current `main` branch, updated for V1.46.0 on 2026-07-11. It is intended as a public description of Pear's safety boundaries, destructive-operation controls, release integrity signals, and known limitations.
+This document describes the security-relevant behavior of the current `main` branch, updated for V1.47.0 on 2026-07-31. It is intended as a public description of Pear's safety boundaries, destructive-operation controls, release integrity signals, and known limitations.
 
 ## Executive Summary
 
@@ -209,6 +209,7 @@ Key properties:
 - authentication, SIP/MDM, and read-only filesystem failures are classified separately in file-operation results
 - sudo credential prompting passes through the system's native PAM prompt rather than a hardcoded string, ensuring correct behavior across locales and PAM configurations
 - Touch ID PAM configuration (`pe touchid`) uses `sudo install -m 444 -o root -g wheel` for atomic file writes, preventing temporary permission windows where PAM files could be user-writable (fixed in V1.39.0; prior versions used `sudo mv` which preserved temp-file ownership)
+- `pe clean --system` only pre-answers the existing system-cleanup gate; it still routes through `ensure_sudo_session`, so authentication is always required, and a denied or failed prompt downgrades to user-level cleanup rather than proceeding elevated (added in V1.47.0)
 - the perl-based command timeout fallback creates a new process group with `setpgid(0, 0)` rather than calling `setsid()`, so the timed child keeps the controlling terminal. This lets nested sudo inside a Homebrew cask uninstall script reuse the already-cached credential instead of failing on a detached tty, while the group-kill cleanup semantics (`kill TERM -pid`) are unchanged.
 
 When sudo is denied or unavailable, Pear prefers skipping privileged cleanup to forcing execution through unsafe fallback behavior.
