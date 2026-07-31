@@ -419,3 +419,4 @@ footer nav a:hover { color: var(--ink); }
 .vat { margin-top: 1.25rem; }
 @media (max-width: 40rem) { .plans { grid-template-columns: 1fr; } }
 .plans-single { grid-template-columns: minmax(0, 24rem); }
+.priv-more { margin-top: 1.6rem; font-size: 0.9rem; }
