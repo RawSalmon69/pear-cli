@@ -54,6 +54,20 @@ final class WindowTrigger {
     private(set) var isArmed = false
     private(set) var isRingOpen = false
 
+    /// Fn is held but the ring has not opened yet. Fn is a key people press all
+    /// day — every F-key, media key and dictation shortcut goes through it — so
+    /// opening on the down edge would flash a ring across the screen dozens of
+    /// times a day. The ring waits for a deliberate *hold*: a quick tap arms this,
+    /// releases before the threshold, and nothing is ever shown.
+    private(set) var isFnHeld = false
+
+    /// How long Fn must be held before the ring appears. Long enough that no
+    /// ordinary Fn tap reaches it, short enough that a deliberate hold does not
+    /// feel laggy.
+    static let holdThreshold: Duration = .milliseconds(220)
+
+    private var holdTask: Task<Void, Never>?
+
     /// Last slot handed to `ringHighlight`, so an unchanged slot is not
     /// re-reported: `@Observable` does not compare before notifying, and the
     /// pointer stream arrives at screen-refresh rate.
@@ -90,7 +104,7 @@ final class WindowTrigger {
     func stop() {
         guard isArmed else { return }
         isArmed = false
-        closeRing(commit: false)
+        endFnHold(commit: false) // also cancels a pending open
         tap?.invalidate()
         tap = nil
         stopPointerTracking()
@@ -118,11 +132,14 @@ final class WindowTrigger {
 
         switch type {
         case .flagsChanged:
-            // Fn down opens, Fn up closes. The event itself is never swallowed.
+            // Fn down starts the hold, Fn up ends it. The event itself is never
+            // swallowed. Any other modifier changing while Fn stays down arrives
+            // here too, which is why this tracks the edge rather than acting on
+            // every flags change.
             if flags.contains(.maskSecondaryFn) {
-                openRing()
+                beginFnHold()
             } else {
-                closeRing(commit: highlighted != nil)
+                endFnHold(commit: highlighted != nil)
             }
             return false
 
@@ -136,7 +153,10 @@ final class WindowTrigger {
             // Escape. (Arrow and F-keys carry the flag natively, but Escape does
             // not, so the one key that matters here always heals a stale ring.)
             guard flags.contains(.maskSecondaryFn) else {
-                closeRing(commit: false)
+                // A key-down with no Fn flag proves Fn is up, so clear the hold
+                // too. Leaving it set would block the next ring open until one
+                // more full press-and-release cycle.
+                endFnHold(commit: false)
                 return false
             }
             guard keyCode == kVK_Escape else { return false }
@@ -173,6 +193,37 @@ final class WindowTrigger {
     }
 
     // MARK: - Ring state
+
+    /// Fn went down: remember it and start the clock. Idempotent, because a
+    /// second modifier pressed while Fn is held delivers another flags change
+    /// with Fn still set, and that must not restart the timer.
+    private func beginFnHold() {
+        guard !isFnHeld else { return }
+        isFnHeld = true
+        holdTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.holdThreshold)
+            guard !Task.isCancelled else { return }
+            self?.fnHeldLongEnough()
+        }
+    }
+
+    /// Fn came up: cancel a pending open, and close the ring if it did open.
+    private func endFnHold(commit: Bool) {
+        isFnHeld = false
+        holdTask?.cancel()
+        holdTask = nil
+        closeRing(commit: commit)
+    }
+
+    /// The threshold elapsed with Fn still down. Separate and internal so tests
+    /// drive the state machine synchronously instead of sleeping.
+    func fnHeldLongEnough() {
+        // Same three conditions `handle` checks before it will act, since the
+        // timer reaches this directly and must not be a way around them: a ring
+        // opened with no delegate could never be closed by its owner.
+        guard isArmed, isFnHeld, delegate != nil else { return }
+        openRing()
+    }
 
     private func openRing() {
         guard !isRingOpen, !isSuppressed() else { return }

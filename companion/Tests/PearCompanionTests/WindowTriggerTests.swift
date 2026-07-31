@@ -92,8 +92,20 @@ final class WindowTriggerTests: XCTestCase {
 
     // MARK: - Event helpers
 
+    /// Fn down or up. On the way down this also fires the hold threshold, because
+    /// that is what "the user held Fn" means to every case below; the quick-tap
+    /// cases use `fnEdge` instead and never reach the threshold.
     @discardableResult
     private func fn(_ down: Bool, _ trigger: WindowTrigger) -> Bool {
+        let swallowed = fnEdge(down, trigger)
+        if down { trigger.fnHeldLongEnough() }
+        return swallowed
+    }
+
+    /// The raw flags change, with no hold elapsing. Fn is pressed all day for
+    /// F-keys and media keys, so the down edge on its own must show nothing.
+    @discardableResult
+    private func fnEdge(_ down: Bool, _ trigger: WindowTrigger) -> Bool {
         trigger.handle(type: .flagsChanged, keyCode: 0, flags: down ? .maskSecondaryFn : [])
     }
 
@@ -359,6 +371,76 @@ final class WindowTriggerTests: XCTestCase {
 
     /// The prompt's hard case: a ring somehow open with nobody listening. Nothing
     /// can be swallowed, because nothing could ever ask for it to be released.
+    // MARK: - The hold threshold
+
+    /// The reason this threshold exists: Fn is how a Mac types F-keys, changes
+    /// volume and starts dictation. If the down edge alone opened the ring, it
+    /// would flash across the screen dozens of times a day.
+    func testAQuickFnTapNeverShowsTheRing() {
+        let (trigger, delegate) = armed()
+
+        XCTAssertFalse(fnEdge(true, trigger), "the Fn flags change is never swallowed")
+        XCTAssertFalse(trigger.isRingOpen, "the down edge alone must not open the ring")
+        XCTAssertFalse(fnEdge(false, trigger))
+
+        XCTAssertFalse(trigger.isRingOpen)
+        XCTAssertEqual(delegate.events, [], "a tap is invisible: no open, no close")
+    }
+
+    /// Releasing before the threshold must also cancel it, or the ring would
+    /// appear after the user already let go.
+    func testAReleasedFnDoesNotOpenTheRingLater() {
+        let (trigger, delegate) = armed()
+
+        fnEdge(true, trigger)
+        fnEdge(false, trigger)
+        trigger.fnHeldLongEnough() // the timer firing after the release
+
+        XCTAssertFalse(trigger.isRingOpen)
+        XCTAssertEqual(delegate.events, [])
+    }
+
+    func testHoldingFnPastTheThresholdOpensTheRing() {
+        let (trigger, delegate) = armed()
+
+        fnEdge(true, trigger)
+        XCTAssertFalse(trigger.isRingOpen)
+        trigger.fnHeldLongEnough()
+
+        XCTAssertTrue(trigger.isRingOpen)
+        XCTAssertEqual(delegate.events, [.opened])
+    }
+
+    /// A key-down with no Fn flag proves Fn is up, so it must clear the hold as
+    /// well as the ring — otherwise the next hold is blocked until one more full
+    /// press-and-release cycle.
+    func testAStaleRingAlsoClearsTheFnHold() {
+        // Bind the delegate: it is held weakly, so discarding it here would
+        // deallocate it and the trigger would correctly refuse to open a ring.
+        let (trigger, delegate) = armed()
+        XCTAssertNotNil(delegate)
+
+        fn(true, trigger)
+        XCTAssertTrue(trigger.isRingOpen)
+        XCTAssertFalse(keyDown(kVK_Escape, fnHeld: false, trigger), "no Fn flag: stale, passes through")
+        XCTAssertFalse(trigger.isFnHeld, "the hold is cleared, not just the ring")
+
+        // So the very next hold works, rather than needing an extra cycle.
+        fn(true, trigger)
+        XCTAssertTrue(trigger.isRingOpen)
+    }
+
+    func testStopCancelsAPendingOpen() {
+        let (trigger, delegate) = armed()
+
+        fnEdge(true, trigger)
+        trigger.stop()
+        trigger.fnHeldLongEnough()
+
+        XCTAssertFalse(trigger.isRingOpen)
+        XCTAssertEqual(delegate.events, [])
+    }
+
     func testARingWithNoDelegateSwallowsNothing() {
         let (trigger, delegate) = armed()
 
