@@ -27,7 +27,7 @@ native Apple primitives over custom imitations. See root memory / `[[owner-quali
 ```bash
 cd companion
 swift build            # compile
-swift test             # full suite (467 tests, must stay green)
+swift test             # full suite (384 tests, must stay green)
 ./build.sh [version]   # assemble build/Pear.app (unsigned dev bundle); `open build/Pear.app`
 ```
 
@@ -54,7 +54,7 @@ push/PR.
   draggable, recreate-per-open so idle cost ~0.
 - **Services** (`Services/`): Screenshot, OCR (Vision), BackgroundRemoval
   (Vision + optional HD model), HDBackgroundModel (BEN2 download/manage),
-  Clipboard history, CloudKit messaging (flagged off), Stats (`pear status --json`),
+  Clipboard history, CloudKit messaging (flagged off), Stats (native samplers),
   Cleaner (headless `pear clean/optimize` into a panel; opt-in Include-system-caches
   setting passes `clean --system` → native auth dialog), DiskAnalyze, HotKeyManager
   (`.shared`, Carbon hotkeys → tokens), Updater (Sparkle), CommandRunner/ScreenCapture seams.
@@ -81,8 +81,6 @@ nothing delays capture → preview and the window always opens mid-scan. Cards a
 removal** (Apple Vision default; opt-in HD BEN2 Core ML — see below), **QR**
 (⌃⇧Q, scan screen region / generate from clipboard, auto QR badge + Copy-text
 button on screenshot preview cards).
-Windows: **Windows** (snap zones + Loop-style radial ring on Fn), **Dock Preview**
-(hover a dock icon → window thumbnails, follows the dock edge on any display).
 Utilities: **Color Picker** (NSColorSampler + WCAG), **Shelf** (⌃⇧V drop-hold-drag),
 **Scratchpad** (⌃⇧N notes, header-drag + text canvas, spawn-position toggle),
 **Clipboard history** (pins + search), **KeyClu** (⌃⇧K shortcut cheat-sheet, read-only AX).
@@ -93,6 +91,22 @@ battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
 
 ## Key decisions & invariants
 
+- **Pear.app is a commercial product, so its source must stay
+  proprietary-compatible.** Vendor only MIT / Apache-2.0 / BSD code — never GPL,
+  AGPL or CC-BY-NC, no matter how good the feature is. Loop-derived window
+  snapping and DockDoor-derived Dock Preview were removed in `9cff06e`; the two
+  small helpers those features shared with Clean Mode and KeyClu were then
+  reimplemented from their call sites, clean-room. Every notice left in
+  `Resources/Licenses/` is permissive. **Never strip an attribution while
+  tidying** — over-crediting is free, removing credit is the only move that adds
+  risk. Apache-2.0 additionally obliges us to state that files were changed.
+- **The app does not ship the `pear` CLI.** The CLI is GPL-3.0 and is installed
+  separately (it is also the app's funnel, and free forever). Cleaner and the
+  disk bars resolve `/usr/local/bin/pear` or `/opt/homebrew/bin/pear`, then gate
+  on `pear --version` against `PearStatsService.minimumCLIVersion` — currently
+  **1.47.0**, the first release containing `clean --system` — and render
+  `CLIRequirementCard` when the CLI is missing or older. Raising that minimum
+  means cutting a CLI release *first*, or every user is told their CLI is too old.
 - **Bundle ID `com.rawsalmon69.pear.companion`, SPM module `PearCompanion`, the
   resource-bundle name, and entitlements/provisionprofile filenames MUST NOT
   change** — changing the bundle ID breaks Sparkle auto-update, the CloudKit
@@ -124,10 +138,9 @@ battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
   macOS reaps it on its own schedule, which is exactly why the bytes were held.
   A failed read dismisses the card (with `.discard`) rather than leaving buttons
   that do nothing.
-- **Floating-window positioning**: dock preview follows the dock edge (picks the
-  icon's screen by overlap, never the focused-window screen); screenshot preview
-  + scratchpad open on the **primary** display; menu-bar hider seeds its
-  separator positions only when unset so the user's layout survives updates.
+- **Floating-window positioning**: screenshot preview + scratchpad open on the
+  **primary** display; menu-bar hider seeds its separator positions only when
+  unset so the user's layout survives updates.
 
 ## Release
 
