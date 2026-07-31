@@ -77,7 +77,7 @@ private struct CleanerProgressView: View {
         case .finished(let command, let code):
             let verb = command == "clean" ? "Clean" : "Optimize"
             return code == 0 ? "\(verb) finished" : "\(verb) stopped"
-        case .unavailable: return "pear CLI not found"
+        case .unavailable: return "Pear"
         }
     }
 
@@ -91,10 +91,9 @@ private struct CleanerProgressView: View {
                 Spacer()
             }
 
-            if case .unavailable = runner.phase {
-                Text("Install the pear CLI to run cleanup from here.")
-                    .font(Theme.body)
-                    .foregroundStyle(.secondary)
+            if case .unavailable(let cli) = runner.phase {
+                CLIRequirementCard(status: cli)
+                Spacer(minLength: 0)
             } else {
                 TranscriptView(text: runner.transcript)
             }

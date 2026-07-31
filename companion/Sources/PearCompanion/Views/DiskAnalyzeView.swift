@@ -94,7 +94,7 @@ private struct DiskBarsView: View {
             content
         }
         .task {
-            if service.entries.isEmpty && service.errorMessage == nil {
+            if service.entries.isEmpty, service.errorMessage == nil, service.cliProblem == nil {
                 await service.scan(path: nil)
             }
         }
@@ -155,7 +155,9 @@ private struct DiskBarsView: View {
 
     @ViewBuilder
     private var content: some View {
-        if service.isLoading && service.entries.isEmpty {
+        if let cli = service.cliProblem {
+            CLIRequirementCard(status: cli)
+        } else if service.isLoading && service.entries.isEmpty {
             loadingCard
         } else if let message = service.errorMessage {
             errorCard(message)

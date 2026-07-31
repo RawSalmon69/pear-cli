@@ -15,7 +15,9 @@ final class CleanerRunner {
         case idle
         case running(command: String)
         case finished(command: String, exitCode: Int32)
-        case unavailable
+        /// No usable `pear` on this Mac — not installed, or too old for the
+        /// flags this app passes. Carries which, so the panel can say so.
+        case unavailable(PearCLI)
     }
 
     private(set) var phase: Phase = .idle
@@ -37,8 +39,9 @@ final class CleanerRunner {
 
     func run(command: String) {
         guard !isRunning else { return }
-        guard let binary = PearStatsService.pearBinary() else {
-            phase = .unavailable
+        let cli = PearStatsService.resolveCLI()
+        guard case .ready(let binary) = cli else {
+            phase = .unavailable(cli)
             return
         }
 

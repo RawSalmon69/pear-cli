@@ -55,8 +55,8 @@ struct DiskFile: Identifiable, Equatable {
 
 /// Drives `pear analyze --json`. Runs the binary off the main thread, decodes
 /// the result, and publishes sorted entries + totals + loading/error state so
-/// the view stays declarative. Soft-fails (an error message) when the CLI is
-/// missing or the scan times out.
+/// the view stays declarative. Soft-fails: an error message when a scan breaks
+/// or times out, `cliProblem` when there is no usable CLI to run at all.
 @MainActor
 @Observable
 final class DiskAnalyzeService {
@@ -68,6 +68,10 @@ final class DiskAnalyzeService {
     private(set) var isOverview = true
     private(set) var isLoading = false
     private(set) var errorMessage: String?
+    /// Non-nil when the scan could not even start because the installed `pear`
+    /// is missing or too old. Distinct from `errorMessage`: this state is fixed
+    /// by installing/updating the CLI, not by retrying.
+    private(set) var cliProblem: PearCLI?
 
     /// Upper bound so a stuck scan can't hang the UI forever.
     private nonisolated static let timeoutSeconds: Double = 25
@@ -79,17 +83,23 @@ final class DiskAnalyzeService {
     }
 
     func scan(path: String?) async {
-        guard let binary = PearStatsService.pearBinary() else {
+        // Off the main actor: resolving the CLI spawns `pear --version` (~0.1s),
+        // and the panel recreates this view on every open, so doing it inline
+        // would put a visible hitch on every panel open.
+        let cli = await Task.detached { PearStatsService.resolveCLI() }.value
+        guard case .ready(let binary) = cli else {
             entries = []
             largeFiles = []
             totalSize = 0
             isLoading = false
-            errorMessage = "Install the pear CLI to analyze disk usage."
+            errorMessage = nil
+            cliProblem = cli
             return
         }
 
         isLoading = true
         errorMessage = nil
+        cliProblem = nil
 
         var arguments = ["analyze", "--json"]
         if let path { arguments.append(path) }

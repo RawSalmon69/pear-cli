@@ -44,26 +44,6 @@ if [[ -f Resources/PearCompanion.icns ]]; then
     cp Resources/PearCompanion.icns "$APP/Contents/Resources/PearCompanion.icns"
 fi
 
-# Bundle the pear CLI so Clean/Optimize and the disk bars work on Macs with no
-# installed pear (an installed copy still wins — see PearStatsService). The
-# tree is self-locating (pear resolves bin/ and lib/ from its own path), so a
-# straight copy of the entry script, the tracked shell scripts, and lib/ is a
-# working install. The repo's bin/ also holds untracked local Go artifacts —
-# copy only *.sh and build the two Go helpers fresh, arm64-only (every F&F
-# machine is Apple silicon; min macOS is 14).
-CLI_DEST="$APP/Contents/Resources/pear-cli"
-mkdir -p "$CLI_DEST/bin"
-cp ../pear "$CLI_DEST/pear"
-cp -R ../lib "$CLI_DEST/lib"
-cp ../bin/*.sh "$CLI_DEST/bin/"
-# The app drives clean/optimize (shell) and `analyze --json` (analyze-go). It
-# never invokes `pear status` — stats are computed natively in Swift — so the
-# status-go Go binary (~3.8 MB) is not bundled; drop its now-binaryless wrapper
-# so the embedded CLI has no broken command.
-rm -f "$CLI_DEST/bin/status.sh"
-echo "Building bundled CLI helper (analyze-go)..."
-(cd .. && go build -ldflags "-s -w" -o "companion/$CLI_DEST/bin/analyze-go" ./cmd/analyze)
-
 # Embed the Developer ID provisioning profile that authorizes the CloudKit and
 # push entitlements. Without it a hardened, entitled build will not launch.
 PROFILE="${PROVISION_PROFILE:-Resources/PearCompanion.provisionprofile}"
@@ -92,11 +72,6 @@ if [[ -n "${IDENTITY:-}" ]]; then
         done < <(find "$FW" -name "Autoupdate" -type f; find "$FW" -name "Updater.app" -type d)
         sign "$FW"
     fi
-
-    # The bundled CLI's Go helper is Mach-O and notarization checks it
-    # individually; shell scripts need no signature.
-    ANALYZE_GO="$APP/Contents/Resources/pear-cli/bin/analyze-go"
-    if [[ -f "$ANALYZE_GO" ]]; then sign "$ANALYZE_GO"; fi
 
     # Main app last, over the already-signed nested code.
     codesign --force --options runtime --timestamp \

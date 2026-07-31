@@ -9,13 +9,53 @@ struct StatItem: Equatable, Sendable {
     let fraction: Double?
 }
 
+// MARK: - CLI gate
+
+/// What the app found when it went looking for the `pear` CLI it shells out to.
+enum PearCLI: Equatable, Sendable {
+    case ready(path: String)
+    case notInstalled
+    /// Older than `PearStatsService.minimumCLIVersion`. `installed` is nil when
+    /// `pear --version` printed nothing we could parse.
+    case tooOld(installed: CLIVersion?)
+}
+
+/// A `major.minor.patch` CLI version, parsed from `pear --version` and compared
+/// against the minimum the app needs. Pure and unit-tested.
+struct CLIVersion: Comparable, Sendable, CustomStringConvertible {
+    let major: Int
+    let minor: Int
+    let patch: Int
+
+    /// Reads the CLI's `--version` block — a blank line, then "Pear version
+    /// 1.47.0", then channel/OS/kernel/disk lines — by taking the first dotted
+    /// numeric token anywhere in it. Output with no such token (an error
+    /// message, a bare commit hash) yields nil rather than a made-up version.
+    static func parse(_ output: String) -> CLIVersion? {
+        for token in output.split(whereSeparator: { !$0.isNumber && $0 != "." }) {
+            let parts = token.split(separator: ".")
+            guard (2...3).contains(parts.count) else { continue }
+            let numbers = parts.compactMap { Int($0) }
+            guard numbers.count == parts.count else { continue }
+            return CLIVersion(
+                major: numbers[0], minor: numbers[1], patch: numbers.count == 3 ? numbers[2] : 0)
+        }
+        return nil
+    }
+
+    static func < (lhs: CLIVersion, rhs: CLIVersion) -> Bool {
+        (lhs.major, lhs.minor, lhs.patch) < (rhs.major, rhs.minor, rhs.patch)
+    }
+
+    var description: String { "\(major).\(minor).\(patch)" }
+}
+
 /// The panel's compact Mac tiles, fed by the same native samplers the
 /// Monitor tool uses (Tools/Monitor) — no CLI dependency, always live.
 @MainActor
 @Observable
 final class PearStatsService {
     private(set) var items: [StatItem] = []
-    private(set) var cliMissing = false
     /// Root-disk used fraction; drives the mascot's worried mood.
     private(set) var diskUsedFraction: Double?
     /// Secondary glanceable line.
@@ -23,33 +63,75 @@ final class PearStatsService {
     private(set) var healthScore: Int?
     private(set) var healthMessage: String?
 
-    // The pear CLI location is still needed by the disk bars view and the
-    // cleaner runner, so the lookup stays here.
+    // Where an installed `pear` lands: the install script's default prefix
+    // first, then a Homebrew one. Pear.app does NOT ship the CLI — the CLI is
+    // GPL-3.0 and this app is paid — so these are the only candidates, and a
+    // Mac without one degrades to the install-the-CLI state in the UI.
     private nonisolated static let candidates = [
         "/usr/local/bin/pear",
         "/opt/homebrew/bin/pear",
     ]
 
-    /// The copy build.sh ships inside the app (Contents/Resources/pear-cli) —
-    /// the fallback that keeps Clean/Optimize and the disk bars working on a
-    /// Mac with no installed pear. Absent in `swift run`/tests, where only the
-    /// installed candidates apply.
-    private nonisolated static var bundled: String? {
-        Bundle.main.resourceURL?.appendingPathComponent("pear-cli/pear").path
-    }
+    /// Oldest installed CLI the app will drive: **1.47.0, the first release that
+    /// contains `clean --system`.** The app invokes `clean`, `clean --system`,
+    /// `optimize` and `analyze --json`; the released V1.46.0 has everything but
+    /// `--system` (that landed on the CLI's main branch after it shipped), so
+    /// anything below 1.47.0 breaks the Include-system-caches path halfway
+    /// through a run. `resolveCLI()` refuses up front instead.
+    nonisolated static let minimumCLIVersion = CLIVersion(major: 1, minor: 47, patch: 0)
 
     nonisolated static func pearBinary() -> String? {
         pearBinary(isExecutable: { FileManager.default.isExecutableFile(atPath: $0) })
     }
 
-    /// The bundled copy wins: it's version-matched to this build of the app, so
-    /// every command/flag the companion invokes (e.g. `clean --system`) is
-    /// guaranteed present — a stale installed `pear` must not shadow it and
-    /// break a newer bundled feature. Installed copies are the fallback for
-    /// `swift run`/tests, where no app bundle exists. Predicate-injectable so
-    /// the order is unit-testable without touching the filesystem.
+    /// First installed `pear` that exists, or nil. Predicate-injectable so the
+    /// order is unit-testable without touching the filesystem.
     nonisolated static func pearBinary(isExecutable: (String) -> Bool) -> String? {
-        ([bundled].compactMap { $0 } + candidates).first(where: isExecutable)
+        candidates.first(where: isExecutable)
+    }
+
+    /// Resolves the CLI *and* checks its version before anything shells out to
+    /// it. Because the app no longer carries its own copy, whatever the user
+    /// installed is what runs — and an old one silently lacks flags this app
+    /// passes (`clean --system` above all). Blocking on purpose: `pear
+    /// --version` is a short local script (~0.1s) and every caller is about to
+    /// spawn the same binary for minutes anyway.
+    nonisolated static func resolveCLI() -> PearCLI {
+        let path = pearBinary()
+        return cliStatus(path: path, versionOutput: path.flatMap(readVersion))
+    }
+
+    /// The pure half of `resolveCLI()`: given a resolved path and whatever
+    /// `pear --version` printed, decide whether the app can use it. Split out
+    /// so the gate is unit-testable with no process spawn.
+    nonisolated static func cliStatus(path: String?, versionOutput: String?) -> PearCLI {
+        guard let path else { return .notInstalled }
+        guard let version = versionOutput.flatMap(CLIVersion.parse) else {
+            // Installed but unreadable version: treat as too old rather than
+            // running it blind, and say so without inventing a number.
+            return .tooOld(installed: nil)
+        }
+        return version < minimumCLIVersion ? .tooOld(installed: version) : .ready(path: path)
+    }
+
+    private nonisolated static func readVersion(at path: String) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = ["--version"]
+        process.standardInput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        // Same pinned PATH as CleanerRunner, for the same reason: a GUI app's
+        // inherited PATH is rewritable with `launchctl setenv`, and this script
+        // shells out to csrutil/df/brew.
+        var environment = ProcessInfo.processInfo.environment
+        environment["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+        process.environment = environment
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        do { try process.run() } catch { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(data: data, encoding: .utf8)
     }
 
     func refresh() async {

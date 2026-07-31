@@ -41,12 +41,6 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Releasing companion v$VERSION"
 
-      # build.sh compiles the bundled CLI's Go helpers (analyze-go, status-go).
-      - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: go.mod
-
       - name: Import Developer ID certificate
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
