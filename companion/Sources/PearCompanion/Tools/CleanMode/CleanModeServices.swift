@@ -13,14 +13,14 @@ enum CleanModeRuntime {
     }
 }
 
-/// Production keyboard lock: a session `CGEventTap` (via the shared
-/// `KeySwallowTap`) that swallows every keystroke. Mouse events are deliberately
-/// absent from the mask, so the pointer stays fully live — the guaranteed
-/// escape hatch. The tap is session-scoped, so the OS tears it down the instant
-/// this process ends: a lock can never outlive Pear.
+/// Production keyboard lock: a session `CGEventTap` (via `KeyBlockingTap`)
+/// that swallows every keystroke. Mouse events are deliberately absent from
+/// the mask, so the pointer stays fully live — the guaranteed escape hatch.
+/// The tap is session-scoped, so the OS tears it down the instant this
+/// process ends: a lock can never outlive Pear.
 @MainActor
 final class CleanModeKeyboardLock: CleanModeKeyboardLocking {
-    private var tap: KeySwallowTap?
+    private var tap: KeyBlockingTap?
 
     func engage() -> Bool {
         guard !CleanModeRuntime.isRunningTests else { return false }
@@ -32,7 +32,7 @@ final class CleanModeKeyboardLock: CleanModeKeyboardLocking {
             (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
             | (1 << CGEventType.flagsChanged.rawValue)
-        tap = KeySwallowTap(eventMask: mask) { _ in true }
+        tap = KeyBlockingTap(eventMask: mask) { _ in true }
         return tap != nil
     }
 

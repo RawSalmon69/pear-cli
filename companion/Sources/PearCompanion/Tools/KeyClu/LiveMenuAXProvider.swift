@@ -12,8 +12,8 @@ import ApplicationServices
 struct LiveMenuAXProvider: MenuAXProviding {
     func menuBar(forPID pid: pid_t) -> AXNode? {
         let app = AXUIElementCreateApplication(pid)
-        DockAX.capTimeout(app)
-        guard let bar = DockAX.element(app, kAXMenuBarAttribute) else { return nil }
+        AXRead.capTimeout(app)
+        guard let bar = AXRead.element(app, kAXMenuBarAttribute) else { return nil }
         return node(from: bar)
     }
 
@@ -21,23 +21,23 @@ struct LiveMenuAXProvider: MenuAXProviding {
     private static let maxDepth = 20
 
     private func node(from element: AXUIElement, depth: Int = 0) -> AXNode {
-        DockAX.capTimeout(element)
-        let title = DockAX.string(element, kAXTitleAttribute) ?? ""
-        let enabled = DockAX.bool(element, kAXEnabledAttribute) ?? true
-        let char = DockAX.string(element, kAXMenuItemCmdCharAttribute)
-        let virtualKey = DockAX.value(element, kAXMenuItemCmdVirtualKeyAttribute) as? Int
-        let modifiers = DockAX.value(element, kAXMenuItemCmdModifiersAttribute) as? Int ?? 0
-        let glyph = DockAX.value(element, kAXMenuItemCmdGlyphAttribute) as? Int
+        AXRead.capTimeout(element)
+        let title = AXRead.string(element, kAXTitleAttribute) ?? ""
+        let enabled = AXRead.bool(element, kAXEnabledAttribute) ?? true
+        let char = AXRead.string(element, kAXMenuItemCmdCharAttribute)
+        let virtualKey = AXRead.value(element, kAXMenuItemCmdVirtualKeyAttribute) as? Int
+        let modifiers = AXRead.value(element, kAXMenuItemCmdModifiersAttribute) as? Int ?? 0
+        let glyph = AXRead.value(element, kAXMenuItemCmdGlyphAttribute) as? Int
 
         // A menu-bar item / submenu parent holds its items inside one AXMenu
         // child. Flatten that so `children` are the items themselves.
         var children: [AXNode] = []
         if depth < Self.maxDepth {
-            for child in DockAX.elements(element, kAXChildrenAttribute) ?? [] {
-                if DockAX.string(child, kAXRoleAttribute) == kAXMenuRole {
-                    DockAX.capTimeout(child)
+            for child in AXRead.elements(element, kAXChildrenAttribute) ?? [] {
+                if AXRead.string(child, kAXRoleAttribute) == kAXMenuRole {
+                    AXRead.capTimeout(child)
                     children +=
-                        (DockAX.elements(child, kAXChildrenAttribute) ?? []).map {
+                        (AXRead.elements(child, kAXChildrenAttribute) ?? []).map {
                             node(from: $0, depth: depth + 1)
                         }
                 } else {

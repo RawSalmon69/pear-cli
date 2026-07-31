@@ -4,7 +4,7 @@ import CoreGraphics
 // MARK: - Injectable seams
 
 /// Locks the physical keyboard for the duration of Clean Mode. The real
-/// implementation wraps a session `KeySwallowTap`; tests inject a fake so
+/// implementation wraps a session `KeyBlockingTap`; tests inject a fake so
 /// `swift test` never creates a real event tap.
 @MainActor
 protocol CleanModeKeyboardLocking: AnyObject {
