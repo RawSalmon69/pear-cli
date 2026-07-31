@@ -11,6 +11,9 @@ final class ShelfTool: Tool {
     let icon = "tray.full"
     let category = ToolCategory.utilities
     let summary = "A floating tray that holds files while you move them."
+    /// Can be holding the user's files when the trial ends, so it stays reachable
+    /// with the app locked. See `Tool.survivesExpiry`.
+    let survivesExpiry = true
     let hotkey: HotKeyChord? = HotKeyChord(
         keyCode: kVK_ANSI_V, modifiers: controlKey | shiftKey, label: "⌃⇧V")
 

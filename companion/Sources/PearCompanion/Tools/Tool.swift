@@ -53,6 +53,17 @@ protocol Tool: AnyObject {
     /// the `panel` pseudo-tool opts out — you don't open the panel from inside
     /// it — while still registering a rebindable hotkey through the registry.
     var showsTile: Bool { get }
+    /// Whether the tool keeps working when the trial has ended and there is no
+    /// licence. Defaults false: an expired app registers nothing, exactly as a
+    /// user-disabled tool does.
+    ///
+    /// The two tools that hold the user's own content inside the app opt in,
+    /// because `site/terms.html` §2 promises in writing that notes and shelf
+    /// items "remain accessible and exportable" after the trial ends. Locking
+    /// someone out of their own writing to sell them a licence is not a
+    /// negotiating position. Saved screenshots need no exemption — they are plain
+    /// files in a folder, reachable in Finder with the app locked.
+    var survivesExpiry: Bool { get }
     /// Chords the tool registers itself in `start()`, beyond its single
     /// rebindable `hotkey`. Defaults empty. The registry does not register these
     /// — it only needs to know about them so the shortcut recorder can report a
@@ -73,6 +84,7 @@ extension Tool {
     var summary: String { "" }
     var defaultEnabled: Bool { true }
     var showsTile: Bool { true }
+    var survivesExpiry: Bool { false }
     var extraChords: [HotKeyChord] { [] }
 
     func start() {}
@@ -116,19 +128,37 @@ final class ToolRegistry {
     @ObservationIgnored private var catalog: [(id: String, tool: any Tool)] = []
     @ObservationIgnored private var hotkeyTokens: [String: HotKeyManager.Token] = [:]
 
+    /// Whether the paid tools are locked. Injected by `AppEnvironment` from the
+    /// `EntitlementStore`; a registry built without it is unlocked, which keeps
+    /// every existing test and any non-paid context working unchanged.
+    ///
+    /// **This is the entire paywall.** Gating here means a locked tool never
+    /// registers a hotkey and never has `start()` called, so there are no
+    /// `if licensed` checks scattered through twenty tools to get wrong — it is
+    /// the same mechanism that already makes a user-disabled tool inert.
+    @ObservationIgnored var isLocked: () -> Bool = { false }
+
     // MARK: - Registration
 
-    /// Catalogs the tool and — unless the user disabled it — puts it live:
-    /// a disabled tool's hotkeys and engines never load.
+    /// Catalogs the tool and — unless the user disabled it, or the app is locked
+    /// and the tool does not survive expiry — puts it live: an unregistered
+    /// tool's hotkeys and engines never load.
     func offer(_ tool: any Tool) {
         known.append(KnownTool(
             id: tool.id, title: tool.title, icon: tool.icon,
             hotkeyLabel: effectiveChord(for: tool)?.label, category: tool.category,
             summary: tool.summary, defaultEnabled: tool.defaultEnabled))
         catalog.append((id: tool.id, tool: tool))
-        guard Prefs.isToolEnabled(tool.id, default: tool.defaultEnabled) else { return }
+        guard shouldRun(tool) else { return }
         all.append(tool)
         activate(tool)
+    }
+
+    /// The one gate: the user wants it on, and either the app is unlocked or the
+    /// tool holds the user's own content and must stay reachable regardless.
+    private func shouldRun(_ tool: any Tool) -> Bool {
+        guard Prefs.isToolEnabled(tool.id, default: tool.defaultEnabled) else { return false }
+        return !isLocked() || tool.survivesExpiry
     }
 
     // MARK: - Live enable / disable
@@ -139,7 +169,7 @@ final class ToolRegistry {
     func setEnabled(_ id: String, _ enabled: Bool) {
         Prefs.setToolEnabled(id, enabled)
         guard let entry = catalog.first(where: { $0.id == id }) else { return }
-        if enabled { activate(entry.tool) } else { deactivate(entry.tool) }
+        if shouldRun(entry.tool) { activate(entry.tool) } else { deactivate(entry.tool) }
         rebuildAll()
     }
 
@@ -193,7 +223,7 @@ final class ToolRegistry {
             other.keyCode == chord.keyCode && other.modifiers == chord.modifiers
         }
         for entry in catalog where entry.id != id {
-            guard Prefs.isToolEnabled(entry.id, default: entry.tool.defaultEnabled) else { continue }
+            guard shouldRun(entry.tool) else { continue }
             if let existing = effectiveChord(for: entry.tool), matches(existing) {
                 return entry.tool.title
             }
@@ -217,9 +247,7 @@ final class ToolRegistry {
     }
 
     private func rebuildAll() {
-        all = catalog
-            .filter { Prefs.isToolEnabled($0.id, default: $0.tool.defaultEnabled) }
-            .map(\.tool)
+        all = catalog.filter { shouldRun($0.tool) }.map(\.tool)
     }
 
     /// Single choke point: resolves the effective chord and registers it,

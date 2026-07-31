@@ -17,6 +17,9 @@ final class AppEnvironment {
     let stats: PearStatsService
     let updater: UpdaterService?
     let tools: ToolRegistry
+    /// Trial / licence state. Read by the settings pane and the locked state, and
+    /// consulted by `tools` before it registers anything paid.
+    let entitlement = EntitlementStore()
     /// Native clean/optimize progress panel (no Terminal window).
     @ObservationIgnored let cleaner = CleanerWindowController()
     /// Menu-bar runner (RunCat-style). The menu-bar label observes
@@ -33,6 +36,11 @@ final class AppEnvironment {
 
         // Adding a tool to the app is one registration here.
         let tools = ToolRegistry()
+        // The paywall, in one line: a locked app registers no paid tool, so no
+        // hotkey is claimed and no engine starts. Set before the first `offer`,
+        // because `offer` is what consults it.
+        let entitlement = self.entitlement
+        tools.isLocked = { !entitlement.entitlement.unlocksTools }
         tools.offer(ScreenshotTool(messaging: messaging))
         tools.offer(ScreenshotTool(mode: .fullScreen, messaging: messaging))
         tools.offer(ScreenshotTool(mode: .window, messaging: messaging))
