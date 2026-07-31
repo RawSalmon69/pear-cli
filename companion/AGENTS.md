@@ -111,8 +111,12 @@ battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
   changed the files we redistribute: `Resources/Runners/NOTICE.txt` is that
   statement and it ships in the bundle. **If you modify vendored Apache-2.0 code
   or assets, add it there in the same change.**
-- **Before flipping `FeatureFlags.paywall`, run `companion/scripts/launch-preflight.sh`.**
-  It fails loudly on each unmet precondition rather than leaving them to memory.
+- **Before flipping `FeatureFlags.paywall`**, run `companion/scripts/launch-preflight.sh`
+  (fails loudly on each unmet precondition) and
+  `companion/scripts/issue-lifetime-licences.sh <emails-file>` (one `.pearlicense`
+  per existing install). The second is not optional politeness: the bundle ID has
+  never changed, so everyone who was *given* Pear auto-updates into the paid build
+  and, without a licence, just watches their trial run out.
 - **The app does not ship the `pear` CLI.** The CLI is GPL-3.0 and is installed
   separately (it is also the app's funnel, and free forever). Cleaner and the
   disk bars resolve `/usr/local/bin/pear` or `/opt/homebrew/bin/pear`, then gate
