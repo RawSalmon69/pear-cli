@@ -17,6 +17,14 @@ final class WindowsTool: Tool, WindowTriggerDelegate {
     var category: ToolCategory { .system }
     var summary: String { "Snap the front window with ⌃⌥ and the arrows, or hold Fn for the ring." }
 
+    /// Off on a fresh install, and off for everyone who auto-updates into this
+    /// release. Enabling arms an event tap, claims seven global chords, and
+    /// starts writing other apps' window frames over Accessibility — squarely
+    /// what the "anything that mutates system state on launch is opt-in"
+    /// invariant exists for. Flip this to the default once the interaction has
+    /// been driven on real hardware; it is a one-line change.
+    var defaultEnabled: Bool { false }
+
     /// Nil on purpose: this tool owns a *set* of chords plus the Fn hold, and
     /// registers them itself in `start()`. `extraChords` is what exposes them to
     /// the registry's conflict check.

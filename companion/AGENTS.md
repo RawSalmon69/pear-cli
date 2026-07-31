@@ -85,7 +85,10 @@ Windows: **Windows** (⌃⌥ + arrows/↩/C/⌫ snaps the front window; hold **F
 radial ring under the pointer). Four independent pieces joined by `WindowsTool`
 and nothing else: `WindowTrigger` (input), `RingOverlayWindow` (ring + hit test),
 `WindowZoneMath` (pure geometry), `AXWindowMover` (AX writes + preview overlay).
-Written from scratch in 2.17.0 after the Loop-derived version was removed.
+Written from scratch in 2.17.0 after the Loop-derived version was removed, and
+**default OFF** in that release: enabling arms an event tap, claims seven global
+chords and writes other apps' frames over AX, none of which had been driven on
+real hardware yet. Flipping `defaultEnabled` is a one-line follow-up once it has.
 Utilities: **Color Picker** (NSColorSampler + WCAG), **Shelf** (⌃⇧V drop-hold-drag),
 **Scratchpad** (⌃⇧N notes, header-drag + text canvas, spawn-position toggle),
 **Clipboard history** (pins + search), **KeyClu** (⌃⇧K shortcut cheat-sheet, read-only AX).
