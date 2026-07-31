@@ -81,8 +81,8 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
 }
 
 /// Live per-switch visibility, persisted under a `switches.show.*` key and read
-/// at use time so the grid re-renders with no relaunch. Mirrors the
-/// `DockDoorSettings` accessor shape (presence = user chose; absence = default).
+/// at use time so the grid re-renders with no relaunch. Presence in the store
+/// means the user chose; absence falls back to `defaultVisible`.
 enum SwitchesSettings {
     static func showKey(_ toggle: SystemSwitch) -> String { "switches.show.\(toggle.rawValue)" }
 

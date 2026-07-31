@@ -2,8 +2,7 @@ import Foundation
 
 /// Live per-tool settings for the Scratchpad. Both values persist under a
 /// `scratchpad.*` UserDefaults key and are read at use time, so the header
-/// popover's toggles apply with no relaunch. Mirrors `DockDoorSettings`'
-/// read-at-use-time accessor shape.
+/// popover's toggles apply with no relaunch.
 enum ScratchpadSettings {
     enum Key {
         static let swipeEnabled = "scratchpad.swipeEnabled"

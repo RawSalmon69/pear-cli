@@ -31,7 +31,7 @@ final class HotkeyOverrideTests: XCTestCase {
     /// `setUp`/`tearDown` would cross the `@MainActor` boundary, so tests scrub
     /// inline with `defer` — the pattern the other suites here use.
     private func scrub() {
-        for id in ["fake.a", "fake.b", "windows"] {
+        for id in ["fake.a", "fake.b"] {
             UserDefaults.standard.removeObject(forKey: Prefs.toolEnabledKey(id))
             UserDefaults.standard.removeObject(forKey: Prefs.toolHotkeyKey(id))
         }
@@ -109,24 +109,6 @@ final class HotkeyOverrideTests: XCTestCase {
         XCTAssertNil(registry.conflictingTool(for: other, excluding: "fake.b"))
     }
 
-    func testConflictDetectsWindowsZoneChord() {
-        scrub()
-        defer { scrub() }
-        Prefs.setToolEnabled("windows", true)
-        let registry = ToolRegistry()
-        registry.offer(FakeTool(id: "fake.a", title: "Alpha"))
-        registry.offer(WindowsTool())
-        defer { registry.setEnabled("windows", false) } // stop() unregisters the zone chords
-
-        // ⌃⌥← is a Windows zone chord (left-half snap).
-        let zoneChord = HotKeyChord(keyCode: kVK_LeftArrow, modifiers: controlKey | optionKey, label: "⌃⌥←")
-        XCTAssertEqual(registry.conflictingTool(for: zoneChord, excluding: "fake.a"), "Windows")
-
-        // Same key without the zone modifiers → not a zone chord.
-        let plain = HotKeyChord(keyCode: kVK_LeftArrow, modifiers: cmdKey, label: "⌘←")
-        XCTAssertNil(registry.conflictingTool(for: plain, excluding: "fake.a"))
-    }
-
     // MARK: - Live enable / disable
 
     func testSetEnabledStartsStopsAndPreservesOfferOrder() {
@@ -194,9 +176,6 @@ final class HotkeyOverrideTests: XCTestCase {
             let key = "\(chord.keyCode)-\(chord.modifiers)"
             XCTAssertNil(claimed[key], "\(tool.id) collides with \(claimed[key] ?? "")")
             claimed[key] = tool.id
-            XCTAssertFalse(
-                WindowsTool.isZoneChord(keyCode: chord.keyCode, modifiers: chord.modifiers),
-                "\(tool.id) collides with a Windows zone chord")
         }
     }
 

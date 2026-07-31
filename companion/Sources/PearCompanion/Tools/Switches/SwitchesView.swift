@@ -9,7 +9,7 @@ struct SwitchesView: View {
 
     @State private var editingVisibility = false
 
-    // Per-switch visibility, live via @AppStorage (DockDoor pattern).
+    // Per-switch visibility, live via @AppStorage.
     @AppStorage(SwitchesSettings.showKey(.keepAwake))
     private var showKeepAwake = SystemSwitch.keepAwake.defaultVisible
     @AppStorage(SwitchesSettings.showKey(.mute))

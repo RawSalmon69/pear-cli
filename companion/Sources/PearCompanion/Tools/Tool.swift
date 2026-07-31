@@ -179,18 +179,13 @@ final class ToolRegistry {
 
     /// Title of an enabled tool already bound to `chord`, or nil if it's free.
     /// Matches keyCode+modifiers (labels are cosmetic) against every enabled
-    /// tool's effective chord, plus WindowsTool's static zone chords, which
-    /// aren't surfaced through the single-`hotkey` protocol.
+    /// tool's effective chord.
     func conflictingTool(for chord: HotKeyChord, excluding id: String) -> String? {
         for entry in catalog where entry.id != id {
             guard Prefs.isToolEnabled(entry.id, default: entry.tool.defaultEnabled) else { continue }
             if let existing = effectiveChord(for: entry.tool),
                existing.keyCode == chord.keyCode, existing.modifiers == chord.modifiers {
                 return entry.tool.title
-            }
-            if let windows = entry.tool as? WindowsTool,
-               WindowsTool.isZoneChord(keyCode: chord.keyCode, modifiers: chord.modifiers) {
-                return windows.title
             }
         }
         return nil
@@ -215,8 +210,7 @@ final class ToolRegistry {
     }
 
     /// Single choke point: resolves the effective chord and registers it,
-    /// storing the token under the tool id. Tools that own a *set* of chords
-    /// (Windows) have no single `hotkey` and register those in `start()`.
+    /// storing the token under the tool id.
     private func registerHotkey(_ tool: any Tool) {
         guard let chord = effectiveChord(for: tool) else { return }
         hotkeyTokens[tool.id] = HotKeyManager.shared.register(
