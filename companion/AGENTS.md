@@ -27,7 +27,7 @@ native Apple primitives over custom imitations. See root memory / `[[owner-quali
 ```bash
 cd companion
 swift build            # compile
-swift test             # full suite (384 tests, must stay green)
+swift test             # full suite (494 tests, must stay green)
 ./build.sh [version]   # assemble build/Pear.app (unsigned dev bundle); `open build/Pear.app`
 ```
 
@@ -81,6 +81,11 @@ nothing delays capture → preview and the window always opens mid-scan. Cards a
 removal** (Apple Vision default; opt-in HD BEN2 Core ML — see below), **QR**
 (⌃⇧Q, scan screen region / generate from clipboard, auto QR badge + Copy-text
 button on screenshot preview cards).
+Windows: **Windows** (⌃⌥ + arrows/↩/C/⌫ snaps the front window; hold **Fn** for a
+radial ring under the pointer). Four independent pieces joined by `WindowsTool`
+and nothing else: `WindowTrigger` (input), `RingOverlayWindow` (ring + hit test),
+`WindowZoneMath` (pure geometry), `AXWindowMover` (AX writes + preview overlay).
+Written from scratch in 2.17.0 after the Loop-derived version was removed.
 Utilities: **Color Picker** (NSColorSampler + WCAG), **Shelf** (⌃⇧V drop-hold-drag),
 **Scratchpad** (⌃⇧N notes, header-drag + text canvas, spawn-position toggle),
 **Clipboard history** (pins + search), **KeyClu** (⌃⇧K shortcut cheat-sheet, read-only AX).
@@ -234,5 +239,32 @@ maintainer before tagging.
   anything expensive or geometry-changing inside it must be gated on the geometry
   having actually changed. A fit that re-ran unconditionally cost six fits per
   six passes and fed a re-render loop through the observable above.
+- **`swift build` incrementally does NOT show you the warnings.** A rebuilt module
+  reuses cached diagnostics, so a file that warns can look clean for the rest of
+  the session — and a subagent reporting "zero warnings" may simply never have
+  done a cold build. `rm -rf .build` before believing a warning-free claim. Two
+  real warnings in `AXWindowMover` (raw pointers to an unconstrained generic)
+  survived an agent's whole task this way.
+- **AX position is top-left-origin, `NSScreen` is bottom-left-origin**, and the
+  flip must pivot on the **primary** display's height, never on the height of the
+  display the window is on. Pivoting locally looks perfect on a one-display Mac
+  and lands windows onto the wrong screen on any other. `WindowSpace.flip` is the
+  one conversion; it is its own inverse, which is why there is no `toAX`/`toAppKit`
+  pair to drift apart.
+- **Snap frames must round the four edges, not origin-and-size.** Rounding a width
+  independently gives left-half + right-half = screen + 1px, which shows as a
+  hairline of desktop between two snapped windows. `WindowZoneMath.snapped` rounds
+  `minX/maxX/minY/maxY` so complementary zones land on the same integer at any
+  width. The thirds constants must stay `1.0/3.0` and `2.0/3.0` literally — spelling
+  the second `1 - third` is a different double and the pair stops meeting.
+- **One app's window will not take one `setFrame`.** Many apps clamp a resize
+  against their current position, others clamp a move against their current size,
+  so `AXWindowMover` sets position → size → position, reads back, and retries once
+  in the opposite order. Two passes only: a second miss means the app genuinely
+  refuses (Terminal quantises to character cells), and pushing further is fighting it.
+- **A process-wide static set by a test leaks into every later test.**
+  `CleanModeController.isAnyActive` is consulted by the window trigger, and three
+  CleanMode tests used to end still-active, so 13 unrelated tests failed on suite
+  order alone. Any test that flips a global must undo it in a `defer`.
 - Interactive panel/overlay smoke is the **owner's** job — this box's screencapture/
   CGWindowList are permission-gated and AX-driving fights his live session.

@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pear · a quiet Mac toolbox</title>
-<meta name="description" content="Pear is a private, native macOS menu-bar utility: screenshots, OCR, QR, clipboard history, disk maps and Mac cleanup, all on-device with no accounts and no telemetry.">
+<meta name="description" content="Pear is a private, native macOS menu-bar utility: screenshots, OCR, QR, window snapping, clipboard history, disk maps and Mac cleanup, all on-device with no accounts and no telemetry.">
 <meta property="og:title" content="Pear · a quiet Mac toolbox">
-<meta property="og:description" content="Fifteen small tools behind one menu-bar icon. Native, on-device, private. macOS 14+, Apple Silicon.">
+<meta property="og:description" content="Sixteen small tools behind one menu-bar icon. Native, on-device, private. macOS 14+, Apple Silicon.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://pear.phanthawas.dev">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0c0e">
@@ -39,6 +39,7 @@
     <symbol id="i-shot" viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3.2"/></symbol>
     <symbol id="i-ocr" viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8.5 9.5h7M12 9.5V15"/></symbol>
     <symbol id="i-qr" viewBox="0 0 24 24"><path d="M4 4h5v5H4zM15 4h5v5h-5zM4 15h5v5H4z"/><path d="M15 15h2v2h-2zM18 18h2v2h-2zM18 12h2v2M12 12h1M12 18v2"/></symbol>
+    <symbol id="i-win" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M12 4.5v15M3.5 12H12"/></symbol>
     <symbol id="i-color" viewBox="0 0 24 24"><path d="m13 6 5 5-8.5 8.5a2.5 2.5 0 0 1-3.6 0l-1.4-1.4a2.5 2.5 0 0 1 0-3.6z"/><path d="m12 7 3.5-3.5a2.1 2.1 0 0 1 3 0l2 2a2.1 2.1 0 0 1 0 3L17 12"/></symbol>
     <symbol id="i-shelf" viewBox="0 0 24 24"><path d="M4 13.5h4l1.5 2h5l1.5-2h4"/><path d="M5.5 7h13a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-9A1.5 1.5 0 0 1 5.5 7z"/></symbol>
     <symbol id="i-note" viewBox="0 0 24 24"><path d="M5.5 4h13A1.5 1.5 0 0 1 20 5.5V15l-5 5H5.5A1.5 1.5 0 0 1 4 18.5v-13A1.5 1.5 0 0 1 5.5 4z"/><path d="M15 20v-3.5A1.5 1.5 0 0 1 16.5 15H20M8 9h8M8 12.5h5"/></symbol>
@@ -77,9 +78,9 @@
   <section class="hero">
     <div class="hero-copy">
       <p class="eyebrow"><span class="dot"></span>Pear, a menu-bar app for Mac</p>
-      <h1>Fifteen tools.<br>One <span class="em">quiet</span> <span class="hl">icon.</span></h1>
+      <h1>Sixteen tools.<br>One <span class="em">quiet</span> <span class="hl">icon.</span></h1>
       <p class="lede">Pear keeps a whole toolbox in your menu bar. Screenshots,
-      text grabbing, clipboard history, disk maps, a Mac
+      text grabbing, window snapping, clipboard history, disk maps, a Mac
       cleaner. Everything runs on your machine, and stays quiet until you reach
       for it.</p>
       <div class="cta">
@@ -155,6 +156,7 @@
     <div class="group reveal">
       <p class="cat">Everyday</p>
       <ul class="index">
+        <li><svg aria-hidden="true"><use href="#i-win"/></svg><b>Windows</b><kbd>Fn</kbd><span>Snap the front window with ⌃⌥ and the arrows, or hold Fn for a ring.</span></li>
         <li><svg aria-hidden="true"><use href="#i-keys"/></svg><b>KeyClu</b><kbd>⌃⇧K</kbd><span>Every shortcut for the app you’re in, gathered on one sheet.</span></li>
         <li><svg aria-hidden="true"><use href="#i-clip"/></svg><b>Clipboard</b><span>Everything you’ve copied, searchable, with pins for the regulars.</span></li>
         <li><svg aria-hidden="true"><use href="#i-shelf"/></svg><b>Shelf</b><kbd>⌃⇧V</kbd><span>Drop files mid-drag, then carry them somewhere else.</span></li>
