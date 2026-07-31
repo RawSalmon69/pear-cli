@@ -107,7 +107,12 @@ battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
   reimplemented from their call sites, clean-room. Every notice left in
   `Resources/Licenses/` is permissive. **Never strip an attribution while
   tidying** — over-crediting is free, removing credit is the only move that adds
-  risk. Apache-2.0 additionally obliges us to state that files were changed.
+  risk. Apache-2.0 §4(b) additionally obliges us to state, prominently, that we
+  changed the files we redistribute: `Resources/Runners/NOTICE.txt` is that
+  statement and it ships in the bundle. **If you modify vendored Apache-2.0 code
+  or assets, add it there in the same change.**
+- **Before flipping `FeatureFlags.paywall`, run `companion/scripts/launch-preflight.sh`.**
+  It fails loudly on each unmet precondition rather than leaving them to memory.
 - **The app does not ship the `pear` CLI.** The CLI is GPL-3.0 and is installed
   separately (it is also the app's funnel, and free forever). Cleaner and the
   disk bars resolve `/usr/local/bin/pear` or `/opt/homebrew/bin/pear`, then gate
