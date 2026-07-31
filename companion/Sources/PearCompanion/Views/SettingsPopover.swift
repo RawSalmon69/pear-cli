@@ -22,7 +22,6 @@ struct SettingsPopover: View {
     @AppStorage(Prefs.previewMaxStackKey) private var previewMaxStack = 5
     @AppStorage(Prefs.panelClosesOnFocusLossKey) private var panelClosesOnFocusLoss = true
     @AppStorage(Prefs.hdBackgroundRemovalKey) private var hdEnabled = false
-    @AppStorage(Prefs.cleanSystemCachesKey) private var cleanSystemCaches = false
     @State private var hd = HDBackgroundModelManager.shared
 
     enum Tab: String, CaseIterable, Identifiable {
@@ -223,17 +222,6 @@ struct SettingsPopover: View {
                 .font(Theme.body)
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
-        }
-
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
-            SectionLabel(text: "Cleanup")
-            Toggle("Clean includes system caches", isOn: $cleanSystemCaches)
-                .font(Theme.body)
-                .toggleStyle(.switch)
-                .tint(Theme.accent)
-            Text("Asks for your admin password when Clean runs.")
-                .font(Theme.caption)
-                .foregroundStyle(.secondary)
         }
 
         VStack(alignment: .leading, spacing: Theme.itemGap) {

@@ -1,10 +1,12 @@
 import SwiftUI
 import AppKit
 
-/// Hosts the native sunburst/treemap charts: owns the scan, a drill breadcrumb,
-/// and the hover readout, and swaps between the two chart styles without
-/// rescanning (both read the same tree). Scans the user's home folder lazily on
-/// first appearance and cancels on disappear.
+/// Hosts the native sunburst/treemap charts: a drill breadcrumb and the hover
+/// readout, swapping between the two chart styles without rescanning (both read
+/// the same tree). Scans the user's home folder lazily on first appearance; the
+/// scan is owned by `DiskWindowController`, which cancels it when the window
+/// closes — switching view mode must not throw an in-flight walk away, because
+/// the bars mode reads the same tree.
 struct DiskChartView: View {
     let style: DiskChartStyle
     /// Shared two-phase deletion pile. "Delete" stages here; the chart marks
@@ -38,7 +40,6 @@ struct DiskChartView: View {
             }
         }
         .task { model.scanIfNeeded(path: Self.homePath) }
-        .onDisappear { model.cancel() }
         .onChange(of: staging.trashGeneration) { _, _ in reconcileTrashed() }
         .animation(.easeOut(duration: 0.18), value: stack)
         .animation(.easeOut(duration: 0.15), value: focused)

@@ -18,12 +18,6 @@ struct HelpView: View {
 
     // Features that aren't registry tools (no tile of their own).
     private let extras: [Extra] = [
-        Extra(icon: "sparkles", title: "Clean", hotkey: nil,
-              summary: "Remove caches and junk, with a live progress log.",
-              category: .system),
-        Extra(icon: "wind", title: "Optimize", hotkey: nil,
-              summary: "Run bounded maintenance tasks.",
-              category: .system),
         Extra(icon: "hare", title: "Menu-bar runner", hotkey: nil,
               summary: "25 RunCat runners that speed up with CPU load — cat, dogs, dino, and more. Pick one in Settings › Menu Bar.",
               category: .system),

@@ -42,17 +42,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             Task(priority: .background) { await entitlement.checkRevocationIfDue() }
         }
         UNUserNotificationCenter.current().delegate = self
-        // Quitting must not orphan a live `pear clean` — least of all the
-        // privileged `--system` variant, which would keep sweeping system caches
-        // with no window, no transcript and nothing left to stop it.
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
-        ) { [environment] _ in
-            // `queue: .main` guarantees this body runs on the main thread, so the
-            // hop is an assertion rather than a real isolation change — and it
-            // must be synchronous: a `Task` would not outlive the quit.
-            MainActor.assumeIsolated { environment.cleaner.runner.terminateForQuit() }
-        }
         panelController = PanelController(env: environment)
         // Best-effort: unsigned dev builds have no push entitlement and land in
         // didFailToRegister — that's fine, the foreground poll covers delivery.

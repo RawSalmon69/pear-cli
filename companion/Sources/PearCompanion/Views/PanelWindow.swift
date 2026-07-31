@@ -202,8 +202,8 @@ final class PanelController: NSObject {
         panel.isReleasedWhenClosed = false
         // Drag by any empty background area. Interactive SwiftUI controls
         // (tiles, buttons, the note field) report `mouseDownCanMoveWindow=false`,
-        // so a press on them still interacts — same one-liner the scratchpad and
-        // cleaner windows use with editable content.
+        // so a press on them still interacts — same one-liner the scratchpad
+        // window uses with editable content.
         panel.isMovableByWindowBackground = true
         panel.onCancel = { [weak self] in self?.hide() }
         // Delegate drives the close-on-focus-loss toggle and drag detection.

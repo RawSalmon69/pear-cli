@@ -256,29 +256,6 @@ final class CaptureStoreTests: XCTestCase {
     }
 }
 
-final class CleanerTranscriptTrimTests: XCTestCase {
-    func testShortTranscriptIsUntouched() {
-        let text = "line one\nline two\n"
-        XCTAssertEqual(CleanerRunner.trimmed(text, to: 1000), text)
-    }
-
-    func testKeepsTheTailAndCutsAtALineBoundary() {
-        let text = (1...50).map { "line \($0)" }.joined(separator: "\n")
-        let trimmed = CleanerRunner.trimmed(text, to: 40)
-
-        XCTAssertLessThanOrEqual(trimmed.count, 40)
-        XCTAssertTrue(trimmed.hasSuffix("line 50"), "the newest output must survive")
-        XCTAssertFalse(trimmed.hasPrefix("ne "), "must not start mid-line")
-        XCTAssertTrue(text.hasSuffix(trimmed))
-    }
-
-    func testSingleHugeLineStillBounded() {
-        let text = String(repeating: "x", count: 5_000)
-        let trimmed = CleanerRunner.trimmed(text, to: 100)
-        XCTAssertEqual(trimmed.count, 100, "no newline to cut at — bound it anyway")
-    }
-}
-
 /// Getting Pear's own floating UI out of the shot. A capture started from a panel
 /// tile used to leave the panel over the region being grabbed — and inside a
 /// full-screen shot — because the panel is non-activating and so never loses

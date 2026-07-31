@@ -75,7 +75,7 @@ struct HeaderSection: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 } else if mood == .worried {
-                    Text("Your disk is getting full — a clean would help")
+                    Text("Your disk is nearly full")
                         .font(Theme.caption)
                         .foregroundStyle(Theme.warn)
                 }
@@ -591,12 +591,6 @@ struct BottomBar: View {
 
     private var buttonRow: some View {
         HStack(spacing: Theme.itemGap) {
-            Button { env.cleaner.run(command: "clean") } label: {
-                Label("Clean", systemImage: "sparkles").font(Theme.body)
-            }
-            Button { env.cleaner.run(command: "optimize") } label: {
-                Label("Optimize", systemImage: "wind").font(Theme.body)
-            }
             Spacer()
             if let updater = env.updater {
                 Button("v\(updater.versionString)") { updater.checkForUpdates() }
@@ -623,7 +617,7 @@ struct BottomBar: View {
         .buttonStyle(.bordered)
         .controlSize(.small)
         .tint(Theme.accent)
-        // Kill the key-focus ring that made the first button look selected.
+        // Kill the key-focus ring that made a button look pre-selected.
         .focusEffectDisabled()
     }
 }

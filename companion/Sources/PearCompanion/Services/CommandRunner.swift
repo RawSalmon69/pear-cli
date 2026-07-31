@@ -6,8 +6,8 @@ enum CommandResult {
     case timedOut
 }
 
-/// Seam for services that shell out to the pear CLI, so tests can feed
-/// canned output instead of spawning processes.
+/// Seam for the system tools the Switches read and toggle (`defaults`,
+/// `pmset`, …), so tests can feed canned output instead of spawning processes.
 protocol CommandRunner: Sendable {
     /// Runs `binary arguments`; stdout on exit 0. A `timeout` (seconds)
     /// terminates an overrunning process and reports `.timedOut`.

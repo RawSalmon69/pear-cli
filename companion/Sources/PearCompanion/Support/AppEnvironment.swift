@@ -20,8 +20,6 @@ final class AppEnvironment {
     /// Trial / licence state. Read by the settings pane and the locked state, and
     /// consulted by `tools` before it registers anything paid.
     let entitlement = EntitlementStore()
-    /// Native clean/optimize progress panel (no Terminal window).
-    @ObservationIgnored let cleaner = CleanerWindowController()
     /// Menu-bar runner (RunCat-style). The menu-bar label observes
     /// `runner.currentFrame` directly; off by default, 0% cost when off.
     let runner = RunnerModel()

@@ -3,14 +3,10 @@ import AppKit
 
 /// Disk tool popover: a three-mode explorer.
 ///
-/// Sunburst and treemap are drawn from a native, off-main disk scan
-/// (`Tools/Disk`, engine vendored from Radix); bars keeps the existing
-/// `pear analyze` overview + one-level drill. The chart scan runs lazily, only
-/// when a chart mode is on screen. Fits a ~380 pt menu-bar panel.
+/// All three modes — sunburst, treemap and bars — are drawn from one native,
+/// off-main disk scan (`Tools/Disk`, engine vendored from Radix). Nothing here
+/// shells out. Fits a ~380 pt menu-bar panel.
 struct DiskAnalyzeView: View {
-    // Defaults to bars so the popover paints instantly with the fast
-    // `pear analyze` overview; the native home-folder scan behind sunburst and
-    // treemap runs only when the user selects one of those modes.
     @State private var mode: DiskViewMode = .bars
     /// The two-phase deletion pile, shared across all three modes so the pending
     /// section and "Delete all" stay consistent as the user switches views.
@@ -35,7 +31,7 @@ struct DiskAnalyzeView: View {
 
             switch mode {
             case .bars:
-                DiskBarsView(staging: staging)
+                DiskBarsView(staging: staging, model: scanModel)
             case .sunburst, .treemap:
                 DiskChartView(style: mode == .treemap ? .treemap : .sunburst,
                               staging: staging, model: scanModel)
@@ -74,49 +70,67 @@ enum DiskViewMode: String, CaseIterable, Identifiable {
 
 // MARK: - Bars mode
 
-/// Disk usage as a proportional bar list, backed by `pear analyze --json`.
-/// Opens on the storage overview and drills into directories one level at a
-/// time, with a Back path stack.
+/// Disk usage as a proportional bar list, reading the same native scan tree the
+/// charts draw. Opens on the scanned root and drills into directories one level
+/// at a time, with a Back stack.
 private struct DiskBarsView: View {
     let staging: DiskStagingModel
+    /// Owned by `DiskWindowController` and shared with the chart modes, so
+    /// switching view mode never rescans.
+    let model: DiskScanModel
 
-    @State private var service = DiskAnalyzeService()
-    /// Directories drilled into, deepest last. Empty == the overview.
-    @State private var pathStack: [String] = []
+    /// Directories drilled into, deepest last, held as path ids rather than
+    /// node copies: pruning a trashed path rewrites the tree, and an id
+    /// re-resolves against the new one where a copied node would go stale.
+    @State private var stack: [String] = []
 
-    private var maxEntrySize: Int64 {
-        service.entries.map(\.size).max() ?? 1
+    private static let homePath = FileManager.default.homeDirectoryForCurrentUser.path
+
+    /// The node the bars are showing, plus the levels of `stack` that still
+    /// resolve against the current tree (a pruned level drops off the end).
+    private var resolved: (node: DiskNode, stack: [String])? {
+        guard let root = model.root else { return nil }
+        var node = root
+        var alive: [String] = []
+        for id in stack {
+            guard let next = node.children.first(where: { $0.id == id }) else { break }
+            node = next
+            alive.append(id)
+        }
+        return (node, alive)
     }
+
+    private var entries: [DiskNode] { resolved?.node.children ?? [] }
+    private var totalSize: Int64 { resolved?.node.size ?? 0 }
+    private var maxEntrySize: Int64 { entries.map(\.size).max() ?? 1 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.sectionGap) {
             header
             content
         }
-        .task {
-            if service.entries.isEmpty, service.errorMessage == nil, service.cliProblem == nil {
-                await service.scan(path: nil)
-            }
-        }
+        .task { model.scanIfNeeded(path: Self.homePath) }
         .onChange(of: staging.trashGeneration) { _, _ in
-            service.remove(paths: staging.lastTrashed)
+            for path in staging.lastTrashed { model.remove(pathID: path) }
+            stack = resolved?.stack ?? []
         }
-        .animation(.easeOut(duration: 0.2), value: service.entries)
+        // Keyed on ids, not the nodes: `DiskNode` equality walks the whole
+        // subtree, and this runs on every layout pass.
+        .animation(.easeOut(duration: 0.2), value: entries.map(\.id))
     }
 
     // MARK: Header
 
     private var header: some View {
         HStack(alignment: .center, spacing: Theme.itemGap) {
-            if !pathStack.isEmpty {
+            if !stack.isEmpty {
                 GlyphButton(symbol: "chevron.left", help: "Back", tint: .secondary) {
                     goBack()
                 }
-                .disabled(service.isLoading)
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(pathStack.isEmpty ? "Storage" : locationTitle)
+                Text(title)
                     .font(Theme.title)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -130,71 +144,67 @@ private struct DiskBarsView: View {
             Spacer(minLength: 0)
 
             GlyphButton(symbol: "arrow.clockwise", help: "Rescan", tint: .secondary) {
-                Task { await service.scan(path: pathStack.last) }
+                rescan()
             }
-            .disabled(service.isLoading)
+            .disabled(model.isScanning)
         }
     }
 
-    private var locationTitle: String {
-        guard let path = service.currentPath else { return "Storage" }
-        return (path as NSString).lastPathComponent.isEmpty ? path : (path as NSString).lastPathComponent
+    private var title: String {
+        stack.isEmpty ? "Home" : (resolved?.node.name ?? "Home")
     }
 
     private var subtitle: String {
-        if service.isOverview {
-            return "\(ByteFormat.si(service.totalSize)) across top categories"
-        }
-        if let path = service.currentPath {
-            return "\(ByteFormat.si(service.totalSize)) · \(displayPath(path))"
-        }
-        return ByteFormat.si(service.totalSize)
+        guard let node = resolved?.node else { return "Measuring…" }
+        return "\(ByteFormat.si(node.size)) · \(displayPath(node.id))"
     }
 
     // MARK: Content
 
     @ViewBuilder
     private var content: some View {
-        if let cli = service.cliProblem {
-            CLIRequirementCard(status: cli)
-        } else if service.isLoading && service.entries.isEmpty {
-            loadingCard
-        } else if let message = service.errorMessage {
-            errorCard(message)
-        } else if service.entries.isEmpty {
-            emptyCard
-        } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.sectionGap) {
-                    VStack(spacing: 6) {
-                        ForEach(service.entries) { entry in
-                            EntryBar(
-                                entry: entry,
-                                maxSize: maxEntrySize,
-                                totalSize: service.totalSize,
-                                canDrill: entry.isDir && !service.isLoading,
-                                staging: staging,
-                                onDrill: { drill(into: entry) }
-                            )
+        if let node = resolved?.node {
+            if node.children.isEmpty {
+                emptyCard
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Theme.sectionGap) {
+                        VStack(spacing: 6) {
+                            ForEach(entries) { entry in
+                                EntryBar(
+                                    entry: entry,
+                                    maxSize: maxEntrySize,
+                                    totalSize: totalSize,
+                                    canDrill: entry.isDirectory && entry.hasChildren,
+                                    staging: staging,
+                                    onDrill: { drill(into: entry) }
+                                )
+                            }
+                        }
+
+                        // Measured once per scan against the scan root, so it
+                        // belongs to the root level and not to a drilled-in one.
+                        if stack.isEmpty, !model.largeFiles.isEmpty {
+                            largestFiles(model.largeFiles)
                         }
                     }
-
-                    if !service.largeFiles.isEmpty {
-                        largestFiles
-                    }
+                    .padding(.bottom, 2)
                 }
-                .padding(.bottom, 2)
+                .frame(maxHeight: 420)
+                .opacity(model.isScanning ? 0.5 : 1)
             }
-            .frame(maxHeight: 420)
-            .opacity(service.isLoading ? 0.5 : 1)
+        } else if let message = model.errorMessage {
+            errorCard(message)
+        } else {
+            loadingCard
         }
     }
 
-    private var largestFiles: some View {
+    private func largestFiles(_ files: [DiskNode]) -> some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             SectionLabel(text: "Largest files")
             VStack(spacing: 4) {
-                ForEach(service.largeFiles) { file in
+                ForEach(files) { file in
                     LargeFileRow(file: file, staging: staging)
                 }
             }
@@ -236,20 +246,18 @@ private struct DiskBarsView: View {
 
     private func errorCard(_ message: String) -> some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
-            Label("Can't analyze right now", systemImage: "exclamationmark.triangle.fill")
+            Label("Can't scan right now", systemImage: "exclamationmark.triangle.fill")
                 .font(Theme.emphasis)
                 .foregroundStyle(Theme.warn)
             Text(message)
                 .font(Theme.body)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Try again") {
-                Task { await service.scan(path: pathStack.last) }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .focusable(false)
-            .tint(Theme.accent)
+            Button("Try again") { rescan() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .focusable(false)
+                .tint(Theme.accent)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.heroPadding)
@@ -258,34 +266,36 @@ private struct DiskBarsView: View {
 
     // MARK: Navigation
 
-    private func drill(into entry: DiskEntry) {
-        guard entry.isDir, !service.isLoading else { return }
-        pathStack.append(entry.path)
-        Task { await service.scan(path: entry.path) }
+    /// Drilling is a move within the already-measured tree — no rescan.
+    private func drill(into entry: DiskNode) {
+        guard entry.isDirectory, entry.hasChildren else { return }
+        stack.append(entry.id)
     }
 
     private func goBack() {
-        guard !pathStack.isEmpty else { return }
-        pathStack.removeLast()
-        Task { await service.scan(path: pathStack.last) }
+        guard !stack.isEmpty else { return }
+        stack.removeLast()
+    }
+
+    private func rescan() {
+        stack = []
+        model.scan(path: Self.homePath)
     }
 
     private func displayPath(_ path: String) -> String {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        if !home.isEmpty, path.hasPrefix(home) {
-            return "~" + path.dropFirst(home.count)
-        }
-        return path
+        guard !Self.homePath.isEmpty, path.hasPrefix(Self.homePath) else { return path }
+        let tail = path.dropFirst(Self.homePath.count)
+        return tail.isEmpty ? "~" : "~" + tail
     }
 }
 
 // MARK: - Entry bar
 
 /// A proportional horizontal bar for one entry: name, human size, share of
-/// total, and a width proportional to size. Warn-tinted when very large or
-/// cleanable; directories are tappable to drill in.
+/// total, and a width proportional to size. Warn-tinted when it dominates the
+/// total; directories are tappable to drill in.
 private struct EntryBar: View {
-    let entry: DiskEntry
+    let entry: DiskNode
     let maxSize: Int64
     let totalSize: Int64
     let canDrill: Bool
@@ -294,7 +304,7 @@ private struct EntryBar: View {
 
     @State private var hovering = false
 
-    private var isStaged: Bool { staging.isStaged(entry.path) }
+    private var isStaged: Bool { staging.isStaged(entry.id) }
 
     private var fractionOfMax: Double {
         guard maxSize > 0 else { return 0 }
@@ -309,7 +319,7 @@ private struct EntryBar: View {
     private var isVeryLarge: Bool { shareOfTotal >= 0.5 }
 
     private var barColor: Color {
-        (entry.cleanable || isVeryLarge) ? Theme.warn : Theme.accent
+        isVeryLarge ? Theme.warn : Theme.accent
     }
 
     private var percentText: String {
@@ -321,16 +331,13 @@ private struct EntryBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
-                Image(systemName: entry.isDir ? "folder.fill" : "doc.fill")
+                Image(systemName: entry.isDirectory ? "folder.fill" : "doc.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(barColor)
                 Text(entry.name)
                     .font(Theme.body)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                if entry.cleanable {
-                    CleanableBadge()
-                }
                 Spacer(minLength: 4)
                 Text(ByteFormat.si(entry.size))
                     .font(Theme.rounded(12, .semibold))
@@ -356,17 +363,17 @@ private struct EntryBar: View {
                 Spacer(minLength: 0)
                 GlyphButton(symbol: "magnifyingglass", help: "Reveal in Finder", tint: .secondary) {
                     NSWorkspace.shared.activateFileViewerSelecting(
-                        [URL(fileURLWithPath: entry.path)]
+                        [URL(fileURLWithPath: entry.id)]
                     )
                 }
-                if DiskDeletion.canTrash(path: entry.path) {
+                if DiskDeletion.canTrash(path: entry.id) {
                     if isStaged {
                         GlyphButton(symbol: "arrow.uturn.backward", help: "Restore", tint: .secondary) {
-                            staging.restore(path: entry.path)
+                            staging.restore(path: entry.id)
                         }
                     } else {
                         GlyphButton(symbol: "trash", help: "Delete", tint: Theme.warn) {
-                            staging.stage(name: entry.name, path: entry.path, size: entry.size)
+                            staging.stage(name: entry.name, path: entry.id, size: entry.size)
                         }
                     }
                 }
@@ -393,41 +400,28 @@ private struct EntryBar: View {
 
     @ViewBuilder
     private var menuItems: some View {
-        if DiskDeletion.canTrash(path: entry.path) {
+        if DiskDeletion.canTrash(path: entry.id) {
             if isStaged {
-                Button("Restore") { staging.restore(path: entry.path) }
+                Button("Restore") { staging.restore(path: entry.id) }
             } else {
                 Button("Delete", role: .destructive) {
-                    staging.stage(name: entry.name, path: entry.path, size: entry.size)
+                    staging.stage(name: entry.name, path: entry.id, size: entry.size)
                 }
             }
         }
         Button("Reveal in Finder") {
-            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: entry.path)])
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: entry.id)])
         }
-    }
-}
-
-/// Small "cleanable" pill, warm so it advances against the glass.
-private struct CleanableBadge: View {
-    var body: some View {
-        Text("cleanable")
-            .font(Theme.rounded(9, .semibold))
-            .kerning(0.3)
-            .foregroundStyle(Theme.warn)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(Theme.warn.opacity(0.16)))
     }
 }
 
 // MARK: - Large file row
 
 private struct LargeFileRow: View {
-    let file: DiskFile
+    let file: DiskNode
     let staging: DiskStagingModel
 
-    private var isStaged: Bool { staging.isStaged(file.path) }
+    private var isStaged: Bool { staging.isStaged(file.id) }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -445,17 +439,17 @@ private struct LargeFileRow: View {
                 .foregroundStyle(.secondary)
             GlyphButton(symbol: "magnifyingglass", help: "Reveal in Finder", tint: .secondary) {
                 NSWorkspace.shared.activateFileViewerSelecting(
-                    [URL(fileURLWithPath: file.path)]
+                    [URL(fileURLWithPath: file.id)]
                 )
             }
-            if DiskDeletion.canTrash(path: file.path) {
+            if DiskDeletion.canTrash(path: file.id) {
                 if isStaged {
                     GlyphButton(symbol: "arrow.uturn.backward", help: "Restore", tint: .secondary) {
-                        staging.restore(path: file.path)
+                        staging.restore(path: file.id)
                     }
                 } else {
                     GlyphButton(symbol: "trash", help: "Delete", tint: Theme.warn) {
-                        staging.stage(name: file.name, path: file.path, size: file.size)
+                        staging.stage(name: file.name, path: file.id, size: file.size)
                     }
                 }
             }
@@ -465,17 +459,17 @@ private struct LargeFileRow: View {
         .glassCard(cornerRadius: 10)
         .opacity(isStaged ? 0.5 : 1)
         .contextMenu {
-            if DiskDeletion.canTrash(path: file.path) {
+            if DiskDeletion.canTrash(path: file.id) {
                 if isStaged {
-                    Button("Restore") { staging.restore(path: file.path) }
+                    Button("Restore") { staging.restore(path: file.id) }
                 } else {
                     Button("Delete", role: .destructive) {
-                        staging.stage(name: file.name, path: file.path, size: file.size)
+                        staging.stage(name: file.name, path: file.id, size: file.size)
                     }
                 }
             }
             Button("Reveal in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: file.path)])
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: file.id)])
             }
         }
     }

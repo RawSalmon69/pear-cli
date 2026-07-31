@@ -5,8 +5,8 @@ import Observation
 // that owns a background scan, the Theme-derived color palette, and the small
 // value types the two charts hand back to their host.
 
-/// Which native visualization is showing. Bars is handled separately by the
-/// existing `pear analyze` path.
+/// Which native visualization is showing. Bars renders the same scan tree as a
+/// plain list, so it needs no style of its own.
 enum DiskChartStyle: Sendable {
     case sunburst
     case treemap
@@ -36,9 +36,17 @@ struct DiskChartContextAction {
 @Observable
 final class DiskScanModel {
     private(set) var root: DiskNode?
+    /// The biggest files anywhere under the scanned root, for the bars mode's
+    /// "Largest files" list. Derived once per scan and off the main actor:
+    /// walking a finished tree for them costs ~2.3s over a 900k-file home
+    /// folder (measured), so it must never run per render.
+    private(set) var largeFiles: [DiskNode] = []
     private(set) var isScanning = false
     private(set) var errorMessage: String?
     private(set) var scannedPath: String?
+
+    /// How many rows "Largest files" lists.
+    private nonisolated static let largeFileLimit = 20
 
     @ObservationIgnored private var task: Task<Void, Never>?
 
@@ -63,17 +71,39 @@ final class DiskScanModel {
                 outcome = .failure(error)
             }
             guard let self, !Task.isCancelled else { return }
-            self.task = nil
             switch outcome {
             case .success(let tree):
+                let files = await Task.detached {
+                    Self.largestFiles(in: tree, limit: Self.largeFileLimit)
+                }.value
+                guard !Task.isCancelled else { return }
+                self.task = nil
                 self.root = tree
+                self.largeFiles = files
                 self.isScanning = false
             case .failure(let error):
                 if error is CancellationError { return }
+                self.task = nil
                 self.errorMessage = "Couldn't scan this location."
                 self.isScanning = false
             }
         }
+    }
+
+    /// Largest files under `root`, biggest first. Skips the scanner's synthetic
+    /// "N more items" node — that is a group total, not a file, and nothing can
+    /// act on it.
+    private nonisolated static func largestFiles(in root: DiskNode, limit: Int) -> [DiskNode] {
+        var files: [DiskNode] = []
+        var pending = [root]
+        while let node = pending.popLast() {
+            if node.isDirectory {
+                pending.append(contentsOf: node.children)
+            } else if !node.id.contains("\u{1F}") {
+                files.append(node)
+            }
+        }
+        return Array(files.sorted { $0.size > $1.size }.prefix(limit))
     }
 
     func cancel() {
@@ -89,6 +119,8 @@ final class DiskScanModel {
     func remove(pathID: String) {
         guard let current = root, let pruned = current.removingDescendant(id: pathID) else { return }
         root = pruned
+        // A trashed directory takes the files under it out of the list too.
+        largeFiles.removeAll { $0.id == pathID || $0.id.hasPrefix(pathID + "/") }
     }
 }
 

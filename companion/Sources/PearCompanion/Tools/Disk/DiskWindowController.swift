@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 /// A standard, reusable window hosting the Disk explorer. Unlike the floating
-/// panels (clipboard, cleaner) this is an ordinary titled window: it stays open
+/// panels (clipboard, shelf) this is an ordinary titled window: it stays open
 /// when focus shifts elsewhere, so an in-progress analysis isn't lost. One
 /// window is created and reused across opens; it remembers its size.
 @MainActor
