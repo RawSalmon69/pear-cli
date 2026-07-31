@@ -1,5 +1,15 @@
 # PearCompanion — Next Session (Round 10) Orchestrator Prompt
 
+> **Obsolete, kept as a record. Do not follow it.** Written at
+> companion-v2.6.4. Two of the features it plans work on — Dock Preview and the
+> Windows snap/radial tool — were **removed** in `9cff06e` because they were
+> derived from DockDoor and Loop, both GPL-3.0, and Pear.app is a commercial
+> product. In particular, ignore the instruction below to re-clone
+> `github.com/ejbills/DockDoor`: **do not consult GPL sources for this app, and
+> never re-vendor them.** `DockAX` and `KeySwallowTap`, which it also names, were
+> reimplemented clean-room as `AXRead` and `KeyBlockingTap`. See
+> `companion/AGENTS.md` for the current licence boundary.
+
 Paste this to start the next clean session.
 
 ---
