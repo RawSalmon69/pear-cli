@@ -15,7 +15,8 @@ import Foundation
 /// tree back to the main actor without data-race risk. `children` is sorted
 /// largest-first and is empty for files, symlinks, packages, and directories
 /// that hit the depth/entry cap (their `size` still reflects the full subtree).
-struct DiskNode: Identifiable, Sendable, Hashable {
+/// `Codable` so a finished tree can be cached (`DiskScanCache`).
+struct DiskNode: Identifiable, Sendable, Hashable, Codable {
     /// Absolute filesystem path; unique within a single scan.
     let id: String
     let name: String

@@ -22,8 +22,8 @@ import Observation
 final class DiskStagingModel {
     private(set) var items: [StagedItem] = []
     /// Bumped after a "Delete all" that trashed at least one path, so the active
-    /// chart/bars view can prune the just-trashed paths (in `lastTrashed`) from
-    /// its own data without a rescan.
+    /// chart view can prune the just-trashed paths (in `lastTrashed`) from its
+    /// own data without a rescan.
     private(set) var trashGeneration = 0
     private(set) var lastTrashed: Set<String> = []
 

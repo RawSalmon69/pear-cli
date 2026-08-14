@@ -5,8 +5,7 @@ import Observation
 // that owns a background scan, the Theme-derived color palette, and the small
 // value types the two charts hand back to their host.
 
-/// Which native visualization is showing. Bars renders the same scan tree as a
-/// plain list, so it needs no style of its own.
+/// Which native visualization is showing.
 enum DiskChartStyle: Sendable {
     case sunburst
     case treemap
@@ -36,24 +35,33 @@ struct DiskChartContextAction {
 @Observable
 final class DiskScanModel {
     private(set) var root: DiskNode?
-    /// The biggest files anywhere under the scanned root, for the bars mode's
-    /// "Largest files" list. Derived once per scan and off the main actor:
-    /// walking a finished tree for them costs ~2.3s over a 900k-file home
-    /// folder (measured), so it must never run per render.
-    private(set) var largeFiles: [DiskNode] = []
     private(set) var isScanning = false
     private(set) var errorMessage: String?
     private(set) var scannedPath: String?
+    /// When `root` was measured: the cache's own timestamp when it came off
+    /// disk, now when it came from a fresh walk. Drives the age label.
+    private(set) var scannedAt: Date?
 
-    /// How many rows "Largest files" lists.
-    private nonisolated static let largeFileLimit = 20
-
+    /// Injectable so tests never read or write the real Application Support.
+    @ObservationIgnored private let cacheURL: URL
     @ObservationIgnored private var task: Task<Void, Never>?
+    @ObservationIgnored private var saveTask: Task<Void, Never>?
 
-    /// Starts a scan only if nothing has been scanned and none is running, so a
+    init(cacheURL: URL = DiskScanCache.fileURL) {
+        self.cacheURL = cacheURL
+    }
+
+    /// Shows the cached tree if there is one for `path`, otherwise starts a
+    /// scan. Does nothing once something is showing or a scan is running, so a
     /// view's `.task` can call it idempotently on every appearance.
     func scanIfNeeded(path: String) {
         guard root == nil, task == nil else { return }
+        if let cached = DiskScanCache.load(from: cacheURL), cached.scannedPath == path {
+            root = cached.root
+            scannedPath = cached.scannedPath
+            scannedAt = cached.scannedAt
+            return
+        }
         scan(path: path)
     }
 
@@ -73,14 +81,11 @@ final class DiskScanModel {
             guard let self, !Task.isCancelled else { return }
             switch outcome {
             case .success(let tree):
-                let files = await Task.detached {
-                    Self.largestFiles(in: tree, limit: Self.largeFileLimit)
-                }.value
-                guard !Task.isCancelled else { return }
                 self.task = nil
                 self.root = tree
-                self.largeFiles = files
+                self.scannedAt = Date()
                 self.isScanning = false
+                self.persist()
             case .failure(let error):
                 if error is CancellationError { return }
                 self.task = nil
@@ -88,22 +93,6 @@ final class DiskScanModel {
                 self.isScanning = false
             }
         }
-    }
-
-    /// Largest files under `root`, biggest first. Skips the scanner's synthetic
-    /// "N more items" node — that is a group total, not a file, and nothing can
-    /// act on it.
-    private nonisolated static func largestFiles(in root: DiskNode, limit: Int) -> [DiskNode] {
-        var files: [DiskNode] = []
-        var pending = [root]
-        while let node = pending.popLast() {
-            if node.isDirectory {
-                pending.append(contentsOf: node.children)
-            } else if !node.id.contains("\u{1F}") {
-                files.append(node)
-            }
-        }
-        return Array(files.sorted { $0.size > $1.size }.prefix(limit))
     }
 
     func cancel() {
@@ -119,8 +108,22 @@ final class DiskScanModel {
     func remove(pathID: String) {
         guard let current = root, let pruned = current.removingDescendant(id: pathID) else { return }
         root = pruned
-        // A trashed directory takes the files under it out of the list too.
-        largeFiles.removeAll { $0.id == pathID || $0.id.hasPrefix(pathID + "/") }
+        // Re-cache, or the next open shows the trashed item back at full size.
+        persist()
+    }
+
+    /// Writes the current tree to the cache, off the main actor — encoding a
+    /// home-folder tree costs ~0.15 s and has no business on the run loop.
+    /// Superseding the previous write collapses a "Delete all" batch, which
+    /// calls `remove` once per trashed path, into one write.
+    private func persist() {
+        guard let root, let scannedPath, let scannedAt else { return }
+        saveTask?.cancel()
+        let url = cacheURL
+        saveTask = Task.detached(priority: .utility) {
+            guard !Task.isCancelled else { return }
+            DiskScanCache.save(root: root, scannedPath: scannedPath, scannedAt: scannedAt, to: url)
+        }
     }
 }
 

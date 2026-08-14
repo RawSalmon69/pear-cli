@@ -142,7 +142,7 @@ final class DiskTool: Tool {
     let title = "Disk"
     let icon = "chart.pie"
     let category = ToolCategory.system
-    let summary = "See what's using space — sunburst (pinch to zoom), treemap, or bars. Deletes go to the Trash."
+    let summary = "See what's using space — treemap or sunburst (pinch to zoom). Deletes go to the Trash."
     let hotkey: HotKeyChord? = nil
 
     private let window = DiskWindowController()

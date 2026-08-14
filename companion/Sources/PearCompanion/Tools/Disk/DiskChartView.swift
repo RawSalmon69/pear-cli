@@ -1,12 +1,13 @@
 import SwiftUI
 import AppKit
 
-/// Hosts the native sunburst/treemap charts: a drill breadcrumb and the hover
-/// readout, swapping between the two chart styles without rescanning (both read
-/// the same tree). Scans the user's home folder lazily on first appearance; the
-/// scan is owned by `DiskWindowController`, which cancels it when the window
-/// closes — switching view mode must not throw an in-flight walk away, because
-/// the bars mode reads the same tree.
+/// Hosts the native sunburst/treemap charts: a drill breadcrumb, the hover
+/// readout, the cache's age and a Rescan button, swapping between the two chart
+/// styles without rescanning (both read the same tree). On first appearance it
+/// shows the cached tree if there is one and otherwise walks the user's home
+/// folder; the scan is owned by `DiskWindowController`, which cancels it when
+/// the window closes — switching view mode must not throw an in-flight walk
+/// away, because the other mode reads the same tree.
 struct DiskChartView: View {
     let style: DiskChartStyle
     /// Shared two-phase deletion pile. "Delete" stages here; the chart marks
@@ -64,6 +65,13 @@ struct DiskChartView: View {
                     .truncationMode(.middle)
             }
             Spacer(minLength: 0)
+            if let scannedAt = model.scannedAt, !model.isScanning {
+                Text(DiskScanCache.ageLabel(scannedAt: scannedAt))
+                    .font(Theme.caption)
+                    .foregroundStyle(DiskScanCache.isStale(scannedAt: scannedAt)
+                                     ? Theme.warn : Color.secondary)
+                    .lineLimit(1)
+            }
             GlyphButton(symbol: "arrow.clockwise", help: "Rescan", tint: .secondary) { rescan() }
                 .disabled(model.isScanning)
         }
