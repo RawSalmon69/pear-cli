@@ -116,7 +116,7 @@ if [[ -f $info_plist ]]; then
         3.*) pass "app version is $short, matching maxMajor 3 licences" ;;
         "") fail "could not read CFBundleShortVersionString" ;;
         *) fail "app version is $short, not 3.x" \
-            "licences are issued with maxMajor 3; a 2.x build never needed the paywall" ;;
+            "sold licences carry maxMajor 3; a 2.x build never needed the paywall" ;;
     esac
 else
     fail "Info.plist not found"
