@@ -27,7 +27,7 @@ native Apple primitives over custom imitations. See root memory / `[[owner-quali
 ```bash
 cd companion
 swift build            # compile
-swift test             # full suite (618 tests, must stay green)
+swift test             # full suite (598 tests, must stay green)
 ./build.sh [version]   # assemble build/Pear.app (unsigned dev bundle); `open build/Pear.app`
 ```
 
@@ -150,6 +150,14 @@ battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
     written to disk. While it stands, licences fail closed and the revocation list
     fails open. It is a real curve point rather than zeros on purpose: an all-zero
     Ed25519 public key is a small-order point that *accepts forged signatures*.
+- **The app is FREE right now, and stays that way until the owner says otherwise.**
+  `FeatureFlags.paywall` is off, so nothing locks, the trial clock never starts,
+  no revocation request is made, and **no licensing surface is visible** — the
+  Settings Licence tab is filtered out by `SettingsPopover.Tab.visible`. The
+  licensing code is complete and tested, deliberately dormant. Do not flip the
+  flag, do not surface the pane, and do not ship a build that does either without
+  an explicit instruction. Two tests in `EntitlementRolloutTests` fail if a free
+  build starts offering licensing UI.
 - **`FeatureFlags.paywall` gates the lock, and the rollout order is load-bearing.**
   While it is off, the licensing code is fully present and testable but nothing
   locks **and the trial clock never starts** — reading the trial is what begins
