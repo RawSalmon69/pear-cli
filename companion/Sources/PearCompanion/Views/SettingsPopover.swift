@@ -27,18 +27,27 @@ struct SettingsPopover: View {
     enum Tab: String, CaseIterable, Identifiable {
         case general = "General", tools = "Tools", menuBar = "Menu Bar", licence = "Licence"
         var id: String { rawValue }
+
+        /// The tabs actually offered. Licence is hidden while the app is free:
+        /// with `FeatureFlags.paywall` off nothing locks and the trial clock
+        /// never starts, so the pane would sit there reporting "14 days left"
+        /// forever and inviting people to buy something that is not for sale.
+        static var visible: [Tab] {
+            allCases.filter { FeatureFlags.paywall || $0 != .licence }
+        }
     }
 
     /// Opens on `tab`. The locked state passes `.licence`, so "I have a licence"
     /// lands on the field instead of on General.
     init(tab: Tab = .general) {
-        _tab = State(initialValue: tab)
+        // A caller asking for a hidden tab gets General rather than a blank pane.
+        _tab = State(initialValue: Tab.visible.contains(tab) ? tab : .general)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             Picker("", selection: $tab) {
-                ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
+                ForEach(Tab.visible) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -49,7 +58,10 @@ struct SettingsPopover: View {
                     case .general: generalTab
                     case .tools: toolsTab
                     case .menuBar: RunnerSettingsView(runner: env.runner)
-                    case .licence: LicenceSettingsView()
+                    case .licence:
+                        // Unreachable while free (the tab is not offered), but a
+                        // stored selection could still name it.
+                        if FeatureFlags.paywall { LicenceSettingsView() } else { generalTab }
                     }
                 }
                 .padding(.top, 4)

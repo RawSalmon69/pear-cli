@@ -59,8 +59,40 @@ final class EntitlementRolloutTests: XCTestCase {
         XCTAssertTrue(entitlement.entitlement.unlocksTools)
     }
 
-    /// The placeholder key must not verify anything. If this ever fails, someone
-    /// pasted a real key in and the flag needs the rest of the rollout done.
+    /// While the app is free, nothing about licensing may be reachable in the UI.
+    /// The lock being off is not enough on its own: a Licence pane still visible
+    /// would sit there reporting a trial that is not running and offering a
+    /// purchase that is not for sale.
+    func testNoLicensingUIIsOfferedWhileTheAppIsFree() throws {
+        try XCTSkipIf(FeatureFlags.paywall, "only meaningful in a free build")
+
+        XCTAssertFalse(
+            SettingsPopover.Tab.visible.contains(.licence),
+            "the Licence tab must not be offered while the app is free")
+        // And a caller that asks for it anyway lands somewhere sensible.
+        XCTAssertEqual(SettingsPopover.Tab.visible.first, .general)
+    }
+
+    /// The paid surfaces are driven off `.expired`, which the free path can never
+    /// produce — this pins that, so a change to the free-path default cannot
+    /// quietly make the locked card reachable.
+    func testTheFreePathNeverProducesAnExpiredEntitlement() throws {
+        try XCTSkipIf(FeatureFlags.paywall, "only meaningful in a free build")
+        let entitlement = EntitlementStore(
+            licenceStore: LicenceFileStore(directory: emptyDirectory()),
+            trial: store(SpyStore(), now: Date())
+        )
+
+        if case .expired = entitlement.entitlement {
+            XCTFail("a free build must never report an expired entitlement")
+        }
+        XCTAssertNil(
+            LockedCopy.trialNotice(daysRemaining: TrialState.trialDays),
+            "and no trial countdown is shown at a full trial's remaining days")
+    }
+
+    /// Junk must never verify. Held for the real key too, not just the
+    /// placeholder it was written against.
     func testAnArbitraryStringIsNotAValidLicence() {
         let entitlement = EntitlementStore(
             licenceStore: LicenceFileStore(directory: emptyDirectory()),
