@@ -55,9 +55,8 @@ push/PR.
 - **Services** (`Services/`): Screenshot, OCR (Vision), BackgroundRemoval
   (Vision + optional HD model), HDBackgroundModel (BEN2 download/manage),
   Clipboard history, CloudKit messaging (flagged off), Stats (native samplers),
-  Cleaner (headless `pear clean/optimize` into a panel; opt-in Include-system-caches
-  setting passes `clean --system` → native auth dialog), DiskAnalyze, HotKeyManager
-  (`.shared`, Carbon hotkeys → tokens), Updater (Sparkle), CommandRunner/ScreenCapture seams.
+  HotKeyManager (`.shared`, Carbon hotkeys → tokens), Updater (Sparkle),
+  CommandRunner/ScreenCapture seams.
 - **`Prefs`** (`Support/Prefs.swift`): all UserDefaults keys in one place.
   `Support/ResourceBundle.swift` → **always `Bundle.pearResources`, never
   `Bundle.module`** (see gotchas).
@@ -117,13 +116,15 @@ battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
   per existing install). The second is not optional politeness: the bundle ID has
   never changed, so everyone who was *given* Pear auto-updates into the paid build
   and, without a licence, just watches their trial run out.
-- **The app does not ship the `pear` CLI.** The CLI is GPL-3.0 and is installed
-  separately (it is also the app's funnel, and free forever). Cleaner and the
-  disk bars resolve `/usr/local/bin/pear` or `/opt/homebrew/bin/pear`, then gate
-  on `pear --version` against `PearStatsService.minimumCLIVersion` — currently
-  **1.47.0**, the first release containing `clean --system` — and render
-  `CLIRequirementCard` when the CLI is missing or older. Raising that minimum
-  means cutting a CLI release *first*, or every user is told their CLI is too old.
+- **The app has no cleanup feature and invokes no third-party binary.** Paddle
+  declined the merchant application in 2026-08 on a "Technical Support/Device
+  Cleaner" categorisation, so the Cleanup tool, the include-system-caches setting
+  and the whole `pear` CLI resolution/version gate were removed. Everything the
+  app shells out to now is Apple's own (`screencapture`, `defaults`, `killall`,
+  `open`), through the `CommandRunner`/`ScreenCapture` seams. **Do not reintroduce
+  a cleanup, optimisation or "fix your Mac" feature** — it is the thing that got
+  the product declined. The GPL CLI still exists, separately and free, and the app
+  no longer knows about it.
 - **Licensing is offline, asymmetric, and fails in a chosen direction.** $19 (rising
   to $29), perpetual for all 3.x, sold direct through Paddle. 14-day trial, no
   account or card. The app verifies an **Ed25519-signed licence** against a public
