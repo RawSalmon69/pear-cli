@@ -25,13 +25,15 @@ enum LicenceKey {
     /// **PLACEHOLDER — replace before selling anything.**
     ///
     /// Base64 of the 32 raw bytes of the owner's Ed25519 public key. Generate
-    /// the real pair on the owner's Mac with `companion/scripts/license-keygen.sh`
-    /// and paste the printed value here; the private half must never enter this
-    /// repo. The private half of *this* placeholder was never written to disk
-    /// and cannot be recovered, so while it is in place every licence fails as
-    /// `.badSignature` (fails closed) and every revocation list is ignored
-    /// (fails open) — both of which are the safe direction for a forgotten step.
-    static let publicKeyBase64 = "vVJa64QIOmhmKJnBB+sVOWp/qCb4Cvu/n9PI6AdXvbw="
+    /// the real pair on the owner's Mac with `companion/scripts/license-keygen.sh`.
+    /// **The private half must never enter this repo** — it lives in
+    /// `~/.pear-licensing/`, and the keygen script refuses any path inside a git
+    /// worktree. Losing it means no licence can ever be issued or revoked again,
+    /// so it wants an offline backup.
+    ///
+    /// This is the real key, generated 2026-08-15. Replacing it invalidates every
+    /// licence already issued.
+    static let publicKeyBase64 = "yVy1D+TPA7kI/aHc2Iy/4VtPjF2aT+/mcY+yzP7WPgg="
 
     /// The baked-in key, or nil if the constant above was pasted wrong.
     static var publicKey: Curve25519.Signing.PublicKey? {
