@@ -135,7 +135,7 @@ extension TrialRecord {
 }
 
 /// The trial record in the login Keychain, as a generic-password item. Survives
-/// a wiped Application Support folder — including one wiped by `pear clean`.
+/// a wiped Application Support folder, however it was wiped.
 ///
 /// The login (file-based) Keychain on purpose, not the data-protection one:
 /// `kSecUseDataProtectionKeychain` needs a `keychain-access-groups` entitlement
