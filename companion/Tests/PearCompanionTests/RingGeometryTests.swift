@@ -294,7 +294,7 @@ final class RingGeometryTests: XCTestCase {
             RingLabel.text(for: .snap(WindowZoneMath.leftHalf)), WindowZoneMath.leftHalf.name)
         XCTAssertEqual(
             RingLabel.text(for: .snap(WindowZoneMath.maximize)), WindowZoneMath.maximize.name)
-        XCTAssertEqual(RingLabel.text(for: .center), "Centre")
+        XCTAssertEqual(RingLabel.text(for: .center), "Center")
         XCTAssertEqual(RingLabel.text(for: .restore), "Restore")
     }
 

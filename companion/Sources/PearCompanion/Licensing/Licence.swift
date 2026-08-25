@@ -88,13 +88,13 @@ enum LicenceCheck: Equatable, Sendable {
     var message: String {
         switch self {
         case .valid:
-            return "Licence verified"
+            return "License verified"
         case .badSignature:
-            return "This licence key isn't valid."
+            return "This license key isn't valid."
         case .malformed:
-            return "That doesn't look like a Pear licence key."
+            return "That doesn't look like a Pear license key."
         case let .majorUnsupported(maxMajor, appMajor):
-            return "This licence covers Pear \(maxMajor).x. Pear \(appMajor) is a paid upgrade."
+            return "This license covers Pear \(maxMajor).x. Pear \(appMajor) is a paid upgrade."
         }
     }
 }

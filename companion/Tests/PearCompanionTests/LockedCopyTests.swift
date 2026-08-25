@@ -19,8 +19,8 @@ final class LockedCopyTests: XCTestCase {
 
     override func setUpWithError() throws {
         directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("licence-pane-\(UUID().uuidString)", isDirectory: true)
-        suite = "licence-pane-\(UUID().uuidString)"
+            .appendingPathComponent("license-pane-\(UUID().uuidString)", isDirectory: true)
+        suite = "license-pane-\(UUID().uuidString)"
         defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
     }
 
@@ -39,7 +39,7 @@ final class LockedCopyTests: XCTestCase {
         XCTAssertEqual(
             copy.detail,
             "Pear ran with everything switched on for fourteen days. "
-                + "The tools are paused now, and a licence turns them back on.")
+                + "The tools are paused now, and a license turns them back on.")
         XCTAssertEqual(
             copy.price,
             "$19, once, for every Pear 3.x update, on any Mac you own. No subscription.")
@@ -50,17 +50,17 @@ final class LockedCopyTests: XCTestCase {
 
     func testTheRefundedHeadlineIsTheRefundSentenceVerbatim() {
         XCTAssertEqual(LockedCopy.of(.licenceRefunded).headline, RevocationList.refundedMessage)
-        XCTAssertEqual(LockedCopy.of(.licenceRefunded).headline, "This licence was refunded")
+        XCTAssertEqual(LockedCopy.of(.licenceRefunded).headline, "This license was refunded")
     }
 
     func testTheRefundedCopyOffersAHumanRatherThanAnError() {
         let copy = LockedCopy.of(.licenceRefunded)
         XCTAssertEqual(
             copy.detail,
-            "The order behind this licence was refunded, so it no longer unlocks the tools. "
+            "The order behind this license was refunded, so it no longer unlocks the tools. "
                 + "If that is a surprise, write to contact@phanthawas.dev and we will sort it out.")
         XCTAssertTrue(copy.detail.contains(LockedCopy.supportEmail))
-        XCTAssertEqual(copy.price, "A new licence is $19, once.")
+        XCTAssertEqual(copy.price, "A new license is $19, once.")
         XCTAssertEqual(copy.symbol, "arrow.uturn.backward")
     }
 
@@ -68,7 +68,7 @@ final class LockedCopyTests: XCTestCase {
 
     func testTheOlderMajorCopyReadsAsAnUpgradeOfferNotAFailure() {
         let copy = LockedCopy.of(.licenceForOlderMajor(maxMajor: 3))
-        XCTAssertEqual(copy.headline, "Your licence covers Pear 3")
+        XCTAssertEqual(copy.headline, "Your license covers Pear 3")
         XCTAssertEqual(
             copy.detail,
             "Nothing is wrong with it. This is a newer major version, which is a separate "
@@ -86,7 +86,7 @@ final class LockedCopyTests: XCTestCase {
     func testTheOlderMajorCopyNamesTheMajorTheLicenceActuallyCovers() {
         XCTAssertEqual(
             LockedCopy.of(.licenceForOlderMajor(maxMajor: 4)).headline,
-            "Your licence covers Pear 4")
+            "Your license covers Pear 4")
         XCTAssertTrue(
             LockedCopy.of(.licenceForOlderMajor(maxMajor: 4)).detail.contains("Pear 4 install"))
     }
@@ -152,27 +152,27 @@ final class LockedCopyTests: XCTestCase {
         // Spelled out, so a future reword of the pane cannot quietly replace the
         // check's diagnosis with a generic one.
         XCTAssertEqual(
-            LicenceSettingsView.status(after: .badSignature), "This licence key isn't valid.")
+            LicenceSettingsView.status(after: .badSignature), "This license key isn't valid.")
         XCTAssertEqual(
             LicenceSettingsView.status(after: .malformed),
-            "That doesn't look like a Pear licence key.")
+            "That doesn't look like a Pear license key.")
         XCTAssertEqual(
             LicenceSettingsView.status(after: .majorUnsupported(maxMajor: 3, appMajor: 4)),
-            "This licence covers Pear 3.x. Pear 4 is a paid upgrade.")
+            "This license covers Pear 3.x. Pear 4 is a paid upgrade.")
     }
 
     func testAnAcceptedLicenceThanksTheBuyerAndSaysWhatHappensNext() {
         let message = LicenceSettingsView.status(after: .valid(LicenceFixture.sample()))
         XCTAssertEqual(message, LicenceSettingsView.activatedMessage)
         XCTAssertEqual(
-            message, "Licence verified — thank you. Every tool is back on.")
+            message, "License verified — thank you. Every tool is back on.")
     }
 
     // MARK: - End to end through the real store
 
     func testAGarbagePasteIsRejectedWithoutDisturbingARunningTrial() throws {
         let store = makeStore()
-        let check = store.activate("this is not a licence")
+        let check = store.activate("this is not a license")
         XCTAssertEqual(check, .malformed)
         XCTAssertEqual(LicenceSettingsView.status(after: check), check.message)
         XCTAssertEqual(store.entitlement, .trial(daysRemaining: TrialState.trialDays))
@@ -185,7 +185,7 @@ final class LockedCopyTests: XCTestCase {
             LicenceFixture.sample(email: "buyer@example.com"), signedBy: keys.private)
 
         let check = store.activate(text)
-        guard case .valid = check else { return XCTFail("expected a valid licence, got \(check)") }
+        guard case .valid = check else { return XCTFail("expected a valid license, got \(check)") }
         XCTAssertEqual(LicenceSettingsView.status(after: check), LicenceSettingsView.activatedMessage)
         // The pane shows this address on purpose: it is the whole enforcement model.
         XCTAssertEqual(store.entitlement, .licensed(email: "buyer@example.com"))

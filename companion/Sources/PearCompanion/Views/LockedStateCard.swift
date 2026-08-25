@@ -40,7 +40,7 @@ struct LockedCopy: Equatable, Sendable {
             return LockedCopy(
                 headline: "The trial has ended",
                 detail: "Pear ran with everything switched on for fourteen days. "
-                    + "The tools are paused now, and a licence turns them back on.",
+                    + "The tools are paused now, and a license turns them back on.",
                 price: "$19, once, for every Pear 3.x update, on any Mac you own. No subscription.",
                 symbol: "hourglass")
         case .licenceRefunded:
@@ -49,13 +49,13 @@ struct LockedCopy: Equatable, Sendable {
                 // actually happened; a generic error here reads as a bug in Pear
                 // to someone who just got their money back.
                 headline: RevocationList.refundedMessage,
-                detail: "The order behind this licence was refunded, so it no longer unlocks the "
+                detail: "The order behind this license was refunded, so it no longer unlocks the "
                     + "tools. If that is a surprise, write to \(supportEmail) and we will sort it out.",
-                price: "A new licence is $19, once.",
+                price: "A new license is $19, once.",
                 symbol: "arrow.uturn.backward")
         case .licenceForOlderMajor(let maxMajor):
             return LockedCopy(
-                headline: "Your licence covers Pear \(maxMajor)",
+                headline: "Your license covers Pear \(maxMajor)",
                 detail: "Nothing is wrong with it. This is a newer major version, which is a "
                     + "separate purchase, discounted for people who already own Pear \(maxMajor). "
                     + "Your Pear \(maxMajor) install keeps working.",
@@ -110,10 +110,10 @@ struct LockedStateCard: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: Theme.itemGap) {
-                Link("Buy a licence", destination: LockedCopy.pricingURL)
+                Link("Buy a license", destination: LockedCopy.pricingURL)
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.accent)
-                Button("I have a licence") { showLicence = true }
+                Button("I have a license") { showLicence = true }
                     .buttonStyle(.bordered)
                     .popover(isPresented: $showLicence) { SettingsPopover(tab: .licence) }
             }

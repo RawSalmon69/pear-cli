@@ -33,7 +33,7 @@ struct RevocationList: Equatable, Sendable {
 
     /// The one thing the app says when a licence has been revoked. A refund is
     /// what actually happened; a generic error reads as a bug in Pear.
-    static let refundedMessage = "This licence was refunded"
+    static let refundedMessage = "This license was refunded"
 
     /// Where the file lives. Static path, no query string, no identifier.
     static let url = URL(string: "https://pear.phanthawas.dev/revoked.json")!

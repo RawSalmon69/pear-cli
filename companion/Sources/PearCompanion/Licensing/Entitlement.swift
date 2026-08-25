@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// Why the app is locked. Each case gets its own wording, because "your trial
-/// ended" and "this licence was refunded" are very different messages to receive
+/// ended" and "this license was refunded" are very different messages to receive
 /// and a generic error for the second one reads as a bug.
 enum ExpiryReason: Equatable, Sendable {
     case trialEnded
@@ -35,7 +35,7 @@ enum Entitlement: Equatable, Sendable {
 /// Application Support rather than `UserDefaults`, for the same reason
 /// `TrialState` avoids it — this is a record, not a preference.
 struct LicenceFileStore: Sendable {
-    static let fileName = "licence.\(LicenceVerifier.fileExtension)"
+    static let fileName = "license.\(LicenceVerifier.fileExtension)"
 
     let directory: URL
 

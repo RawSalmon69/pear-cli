@@ -396,7 +396,7 @@ final class RevocationListTests: XCTestCase {
     // MARK: - Wording and the anonymous URL
 
     func testRevokedMessageNamesTheRefund() {
-        XCTAssertEqual(RevocationList.refundedMessage, "This licence was refunded")
+        XCTAssertEqual(RevocationList.refundedMessage, "This license was refunded")
     }
 
     func testTheFetchURLCarriesNoIdentifier() {

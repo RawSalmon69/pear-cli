@@ -39,7 +39,7 @@ enum WindowZoneMath {
     static let leftThird = WindowZone(
         id: "left-third", name: "Left Third", unit: CGRect(x: 0, y: 0, width: third, height: 1))
     static let centerThird = WindowZone(
-        id: "center-third", name: "Centre Third", unit: CGRect(x: third, y: 0, width: third, height: 1))
+        id: "center-third", name: "Center Third", unit: CGRect(x: third, y: 0, width: third, height: 1))
     static let rightThird = WindowZone(
         id: "right-third", name: "Right Third", unit: CGRect(x: twoThirds, y: 0, width: third, height: 1))
     static let leftTwoThirds = WindowZone(

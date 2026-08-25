@@ -24,7 +24,7 @@ struct LicenceSettingsView: View {
     /// the honest thing, and it is what the couple key in this same popover
     /// already does.
     static let activatedMessage =
-        "Licence verified — thank you. Every tool is back on."
+        "License verified — thank you. Every tool is back on."
 
     /// The line under the field after an attempt. Pure, so the mapping is
     /// testable: a rejected licence must surface the rejecting check's *own*
@@ -60,7 +60,7 @@ struct LicenceSettingsView: View {
         switch env.entitlement.entitlement {
         case .licensed(let email):
             VStack(alignment: .leading, spacing: Theme.itemGap) {
-                SectionLabel(text: "Licence")
+                SectionLabel(text: "License")
                 Label("Licensed to \(email)", systemImage: "checkmark.seal.fill")
                     .font(Theme.emphasis)
                     .foregroundStyle(Theme.accent)
@@ -87,7 +87,7 @@ struct LicenceSettingsView: View {
         case .expired(let reason):
             let copy = LockedCopy.of(reason)
             VStack(alignment: .leading, spacing: Theme.itemGap) {
-                SectionLabel(text: "Licence")
+                SectionLabel(text: "License")
                 Label(copy.headline, systemImage: copy.symbol)
                     .font(Theme.emphasis)
                 Text(copy.detail)
@@ -103,7 +103,7 @@ struct LicenceSettingsView: View {
     }
 
     private var buyLink: some View {
-        Link("Buy a licence", destination: LockedCopy.pricingURL)
+        Link("Buy a license", destination: LockedCopy.pricingURL)
             .font(Theme.caption)
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -114,14 +114,14 @@ struct LicenceSettingsView: View {
 
     private var entrySection: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
-            SectionLabel(text: "Enter a licence")
+            SectionLabel(text: "Enter a license")
             Text("Paste the key from your receipt, or drop the "
                 + ".\(LicenceVerifier.fileExtension) file anywhere in this pane.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            TextField("Licence key", text: $pasted, axis: .vertical)
+            TextField("License key", text: $pasted, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(3...5)
                 .font(.system(size: 10, design: .monospaced))
@@ -203,13 +203,13 @@ struct LicenceSettingsView: View {
     private var removalSection: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             SectionLabel(text: "Remove")
-            Text("Deletes the licence file from this Mac. Pear goes back to the trial, or locks if "
+            Text("Deletes the license file from this Mac. Pear goes back to the trial, or locks if "
                 + "the trial has already ended. Your key itself keeps working — you can paste it "
                 + "back any time, here or on another Mac.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Remove licence from this Mac") { env.entitlement.removeLicence() }
+            Button("Remove license from this Mac") { env.entitlement.removeLicence() }
                 .font(Theme.caption)
         }
     }

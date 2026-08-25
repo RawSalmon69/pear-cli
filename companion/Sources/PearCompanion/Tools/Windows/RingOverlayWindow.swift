@@ -145,7 +145,7 @@ enum RingLabel {
     static func text(for action: WindowAction?) -> String {
         switch action {
         case .snap(let zone): zone.name
-        case .center: "Centre"
+        case .center: "Center"
         case .restore: "Restore"
         case nil: ""
         }
