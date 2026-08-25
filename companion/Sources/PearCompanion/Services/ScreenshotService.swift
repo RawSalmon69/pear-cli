@@ -166,7 +166,7 @@ final class ScreenshotService {
         guard await ScreenCapture.region(to: tempURL, muted: !Prefs.soundsEnabled) else {
             return // cancelled or failed
         }
-        deliver(tempURL: tempURL)
+        deliver(tempURL: tempURL, capturedOn: Self.screenUnderPointer())
     }
 
     /// Whole main display, no region drag — same downstream flow as `capture()`.
@@ -178,7 +178,9 @@ final class ScreenshotService {
         guard await ScreenCapture.fullScreen(to: tempURL, muted: !Prefs.soundsEnabled) else {
             return // failed
         }
-        deliver(tempURL: tempURL)
+        // `screencapture` with no `-i` grabs the display carrying the menu bar,
+        // whatever the pointer is doing, so that is the screen this shot is of.
+        deliver(tempURL: tempURL, capturedOn: NSScreen.screens.first)
     }
 
     /// Click-a-window shot — same downstream flow as `capture()`.
@@ -190,7 +192,7 @@ final class ScreenshotService {
         guard await ScreenCapture.window(to: tempURL, muted: !Prefs.soundsEnabled) else {
             return // cancelled or failed
         }
-        deliver(tempURL: tempURL)
+        deliver(tempURL: tempURL, capturedOn: Self.screenUnderPointer())
     }
 
     private static func captureTempURL() -> URL {
@@ -239,10 +241,20 @@ final class ScreenshotService {
     /// Post-capture half, shared by every capture mode: file the shot, put it on
     /// the clipboard, show the card. The bytes are never held past this call —
     /// the card is backed by the file from here on.
-    private func deliver(tempURL: URL) {
+    private func deliver(tempURL: URL, capturedOn screen: NSScreen?) {
         let url = fileCapture(tempURL)
         copyToPasteboard(at: url)
-        present(at: url)
+        present(at: url, capturedOn: screen)
+    }
+
+    /// The screen the pointer is on. For a region drag or a window click that is
+    /// where the user just was, and so where the shot came from — the pointer has
+    /// not had time to move between releasing the mouse and `screencapture`
+    /// exiting. Nil only if the pointer is somehow on no screen, which leaves the
+    /// preview to fall back to its old fixed corner.
+    private static func screenUnderPointer() -> NSScreen? {
+        let point = NSEvent.mouseLocation
+        return NSScreen.screens.first { $0.frame.contains(point) }
     }
 
     /// Moves a fresh capture out of the system temp dir into its real home. Both
@@ -290,7 +302,7 @@ final class ScreenshotService {
     /// reveal, markup, and send. Every action reads the file when it is clicked:
     /// holding the PNG for the card's whole lifetime is what made a stack of
     /// captures cost tens of megabytes of resident memory.
-    private func present(at fileURL: URL) {
+    private func present(at fileURL: URL, capturedOn screen: NSScreen?) {
         let messaging = self.messaging
         let log = logger
         preview.show(
@@ -324,7 +336,8 @@ final class ScreenshotService {
                     }
                 }
             },
-            onSave: { [weak self] in self?.saveToFolder(from: fileURL) }
+            onSave: { [weak self] in self?.saveToFolder(from: fileURL) },
+            capturedOn: screen
         )
     }
 
@@ -354,7 +367,8 @@ final class ScreenshotService {
             guard let self, let edited, let png = edited.pngData() else { return }
             self.overwrite(png, at: fileURL)
             self.copyToPasteboard(png, fileURL: fileURL)
-            self.present(at: fileURL)
+            // nil: not a new capture, so the card keeps the screen it was on.
+            self.present(at: fileURL, capturedOn: nil)
         }
     }
 
@@ -372,13 +386,13 @@ final class ScreenshotService {
             }.value
             guard let cutout else {
                 SoundEffects.play(.discard)
-                self.present(at: fileURL)
+                self.present(at: fileURL, capturedOn: nil)
                 return
             }
             self.overwrite(cutout, at: fileURL)
             self.copyToPasteboard(cutout, fileURL: fileURL)
             SoundEffects.play(.copy)
-            self.present(at: fileURL)
+            self.present(at: fileURL, capturedOn: nil)
         }
     }
 

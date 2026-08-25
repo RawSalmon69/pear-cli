@@ -27,7 +27,7 @@ native Apple primitives over custom imitations. See root memory / `[[owner-quali
 ```bash
 cd companion
 swift build            # compile
-swift test             # full suite (598 tests, must stay green)
+swift test             # full suite (617 tests, must stay green)
 ./build.sh [version]   # assemble build/Pear.app (unsigned dev bundle); `open build/Pear.app`
 ```
 
@@ -207,9 +207,13 @@ battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
   macOS reaps it on its own schedule, which is exactly why the bytes were held.
   A failed read dismisses the card (with `.discard`) rather than leaving buttons
   that do nothing.
-- **Floating-window positioning**: screenshot preview + scratchpad open on the
-  **primary** display; menu-bar hider seeds its separator positions only when
-  unset so the user's layout survives updates.
+- **Floating-window positioning**: the screenshot preview opens on **the screen
+  the shot was taken on** (`ScreenshotPreviewController.anchor`, pure and tested);
+  the stack fixes that anchor for its lifetime so cards never hop mid-stack, and a
+  re-present after markup or background removal passes no screen, meaning "keep
+  where you are". Scratchpad still opens on the primary display. Menu-bar hider
+  seeds its separator positions only when unset so the user's layout survives
+  updates.
 
 ## Release
 

@@ -48,3 +48,61 @@ final class ScreenshotStackTests: XCTestCase {
         XCTAssertEqual(PreviewStackLayout.overflowIndices(count: 2, maxCount: 5), [])
     }
 }
+
+/// Which display the preview stack anchors to. The card belongs on the screen
+/// the shot was taken on: a capture on the laptop panel whose card lands on an
+/// external monitor is the bug this replaced.
+@MainActor
+final class ScreenshotAnchorTests: XCTestCase {
+    private let laptop = NSRect(x: 0, y: 0, width: 1512, height: 916)
+    private let external = NSRect(x: 1512, y: 0, width: 2560, height: 1415)
+    private var both: [NSRect] { [laptop, external] }
+
+    func testACaptureAnchorsToItsOwnScreen() {
+        XCTAssertEqual(
+            ScreenshotPreviewController.anchor(
+                captured: external, current: .zero, available: both, fallback: laptop),
+            external)
+    }
+
+    /// The whole point: the menu-bar display does not win just because it is first.
+    func testASecondaryScreenCaptureDoesNotSnapBackToTheMenuBarDisplay() {
+        let anchor = ScreenshotPreviewController.anchor(
+            captured: external, current: laptop, available: both, fallback: laptop)
+        XCTAssertEqual(anchor, external)
+        XCTAssertNotEqual(anchor, laptop)
+    }
+
+    /// Markup and background removal re-present with no capture screen. The
+    /// edited shot must stay where its card already was.
+    func testARepresentKeepsTheStacksCurrentScreen() {
+        XCTAssertEqual(
+            ScreenshotPreviewController.anchor(
+                captured: nil, current: external, available: both, fallback: laptop),
+            external)
+    }
+
+    /// A display unplugged between the capture and the card is gone from
+    /// `available`; the card must land somewhere real rather than off-screen.
+    func testAnUnpluggedCaptureScreenFallsBack() {
+        XCTAssertEqual(
+            ScreenshotPreviewController.anchor(
+                captured: external, current: .zero, available: [laptop], fallback: laptop),
+            laptop)
+    }
+
+    func testAnUnpluggedCurrentAnchorFallsBack() {
+        XCTAssertEqual(
+            ScreenshotPreviewController.anchor(
+                captured: nil, current: external, available: [laptop], fallback: laptop),
+            laptop)
+    }
+
+    /// First card of a fresh stack with no capture screen — nothing to keep.
+    func testNoCaptureAndNoCurrentAnchorFallsBack() {
+        XCTAssertEqual(
+            ScreenshotPreviewController.anchor(
+                captured: nil, current: .zero, available: both, fallback: laptop),
+            laptop)
+    }
+}

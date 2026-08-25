@@ -91,10 +91,9 @@ final class ScreenshotPreviewController {
 
     private var entries: [PreviewEntry] = [] // index 0 = newest, nearest edge
     private var scrollMonitor: Any?
-    /// Visible frame the stack lives in — the primary display, resolved when the
-    /// first card appears (see `show`). Fixed for the stack's lifetime so cards
-    /// never jump displays, and always the primary so the preview is in one
-    /// predictable spot rather than the focused-window screen (NSScreen.main).
+    /// Visible frame the stack lives in — the screen the capture came from,
+    /// resolved when the first card appears (see `show`). Fixed for the stack's
+    /// lifetime so cards never jump displays mid-stack.
     private var anchorVisible: NSRect = .zero
 
     /// Thumbnail (208×130) plus the card's 3pt glass rim on each side.
@@ -118,7 +117,8 @@ final class ScreenshotPreviewController {
         onMarkup: @escaping () -> Void,
         onRemoveBackground: @escaping () -> Void = {},
         onSend: @escaping () -> Void,
-        onSave: @escaping () -> Void = {}
+        onSave: @escaping () -> Void = {},
+        capturedOn screen: NSScreen? = nil
     ) {
         // ~2.4× the 208pt thumbnail — headroom for scaledToFill's crop without
         // ever inflating the full capture here.
@@ -195,8 +195,8 @@ final class ScreenshotPreviewController {
             )
         )
         // Fix the anchor screen when a fresh stack starts; existing stacks keep
-        // theirs so the cards stay put on the capture display.
-        if entries.isEmpty { anchorVisible = Self.anchorVisibleFrame() }
+        // theirs so the cards stay put rather than teleporting mid-stack.
+        if entries.isEmpty { anchorVisible = resolvedAnchor(capturedOn: screen) }
         entries.insert(entry, at: 0)
         evictOverflow()
         layout(newItem: entry)
@@ -262,11 +262,36 @@ final class ScreenshotPreviewController {
         controller.show()
     }
 
-    /// Visible frame of the primary display — the preview always lives there, a
-    /// fixed spot the user learns, rather than `NSScreen.main` (the key-window
-    /// screen), which drifts to whatever display holds the focused app.
-    private static func anchorVisibleFrame() -> NSRect {
-        (NSScreen.screens.first ?? NSScreen.main)?.visibleFrame ?? .zero
+    /// Visible frame the stack anchors to: the screen the shot was taken on, so
+    /// the card appears where the user was just looking instead of flying to
+    /// another display.
+    private func resolvedAnchor(capturedOn screen: NSScreen?) -> NSRect {
+        Self.anchor(
+            captured: screen.map(\.visibleFrame),
+            current: anchorVisible,
+            available: NSScreen.screens.map(\.visibleFrame),
+            fallback: (NSScreen.screens.first ?? NSScreen.main)?.visibleFrame ?? .zero
+        )
+    }
+
+    /// The anchor decision, as pure math so all three branches are testable
+    /// without a display attached.
+    ///
+    /// - `captured` is the screen the shot came from. A screen unplugged between
+    ///   the capture and the card is no longer in `available`, so it is dropped.
+    /// - `current` non-zero with a nil `captured` means "no new capture": a
+    ///   re-present after markup or background removal, where the old card just
+    ///   dismissed itself and the stack is momentarily empty. Those keep the
+    ///   anchor they had, or the edited shot hops to another display.
+    /// - `fallback` is the menu-bar display, deliberately not `NSScreen.main`:
+    ///   main follows the key window, so it drifts to whatever app is focused,
+    ///   which is the unpredictability this anchor exists to avoid.
+    static func anchor(
+        captured: NSRect?, current: NSRect, available: [NSRect], fallback: NSRect
+    ) -> NSRect {
+        if let captured, available.contains(captured) { return captured }
+        if current != .zero, available.contains(current) { return current }
+        return fallback
     }
 
     /// How many stacked cards fit in `visible` before the top one runs off the
