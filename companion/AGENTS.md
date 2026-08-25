@@ -27,7 +27,7 @@ native Apple primitives over custom imitations. See root memory / `[[owner-quali
 ```bash
 cd companion
 swift build            # compile
-swift test             # full suite (716 tests, must stay green)
+swift test             # full suite (740 tests, must stay green)
 ./build.sh [version]   # assemble build/Pear.app (unsigned dev bundle); `open build/Pear.app`
 ```
 
@@ -93,7 +93,15 @@ over a title bar — ownership is decided once, never re-asked — because it se
 every scroll on the machine and a wrong swallow breaks scrolling system-wide; and
 `close`/`quitApp` live on the **pinch** channel, never on travel, because scroll
 deltas are pointer-accelerated and a small flick can manufacture hundreds of
-points. `WindowMover` takes the window to act on explicitly, with no
+points, while magnification is bounded by the hand. The pinch-in ladder is
+restore 0.15 → close 0.45 → quit 0.85, and every shortfall degrades *downward*.
+A pinch must be able to arm a gesture on its own: ownership once came only from
+the scroll stream, and since a pinch produces no phased scroll frames that made
+the whole destructive half unreachable rather than merely guarded. Swipe up
+toggles real `AXFullScreen` (a string literal — not exported to Swift), reading
+before writing so it comes back out, and is dispatched *before* `resolveTarget`
+because that helper's `isSettable` check refuses an already-fullscreen window and
+would make the toggle one-way. `WindowMover` takes the window to act on explicitly, with no
 one-argument spelling: `nil` means "the focused window" and only the chords and
 ring may mean it. Before that existed, a gesture on a background window's title
 bar closed the *frontmost* one.
