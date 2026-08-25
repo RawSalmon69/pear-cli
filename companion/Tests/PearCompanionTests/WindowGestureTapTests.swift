@@ -271,14 +271,50 @@ final class WindowGestureTapTests: XCTestCase {
         var policy = WindowGesturePolicy()
         let spy = TitleBarSpy([true])
 
-        let stray = policy.magnified(by: -0.8)
-        XCTAssertEqual(stray, WindowGesturePolicy.Outcome(), "no gesture, no effect")
+        // Over ordinary content a stray pinch still does nothing: the lookup
+        // says there is no title bar here, so the gesture never arms.
+        let stray = policy.magnified(by: -0.8, titleBarUnderPointer: { nil })
+        XCTAssertEqual(stray, WindowGesturePolicy.Outcome(), "no title bar, no effect")
 
         _ = policy.handle(began(), titleBarUnderPointer: spy.ask)
-        let squeeze = policy.magnified(by: -0.7)
+        let squeeze = policy.magnified(by: -0.7, titleBarUnderPointer: spy.ask)
         XCTAssertFalse(squeeze.swallow, "a monitor cannot swallow")
         XCTAssertEqual(squeeze.preview, .show(.close))
         XCTAssertEqual(policy.handle(ended, titleBarUnderPointer: spy.ask).commit, .close)
+    }
+
+    /// The bug the owner hit: pinch-to-close never fired, because ownership was
+    /// only ever established from the *scroll* stream and a pinch produces no
+    /// phased scroll frames. The guard was unreachable, not conservative.
+    func testAPinchAloneArmsAndCommitsWithNoScrollAtAll() {
+        var policy = WindowGesturePolicy()
+        let spy = TitleBarSpy([true])
+
+        // No scroll frame has ever been seen.
+        let squeeze = policy.magnified(by: -0.7, titleBarUnderPointer: spy.ask)
+        XCTAssertTrue(policy.ownsGesture, "a pinch on a title bar owns the gesture")
+        XCTAssertFalse(squeeze.swallow, "and still cannot swallow")
+        XCTAssertEqual(squeeze.preview, .show(.close))
+
+        XCTAssertEqual(policy.magnifyEnded().commit, .close, "and commits on release")
+        XCTAssertFalse(policy.ownsGesture)
+    }
+
+    /// The lookup still decides. A pinch over a document arms nothing.
+    func testAPinchOverContentArmsNothing() {
+        var policy = WindowGesturePolicy()
+        let spy = TitleBarSpy([false])
+        _ = policy.magnified(by: -0.9, titleBarUnderPointer: spy.ask)
+        XCTAssertFalse(policy.ownsGesture)
+        XCTAssertEqual(policy.magnifyEnded(), WindowGesturePolicy.Outcome())
+    }
+
+    /// Ownership is still decided once: a pinch that armed does not re-ask.
+    func testAPinchAsksForTheTitleBarOnlyOnce() {
+        var policy = WindowGesturePolicy()
+        let spy = TitleBarSpy([true])
+        for _ in 0..<12 { _ = policy.magnified(by: -0.05, titleBarUnderPointer: spy.ask) }
+        XCTAssertEqual(spy.calls, 1)
     }
 
     // MARK: - Preview
@@ -451,7 +487,7 @@ final class WindowGestureTapTests: XCTestCase {
         XCTAssertFalse(tap.handle(began(), at: barPoint), "a stopped tap swallows nothing")
         XCTAssertFalse(tap.handle(changed(dx: 400), at: barPoint))
         XCTAssertFalse(tap.handle(ended, at: barPoint))
-        XCTAssertFalse(tap.magnified(by: -0.9))
+        XCTAssertFalse(tap.magnified(by: -0.9, at: barPoint))
         XCTAssertEqual(mover.previews.count, before, "and touches nothing")
         XCTAssertTrue(mover.commits.isEmpty)
     }

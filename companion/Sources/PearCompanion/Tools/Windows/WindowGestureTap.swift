@@ -200,9 +200,33 @@ struct WindowGesturePolicy {
     /// cannot drop an event however wrong this function gets. Over a title bar
     /// almost nothing zooms, so passing it on costs nothing and removes the
     /// whole risk.
-    mutating func magnified(by amount: CGFloat) -> Outcome {
-        guard ownsGesture else { return Outcome() }
+    mutating func magnified(
+        by amount: CGFloat, titleBarUnderPointer: () -> TitleBarHit?
+    ) -> Outcome {
+        // A pinch can be the *whole* gesture: fingers converge without ever
+        // producing a phased scroll frame, so ownership cannot come only from the
+        // scroll stream. It did once, and the effect was that pinch-to-close
+        // could never fire at all — the guard was unreachable rather than
+        // conservative. So the first magnify of a gesture may arm it too.
+        if !ownsGesture {
+            guard let hit = titleBarUnderPointer() else { return Outcome() }
+            ownsGesture = true
+            target = hit.window
+            _ = recognizer.accept(.began)
+        }
         var outcome = feed(.magnified(by: amount))
+        outcome.swallow = false
+        return outcome
+    }
+
+    /// Ends a pinch-only gesture. A magnify stream has its own phases, and one
+    /// that armed the gesture has to be able to finish it: without this a pinch
+    /// would stay armed until some later scroll ended it, and its action would
+    /// never commit.
+    mutating func magnifyEnded() -> Outcome {
+        guard ownsGesture else { return Outcome() }
+        ownsGesture = false
+        var outcome = feed(.ended)
         outcome.swallow = false
         return outcome
     }
@@ -332,9 +356,20 @@ final class WindowGestureTap {
     /// One magnify increment. The return value is only ever false — a monitor
     /// cannot swallow — and exists so the two paths read the same.
     @discardableResult
-    func magnified(by amount: CGFloat) -> Bool {
+    /// `point` must be in the y-down global space, same as the scroll path.
+    func magnified(by amount: CGFloat, at point: CGPoint) -> Bool {
         guard isArmed, mover != nil else { return false }
-        return apply(policy.magnified(by: amount))
+        return apply(
+            policy.magnified(by: amount, titleBarUnderPointer: { [windows] in
+                windows.hit(at: point)
+            }))
+    }
+
+    /// The magnify stream's own end, so a pinch-only gesture commits on release
+    /// instead of waiting for an unrelated scroll to end it.
+    func magnifyEnded() -> Bool {
+        guard isArmed, mover != nil else { return false }
+        return apply(policy.magnifyEnded())
     }
 
     /// Applies an outcome in the one order that is safe: commit the move, then
@@ -381,7 +416,20 @@ final class WindowGestureTap {
         guard !CleanModeRuntime.isRunningTests, magnifyMonitor == nil else { return }
         magnifyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .magnify) {
             [weak self] event in
-            MainActor.assumeIsolated { _ = self?.magnified(by: event.magnification) }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                // A magnify carries its own phase. `ended`/`cancelled` is what
+                // commits a pinch-only gesture; without honouring it the gesture
+                // would stay armed with nothing to close it.
+                if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+                    _ = self.magnifyEnded()
+                } else if let location = event.cgEvent?.location {
+                    // The backing CGEvent's location is y-down, matching the
+                    // scroll path. `NSEvent.mouseLocation` is y-up and would
+                    // mislocate every hit.
+                    _ = self.magnified(by: event.magnification, at: location)
+                }
+            }
         }
     }
 
