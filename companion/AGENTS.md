@@ -27,7 +27,7 @@ native Apple primitives over custom imitations. See root memory / `[[owner-quali
 ```bash
 cd companion
 swift build            # compile
-swift test             # full suite (690 tests, must stay green)
+swift test             # full suite (716 tests, must stay green)
 ./build.sh [version]   # assemble build/Pear.app (unsigned dev bundle); `open build/Pear.app`
 ```
 
@@ -84,6 +84,19 @@ Windows: **Windows** (⌃⌥ + arrows/↩/C/⌫ snaps the front window; hold **F
 radial ring under the pointer). Four independent pieces joined by `WindowsTool`
 and nothing else: `WindowTrigger` (input), `RingOverlayWindow` (ring + hit test),
 `WindowZoneMath` (pure geometry), `AXWindowMover` (AX writes + preview overlay).
+**Window Gestures** is a separate tool (default OFF): two-finger swipe or pinch on
+a window's **title bar** to snap, maximize, minimize, close or quit it. It owns
+its own mover and a `CGEventTap`, and shares only the geometry and input decoding
+(`WindowGesture`, `WindowUnderPointer`, `WindowZoneMath`). Two rules there are
+load-bearing: the tap swallows **only** scrolls belonging to a gesture that began
+over a title bar — ownership is decided once, never re-asked — because it sees
+every scroll on the machine and a wrong swallow breaks scrolling system-wide; and
+`close`/`quitApp` live on the **pinch** channel, never on travel, because scroll
+deltas are pointer-accelerated and a small flick can manufacture hundreds of
+points. `WindowMover` takes the window to act on explicitly, with no
+one-argument spelling: `nil` means "the focused window" and only the chords and
+ring may mean it. Before that existed, a gesture on a background window's title
+bar closed the *frontmost* one.
 Written from scratch in 2.17.0 after the Loop-derived version was removed, and
 **default OFF** in that release: enabling arms an event tap, claims seven global
 chords and writes other apps' frames over AX, none of which had been driven on
