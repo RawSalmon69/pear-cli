@@ -59,11 +59,11 @@ final class WindowGestureTests: XCTestCase {
         XCTAssertEqual(gesture(swipe(dx: 120)), .snap(WindowZoneMath.rightHalf))
     }
 
-    func testSwipeUpTogglesFullScreen() {
-        // Not maximise: Swish's up-swipe puts the window into a full-screen
-        // Space, and "it just moved up and got bigger" is exactly the complaint
-        // maximise-on-up earned.
-        XCTAssertEqual(gesture(swipe(dy: -120)), .fullScreen)
+    func testSwipeUpMaximises() {
+        // Swish maximises on the up-swipe and full-screens on pinch-out. These
+        // two were once the other way round — a swap nobody can feel their way
+        // to, only read. Swish's own page: "pinch out to go fullscreen".
+        XCTAssertEqual(gesture(swipe(dy: -120)), .snap(WindowZoneMath.maximize))
     }
 
     func testFullScreenIsNotDestructive() {
@@ -83,12 +83,23 @@ final class WindowGestureTests: XCTestCase {
         XCTAssertEqual(gesture(swipe(dx: 120, dy: 120)), .snap(WindowZoneMath.bottomRightQuarter))
     }
 
-    func testPinchOutMaximises() {
-        XCTAssertEqual(gesture(pinch(0.3)), .snap(WindowZoneMath.maximize))
+    func testPinchOutGoesFullScreen() {
+        XCTAssertEqual(gesture(pinch(0.3)), .fullScreen)
     }
 
-    func testPinchInRestores() {
-        XCTAssertEqual(gesture(pinch(-0.3)), .restore)
+    /// The pair that was swapped, asserted together so neither can drift back.
+    func testMaximiseAndFullScreenAreOnTheGesturesSwishPutsThemOn() {
+        XCTAssertEqual(gesture(swipe(dy: -120)), .snap(WindowZoneMath.maximize))
+        XCTAssertEqual(gesture(pinch(0.3)), .fullScreen)
+        XCTAssertNotEqual(gesture(swipe(dy: -120)), .fullScreen)
+        XCTAssertNotEqual(gesture(pinch(0.3)), .snap(WindowZoneMath.maximize))
+    }
+
+    /// Swish's pinch-in means close, so a squeeze short of the close threshold
+    /// does **nothing**. It used to restore, which meant an accidental gentle
+    /// squeeze moved a window the user was not thinking about.
+    func testAPinchInShortOfCloseDoesNothing() {
+        XCTAssertNil(gesture(pinch(-0.3)))
     }
 
     // MARK: - Momentum never acts
@@ -242,8 +253,8 @@ final class WindowGestureTests: XCTestCase {
     // assertion is about the boundary and not about how four fractions of a
     // squeeze happen to round when they are added up.
 
-    func testALightSqueezeRestores() {
-        XCTAssertEqual(gesture([.magnified(by: -T.pinch)]), .restore)
+    func testALightSqueezeDoesNothing() {
+        XCTAssertNil(gesture([.magnified(by: -T.pinch)]))
     }
 
     func testAFirmSqueezeCloses() {
@@ -267,8 +278,9 @@ final class WindowGestureTests: XCTestCase {
     /// The gaps between the rungs, not only the rungs themselves: a squeeze
     /// landing anywhere inside a band has to read as that band's action.
     func testEveryPointInABandReadsAsThatBandsAction() {
+        // Below close is a dead band, not a mild action: pinch-in means close.
         for total in stride(from: T.pinch, to: T.pinchClose, by: 0.05) {
-            XCTAssertEqual(gesture([.magnified(by: -total)]), .restore, "\(total)")
+            XCTAssertNil(gesture([.magnified(by: -total)]), "\(total)")
         }
         for total in stride(from: T.pinchClose, to: T.pinchQuit, by: 0.05) {
             XCTAssertEqual(gesture([.magnified(by: -total)]), .close, "\(total)")
@@ -286,18 +298,29 @@ final class WindowGestureTests: XCTestCase {
             "not-quite-quit must be close, not nothing")
     }
 
-    func testASqueezeThatStopsShortOfCloseOnlyRestores() {
-        XCTAssertEqual(gesture([.magnified(by: -(T.pinchClose - 0.01))]), .restore)
+    func testASqueezeThatStopsShortOfCloseFiresNothing() {
+        XCTAssertNil(gesture([.magnified(by: -(T.pinchClose - 0.01))]))
     }
 
-    func testASqueezeThatStopsShortOfRestoreDoesNothing() {
+    func testAnAlmostImperceptibleSqueezeDoesNothing() {
         XCTAssertNil(gesture([.magnified(by: -(T.pinch - 0.01))]))
     }
 
-    /// An enthusiastic close must not land on quit. Overshooting the close
-    /// threshold by three quarters of itself is still a close.
+    /// An enthusiastic close must not land on quit.
+    ///
+    /// The multiplier here is deliberately half, not the three quarters it was
+    /// when quit sat at 0.85. That figure was calibrated to whatever passed at
+    /// the time, which makes it circular: 0.45 × 1.75 is 0.79, and on a channel
+    /// where 1.0 is the fingers actually meeting, 79% is not an overshoot of a
+    /// firm squeeze — it is most of the available range, and someone squeezing
+    /// that hard plausibly does mean more than close. Half again (0.675) is a
+    /// real overshoot of a firm squeeze and stays clear of quit at 0.75.
+    ///
+    /// The absolute margin is guarded separately in
+    /// `testTheThresholdTableKeepsItsRungsApart`, so relaxing this multiplier
+    /// cannot quietly shrink the gap itself.
     func testOvershootingACloseIsStillAClose() {
-        XCTAssertEqual(gesture(pinch(-(T.pinchClose * 1.75))), .close)
+        XCTAssertEqual(gesture(pinch(-(T.pinchClose * 1.5))), .close)
     }
 
     /// The ladder lives on the pinch channel *only*. Scroll deltas are
@@ -331,15 +354,15 @@ final class WindowGestureTests: XCTestCase {
         // The table itself, so a later tweak cannot quietly bring a destructive
         // rung down into benign range or bunch two rungs together.
         XCTAssertGreaterThanOrEqual(T.pinchClose, T.pinch * 3)
-        XCTAssertGreaterThanOrEqual(T.pinchQuit, T.pinchClose * 1.8)
         XCTAssertGreaterThanOrEqual(
-            T.pinchQuit - T.pinchClose, T.pinchClose - T.pinch,
-            "close→quit must be at least as wide as restore→close")
-        // A pinch-in of 1.0 is the fingers meeting, so the deepest rung has to
-        // stay inside the channel to be reachable at all.
-        XCTAssertLessThan(T.pinchQuit, 1.0)
-        // And behaviourally: a snap-sized squeeze lands on the mild action.
-        XCTAssertEqual(gesture([.magnified(by: -T.pinch)]), .restore)
+            T.pinchQuit - T.pinchClose, 0.25,
+            "an enthusiastic close must not be able to land on quit")
+        // A full squeeze sums to roughly 0.6–1.0, so quit has to sit inside what
+        // a hand actually produces or it is unreachable on purpose — the same
+        // shape of bug as a pinch that could not arm at all.
+        XCTAssertLessThan(T.pinchQuit, 0.8)
+        // And behaviourally: nothing below close fires, and a swipe still works.
+        XCTAssertNil(gesture([.magnified(by: -T.pinch)]))
         XCTAssertEqual(gesture(swipe(dy: T.swipe)), .minimize)
     }
 
@@ -348,7 +371,7 @@ final class WindowGestureTests: XCTestCase {
     func testASqueezeWinsOverTheScrollDriftItLeaks() {
         // Fingers converging drag the contact centroid; a two-finger scroll
         // emits no magnification at all, so the pinch is what the user meant.
-        XCTAssertEqual(gesture(pinch(-0.3) + swipe(dx: -120)), .restore)
+        XCTAssertEqual(gesture(pinch(-T.pinchClose) + swipe(dx: -120)), .close)
     }
 
     // MARK: - "Not yet" vs "never"

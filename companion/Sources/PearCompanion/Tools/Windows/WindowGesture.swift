@@ -113,18 +113,23 @@ struct WindowGestureRecognizer {
         /// fires, which is what stops a wobbly 30° swipe from picking a corner
         /// (or a corner-ish one from picking an axis) on a coin flip.
         static let diagonalBand: CGFloat = 0.6
-        /// Cumulative magnification for maximise (out) or restore (in). A light,
-        /// deliberate squeeze or spread.
+        /// Cumulative magnification for full screen: a light, deliberate spread.
+        /// Pinch-*in* has no light rung — Swish's pinch-in means close, so a
+        /// gentle accidental squeeze must do **nothing** rather than restore a
+        /// window the user was not thinking about. Restore keeps the ⌃⌥⌫ chord
+        /// and the ring hub.
         static let pinch: CGFloat = 0.15
         /// Cumulative pinch-in for `close`: three times the light squeeze, i.e.
         /// fingers brought to a bit over half their starting separation. A firm
         /// squeeze, not an overshoot of the light one.
         static let pinchClose: CGFloat = 0.45
-        /// Cumulative pinch-in for `quitApp`: fingers all but touching, near the
-        /// ceiling of a channel that bottoms out at 1.0. Nearly twice
-        /// `pinchClose`, and the 0.40 between them is wider than the whole
-        /// restore→close gap, so an enthusiastic close cannot land here.
-        static let pinchQuit: CGFloat = 0.85
+        /// Cumulative pinch-in for `quitApp`. 0.85 sat so near the ceiling of
+        /// what a hand actually produces (a full squeeze sums to about 0.6–1.0)
+        /// that quit risked being unreachable *on purpose* — the same shape of
+        /// bug as the pinch that could not arm at all. 0.75 still leaves 0.30
+        /// between it and `pinchClose`, two thirds of the close threshold itself,
+        /// so an enthusiastic close does not land here.
+        static let pinchQuit: CGFloat = 0.75
     }
 
     /// True between `began` and `ended`/`cancelled`. A gesture is spent the
@@ -194,8 +199,10 @@ struct WindowGestureRecognizer {
         // return `close` for a squeeze that earned `quitApp`.
         if magnification <= -Threshold.pinchQuit { return .quitApp }
         if magnification <= -Threshold.pinchClose { return .close }
-        if magnification >= Threshold.pinch { return .snap(WindowZoneMath.maximize) }
-        if magnification <= -Threshold.pinch { return .restore }
+        // Pinch out full-screens, per Swish's own documentation ("pinch out to go
+        // fullscreen"). Maximise is the up-swipe; the two were once the other way
+        // round, which is a swap you cannot feel your way to — it has to be read.
+        if magnification >= Threshold.pinch { return .fullScreen }
         return swipeVerdict()
     }
 
@@ -210,8 +217,8 @@ struct WindowGestureRecognizer {
             if ax >= ay {
                 return .snap(dx < 0 ? WindowZoneMath.leftHalf : WindowZoneMath.rightHalf)
             }
-            // Up full-screens, down minimises. +y is down.
-            return dy < 0 ? .fullScreen : .minimize
+            // Up maximises, down minimises ("swipe down to minimize"). +y is down.
+            return dy < 0 ? .snap(WindowZoneMath.maximize) : .minimize
         }
         // A corner needs a real leg on both axes, not just a favourable ratio.
         guard ratio >= Threshold.diagonalBand, min(ax, ay) >= Threshold.swipe else { return nil }

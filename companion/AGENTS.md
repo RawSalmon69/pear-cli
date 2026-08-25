@@ -27,7 +27,7 @@ native Apple primitives over custom imitations. See root memory / `[[owner-quali
 ```bash
 cd companion
 swift build            # compile
-swift test             # full suite (740 tests, must stay green)
+swift test             # full suite (741 tests, must stay green)
 ./build.sh [version]   # assemble build/Pear.app (unsigned dev bundle); `open build/Pear.app`
 ```
 
@@ -93,8 +93,13 @@ over a title bar — ownership is decided once, never re-asked — because it se
 every scroll on the machine and a wrong swallow breaks scrolling system-wide; and
 `close`/`quitApp` live on the **pinch** channel, never on travel, because scroll
 deltas are pointer-accelerated and a small flick can manufacture hundreds of
-points, while magnification is bounded by the hand. The pinch-in ladder is
-restore 0.15 → close 0.45 → quit 0.85, and every shortfall degrades *downward*.
+points, while magnification is bounded by the hand. Swipe up maximises and **pinch out** full-screens — read off Swish's own
+page ("pinch in to close", "pinch out to go fullscreen", "swipe down to
+minimize"), because those two were built the other way round twice from
+inference and a swap like that cannot be felt, only read. Pinch-in is close at
+0.45 and quit at 0.75, with **nothing** below close: a gentle squeeze must not
+move a window the user was not thinking about, so restore keeps the ⌃⌥⌫ chord
+and the ring hub instead of a rung.
 A pinch must be able to arm a gesture on its own: ownership once came only from
 the scroll stream, and since a pinch produces no phased scroll frames that made
 the whole destructive half unreachable rather than merely guarded. Swipe up
