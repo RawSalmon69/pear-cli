@@ -1,10 +1,12 @@
+import ApplicationServices
 import CoreGraphics
 
-// The whole seam between the four pieces of window management: the geometry
-// (pure, here and in WindowZoneMath), the AX mover, the radial ring, and the
-// event tap that opens it. Nothing in this file knows about AppKit or the
-// Accessibility API, so each piece can be built and tested against these types
-// without dragging the other three in.
+// The whole seam between the pieces of window management: the geometry (pure,
+// here and in WindowZoneMath), the AX mover, the radial ring, the event tap that
+// opens it, and the trackpad gestures. Nothing in this file knows about AppKit,
+// so each piece can be built and tested against these types without dragging the
+// others in. The one Accessibility type that does appear is `AXUIElement`, and
+// only as the *name* of the window a caller means — no attribute is read here.
 
 /// Where a window should end up, as a fraction of the target screen's
 /// visible frame. y-down, matching CoreGraphics display space.
@@ -19,7 +21,7 @@ struct WindowZone: Equatable, Sendable, Identifiable {
     let unit: CGRect      // origin + size in 0...1 of visibleFrame
 }
 
-/// Everything the engine can do to the frontmost window.
+/// Everything the engine can do to a window.
 ///
 /// Deliberately closed: three cases is the whole vocabulary the ring, the
 /// chords, and the mover have to agree on, so a new gesture is a new binding to
@@ -67,12 +69,26 @@ enum RingSlot: String, CaseIterable, Identifiable, Sendable {
 /// The one thing that touches a real window. Split out so the ring and the
 /// event tap can be exercised with a recording double — driving the
 /// Accessibility API in a test would need a live session and permission.
+///
+/// Both calls name the window they mean. `window: nil` means "the frontmost
+/// app's focused window", which is the only thing a keyboard chord or the radial
+/// ring *can* mean: neither has a pointer aimed at anything. A trackpad gesture
+/// does — it began on a particular title bar — and passes that window, because
+/// a scroll does not raise the window it is over, so "frontmost" and "the one
+/// you are pointing at" are routinely different windows. With `close` and
+/// `quitApp` in the vocabulary, guessing wrong there costs the user work in a
+/// window they never touched.
+///
+/// There is deliberately no one-argument spelling of either call: a caller that
+/// forgot to say which window it meant would silently act on the focused one,
+/// which is the bug this shape exists to make unwritable.
 @MainActor protocol WindowMover: AnyObject {
-    /// Show a translucent preview of where `action` would put the frontmost
-    /// window; nil hides it. Called continuously while the ring is open.
-    func preview(_ action: WindowAction?)
-    /// Apply `action` to the frontmost window, clearing any preview.
-    func commit(_ action: WindowAction)
+    /// Show a translucent preview of where `action` would put `window`; a nil
+    /// action hides it. Called continuously while a gesture or the ring is live,
+    /// so it must be cheap on repeat.
+    func preview(_ action: WindowAction?, on window: AXUIElement?)
+    /// Apply `action` to `window`, clearing any preview.
+    func commit(_ action: WindowAction, on window: AXUIElement?)
 }
 
 /// What the event tap reports upward. The tap owns no policy — it turns key

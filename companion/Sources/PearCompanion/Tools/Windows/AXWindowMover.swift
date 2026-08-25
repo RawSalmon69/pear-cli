@@ -146,7 +146,12 @@ struct RestoreMemory {
 
 // MARK: - Mover
 
-/// Moves the frontmost window through the Accessibility API.
+/// Moves a window through the Accessibility API.
+///
+/// Which window is the caller's to name: an explicit one for a gesture that
+/// began on a particular title bar, or nil for the frontmost app's focused
+/// window, which is all a keyboard chord or the radial ring can mean. See
+/// `WindowMover`.
 ///
 /// Every geometric decision is borrowed: `WindowZoneMath` picks the target frame
 /// and `WindowSpace` picks the display and the coordinate space. What is left
@@ -174,8 +179,8 @@ final class AXWindowMover: WindowMover {
         let window: AXUIElement
         let current: CGRect
         let visible: CGRect
-        /// Owning app, carried so `.quitApp` does not have to re-resolve the
-        /// frontmost application and risk picking a different one.
+        /// Owning app, read off the window itself so `.quitApp` terminates the
+        /// app that owns *this* window rather than whatever is frontmost.
         let pid: pid_t
     }
 
@@ -190,19 +195,28 @@ final class AXWindowMover: WindowMover {
     /// same no for its trouble. `commit` ignores both — the real move always
     /// resolves fresh, since `.center` and the frame worth remembering have to
     /// be measured against where the window is now.
+    ///
+    /// `previewKey` is what the session was *asked* about, not what it resolved
+    /// to: the ring asks about nil every highlight and must reuse one resolve,
+    /// while a gesture that starts over a different window must not inherit the
+    /// last one's target and draw the preview over a window that is not going to
+    /// move.
     private var previewResolved = false
+    private var previewKey: WindowKey?
     private var previewTarget: Target?
 
     // MARK: Preview
 
-    func preview(_ action: WindowAction?) {
+    func preview(_ action: WindowAction?, on window: AXUIElement?) {
         guard let action else {
             endPreviewSession()
             return
         }
-        if !previewResolved {
+        let key = window.map(WindowKey.init)
+        if !previewResolved || previewKey != key {
             previewResolved = true
-            previewTarget = resolveTarget()
+            previewKey = key
+            previewTarget = resolveTarget(window)
         }
         guard let target = previewTarget, let goal = frame(for: action, on: target) else {
             overlay.hide()
@@ -214,15 +228,16 @@ final class AXWindowMover: WindowMover {
 
     private func endPreviewSession() {
         previewResolved = false
+        previewKey = nil
         previewTarget = nil
         overlay.hide()
     }
 
     // MARK: Commit
 
-    func commit(_ action: WindowAction) {
+    func commit(_ action: WindowAction, on window: AXUIElement?) {
         endPreviewSession()
-        guard let target = resolveTarget() else { return }
+        guard let target = resolveTarget(window) else { return }
 
         // The three that change a window's existence rather than its frame.
         // They have no goal frame, so they are handled before the geometry path
@@ -274,27 +289,37 @@ final class AXWindowMover: WindowMover {
 
     // MARK: Finding the window
 
-    /// The frontmost app's focused window, with the frames a snap resolves
-    /// against, or nil if there is nothing here Pear should touch.
+    /// `window` — or the frontmost app's focused window when the caller has none
+    /// — with the frames a snap resolves against, or nil if there is nothing
+    /// here Pear should touch.
+    ///
+    /// One resolve for both callers, so the checks that decide whether a window
+    /// may be touched at all cannot come apart between them. The pid is read off
+    /// the window rather than off whatever app is frontmost: `.quitApp` must
+    /// terminate the app owning the window that was actually gestured on.
     ///
     /// Pear's own windows are skipped by pid: the ring and the preview belong to
     /// this process, and the whole point is to move whatever sits behind them.
-    private func resolveTarget() -> Target? {
-        guard let app = NSWorkspace.shared.frontmostApplication,
-            app.processIdentifier != ProcessInfo.processInfo.processIdentifier
-        else { return nil }
-
-        let application = AXUIElementCreateApplication(app.processIdentifier)
-        AXRead.capTimeout(application)
-        guard let window = AXRead.element(application, kAXFocusedWindowAttribute) else { return nil }
+    private func resolveTarget(_ window: AXUIElement?) -> Target? {
+        guard let window = window ?? focusedWindow() else { return nil }
         AXRead.capTimeout(window)
 
-        guard isSettable(window), let current = frame(of: window),
+        var pid: pid_t = 0
+        guard AXUIElementGetPid(window, &pid) == .success,
+            pid != ProcessInfo.processInfo.processIdentifier,
+            isSettable(window), let current = frame(of: window),
             let visible = visibleFrame(holding: current)
         else { return nil }
-        return Target(
-            window: window, current: current, visible: visible,
-            pid: app.processIdentifier)
+        return Target(window: window, current: current, visible: visible, pid: pid)
+    }
+
+    /// The frontmost app's focused window — what a caller with no pointer aimed
+    /// at anything means, and what the chords and the ring have always acted on.
+    private func focusedWindow() -> AXUIElement? {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        let application = AXUIElementCreateApplication(app.processIdentifier)
+        AXRead.capTimeout(application)
+        return AXRead.element(application, kAXFocusedWindowAttribute)
     }
 
     /// Whether this is a window to move at all, rather than one to leave alone:

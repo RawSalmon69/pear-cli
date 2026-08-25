@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
 
 // MARK: - One scroll frame
@@ -108,32 +109,52 @@ struct WindowGesturePolicy {
     /// True from the frame that began a gesture over a title bar until the frame
     /// that ends it. The one bit the swallow rule is made of.
     private(set) var ownsGesture = false
+    /// The window whose title bar the current gesture began on — the window the
+    /// preview and the commit both mean.
+    ///
+    /// Captured on the one frame that decides ownership, so a gesture acts on the
+    /// window it started over even if the front window changed while the fingers
+    /// were still down. A scroll does not raise what it is over, so the window
+    /// under the pointer is routinely *not* the focused one; without this, a
+    /// pinch-to-close on a background title bar closed the front window instead.
+    ///
+    /// Deliberately not cleared when the gesture ends: the frame that ends a
+    /// gesture is the frame that commits it, and the caller reads this after
+    /// `handle` returns. The next `began` overwrites it — with nil when that
+    /// gesture is not ours.
+    private(set) var target: AXUIElement?
     /// Last value handed to `WindowMover.preview`, for the dedupe.
     private var shownPreview: WindowAction?
 
     /// Feeds one scroll frame.
     ///
-    /// `isOverTitleBar` is consulted on **exactly one** frame — the one that
-    /// begins a gesture — and never again for that gesture. Deciding once is
-    /// what makes the swallow rule honest in both directions: a pointer that
+    /// `titleBarUnderPointer` is consulted on **exactly one** frame — the one
+    /// that begins a gesture — and never again for that gesture. Deciding once
+    /// is what makes the swallow rule honest in both directions: a pointer that
     /// drifts off the bar mid-swipe cannot abandon a gesture Pear already owns,
     /// and one that drifts *onto* a bar mid-swipe cannot start swallowing
-    /// halfway through a scroll the app has already begun acting on.
-    // Plain non-escaping `() -> Bool` rather than `@MainActor () -> Bool`: a
+    /// halfway through a scroll the app has already begun acting on. The hit it
+    /// returns is also where `target` comes from, so the window that moves is by
+    /// construction the window that was asked about.
+    // Plain non-escaping `() -> TitleBarHit?` rather than a `@MainActor` one: a
     // global-actor function type is implicitly `@Sendable`, which a test's
     // recording spy cannot be. A non-escaping closure inherits this type's
     // isolation anyway, so the real caller still reaches `WindowUnderPointer`.
-    mutating func handle(_ frame: ScrollFrame, isOverTitleBar: () -> Bool) -> Outcome {
+    mutating func handle(
+        _ frame: ScrollFrame, titleBarUnderPointer: () -> TitleBarHit?
+    ) -> Outcome {
         switch frame.phase {
         case .began:
             // Momentum is tested before the title bar so an inertia frame never
             // even costs a lookup: the window server coasting is not a gesture
             // anybody just started.
-            guard !frame.isMomentum, isOverTitleBar() else {
+            guard !frame.isMomentum, let hit = titleBarUnderPointer() else {
                 ownsGesture = false
+                target = nil
                 return Outcome()
             }
             ownsGesture = true
+            target = hit.window
             _ = recognizer.accept(.began)
             return feed(.scrolled(dx: frame.dx, dy: frame.dy, isMomentum: frame.isMomentum))
 
@@ -230,18 +251,18 @@ struct WindowGesturePolicy {
 /// Everything the tap does not positively own passes through untouched. There is
 /// no path in this file that swallows on a maybe.
 ///
-/// One asymmetry to know about: the title bar under the pointer decides *whether*
-/// a gesture is Pear's, but `AXWindowMover` always acts on the frontmost app's
-/// focused window. A scroll does not raise the window it is over, so a gesture
-/// performed on a *background* window's title bar moves the front window
-/// instead. In practice the window you are pointing at is the one you are using;
-/// aiming the move at the hit window itself would mean widening the `WindowMover`
-/// contract, which is a separate change.
+/// The title bar under the pointer decides *both* questions: whether a gesture is
+/// Pear's, and which window it acts on. The second half matters because a scroll
+/// does not raise the window it is over, so the window under the pointer is
+/// routinely not the focused one — and with `close` and `quitApp` in the
+/// vocabulary, acting on "the front window" would close a window the user never
+/// touched. The hit that starts a gesture is therefore carried to the commit
+/// (`WindowGesturePolicy.target`) rather than looked up again at the end.
 @MainActor
 final class WindowGestureTap {
-    /// Weak, exactly like `WindowTrigger.delegate`: `WindowsTool` owns the mover,
-    /// and a tap whose mover has gone away must fail open rather than hold a
-    /// swallow decision it can no longer act on.
+    /// Weak, exactly like `WindowTrigger.delegate`: `WindowGesturesTool` owns the
+    /// mover, and a tap whose mover has gone away must fail open rather than hold
+    /// a swallow decision it can no longer act on.
     private weak var mover: (any WindowMover)?
     private let windows: WindowUnderPointer
     private var policy = WindowGesturePolicy()
@@ -305,7 +326,7 @@ final class WindowGestureTap {
     /// and a released mover both mean "not ours".
     func handle(_ frame: ScrollFrame, at point: CGPoint) -> Bool {
         guard isArmed, mover != nil else { return false }
-        return apply(policy.handle(frame) { [windows] in windows.hit(at: point) != nil })
+        return apply(policy.handle(frame) { [windows] in windows.hit(at: point) })
     }
 
     /// One magnify increment. The return value is only ever false — a monitor
@@ -319,10 +340,15 @@ final class WindowGestureTap {
     /// Applies an outcome in the one order that is safe: commit the move, then
     /// drop the preview it replaced, then forget the cached title bar — the
     /// window just moved, so its rect is stale by definition.
+    ///
+    /// Both calls carry `policy.target`, the window the gesture began on, from
+    /// the one place that holds it — which is what keeps a preview from being
+    /// drawn over one window while another one moves.
     @discardableResult
     private func apply(_ outcome: WindowGesturePolicy.Outcome) -> Bool {
-        if let action = outcome.commit { mover?.commit(action) }
-        if case .show(let preview) = outcome.preview { mover?.preview(preview) }
+        let window = policy.target
+        if let action = outcome.commit { mover?.commit(action, on: window) }
+        if case .show(let preview) = outcome.preview { mover?.preview(preview, on: window) }
         if outcome.commit != nil { windows.invalidate() }
         return outcome.swallow
     }

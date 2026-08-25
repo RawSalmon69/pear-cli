@@ -19,27 +19,65 @@ import XCTest
 final class WindowGestureTapTests: XCTestCase {
     // MARK: - Doubles
 
+    /// Records the **pair**: an action reaching the right window matters as much
+    /// as the action, so every call keeps the window it named and the cases that
+    /// only care about the action read it back through `previews`/`commits`.
     private final class RecordingMover: WindowMover {
-        var previews: [WindowAction?] = []
-        var commits: [WindowAction] = []
+        private(set) var previewCalls: [(action: WindowAction?, window: AXUIElement?)] = []
+        private(set) var commitCalls: [(action: WindowAction, window: AXUIElement?)] = []
 
-        func preview(_ action: WindowAction?) { previews.append(action) }
-        func commit(_ action: WindowAction) { commits.append(action) }
+        var previews: [WindowAction?] { previewCalls.map(\.action) }
+        var commits: [WindowAction] { commitCalls.map(\.action) }
+
+        func preview(_ action: WindowAction?, on window: AXUIElement?) {
+            previewCalls.append((action, window))
+        }
+
+        func commit(_ action: WindowAction, on window: AXUIElement?) {
+            commitCalls.append((action, window))
+        }
     }
 
-    /// Counts how many times the policy asks whether the pointer is on a title
-    /// bar. `answers` is consumed in order and the last value repeats, so a case
-    /// can say "on a bar when it began, off it ever after".
+    /// Two windows that are genuinely different names for different windows:
+    /// `AXUIElementCreateApplication` is a local call needing no live app, and
+    /// two pids give two elements `CFEqual` tells apart (asserted below, so a
+    /// case comparing them cannot pass vacuously).
+    ///
+    /// `nonisolated(unsafe)` because the spy below cannot be `@MainActor` — the
+    /// policy takes a plain, non-`Sendable` closure on purpose — and these are
+    /// immutable CF handles nothing ever writes.
+    nonisolated(unsafe) private static let windowA = AXUIElementCreateApplication(4_242)
+    nonisolated(unsafe) private static let windowB = AXUIElementCreateApplication(4_243)
+
+    /// Counts how many times the policy asks what is under the pointer, and
+    /// answers with a *named* window. `answers` is consumed in order and the last
+    /// value repeats, so a case can say "on window A's bar when it began, off
+    /// any bar ever after" — or "on A, then on B", which is how a gesture whose
+    /// front window changes underneath it is spelled.
     private final class TitleBarSpy {
         private(set) var calls = 0
-        private var answers: [Bool]
+        private var answers: [AXUIElement?]
 
-        init(_ answers: [Bool]) { self.answers = answers }
-
-        func ask() -> Bool {
-            defer { calls += 1 }
-            return answers.count > 1 ? answers.removeFirst() : (answers.first ?? false)
+        /// The plain spelling for cases that only care whether the pointer was on
+        /// *a* title bar: true means window A.
+        init(_ answers: [Bool]) {
+            self.answers = answers.map { $0 ? WindowGestureTapTests.windowA : nil }
         }
+
+        init(windows: [AXUIElement?]) { answers = windows }
+
+        func ask() -> TitleBarHit? {
+            defer { calls += 1 }
+            let window = answers.count > 1 ? answers.removeFirst() : (answers.first ?? nil)
+            return window.map { WindowGestureTapTests.hit(on: $0) }
+        }
+    }
+
+    /// A title-bar hit naming `window`. The rects are incidental here — the
+    /// policy only reads the window out of it. Nonisolated for the spy above.
+    nonisolated private static func hit(on window: AXUIElement) -> TitleBarHit {
+        let bar = CGRect(x: 0, y: 0, width: 400, height: 28)
+        return TitleBarHit(window: window, windowFrame: bar, titleBar: bar)
     }
 
     // MARK: - Fixtures
@@ -66,10 +104,12 @@ final class WindowGestureTapTests: XCTestCase {
         var policy = WindowGesturePolicy()
         let spy = TitleBarSpy([false])
 
-        var outcomes = [policy.handle(began(dx: 5), isOverTitleBar: spy.ask)]
-        for _ in 0..<5 { outcomes.append(policy.handle(changed(dx: 60), isOverTitleBar: spy.ask)) }
-        outcomes.append(policy.handle(ended, isOverTitleBar: spy.ask))
-        outcomes.append(policy.handle(coasting, isOverTitleBar: spy.ask))
+        var outcomes = [policy.handle(began(dx: 5), titleBarUnderPointer: spy.ask)]
+        for _ in 0..<5 {
+            outcomes.append(policy.handle(changed(dx: 60), titleBarUnderPointer: spy.ask))
+        }
+        outcomes.append(policy.handle(ended, titleBarUnderPointer: spy.ask))
+        outcomes.append(policy.handle(coasting, titleBarUnderPointer: spy.ask))
 
         XCTAssertEqual(outcomes.filter(\.swallow).count, 0, "not one frame may be swallowed")
         XCTAssertTrue(outcomes.allSatisfy { $0.commit == nil })
@@ -85,13 +125,13 @@ final class WindowGestureTapTests: XCTestCase {
         // On a bar for the first question, off it for every later one.
         let spy = TitleBarSpy([true, false])
 
-        XCTAssertTrue(policy.handle(began(dx: 5), isOverTitleBar: spy.ask).swallow)
+        XCTAssertTrue(policy.handle(began(dx: 5), titleBarUnderPointer: spy.ask).swallow)
         for _ in 0..<5 {
-            XCTAssertTrue(policy.handle(changed(dx: 40), isOverTitleBar: spy.ask).swallow)
+            XCTAssertTrue(policy.handle(changed(dx: 40), titleBarUnderPointer: spy.ask).swallow)
         }
         XCTAssertTrue(policy.ownsGesture)
 
-        let last = policy.handle(ended, isOverTitleBar: spy.ask)
+        let last = policy.handle(ended, titleBarUnderPointer: spy.ask)
         XCTAssertTrue(last.swallow)
         XCTAssertEqual(last.commit, .snap(WindowZoneMath.rightHalf))
         XCTAssertFalse(policy.ownsGesture, "the gesture is spent the moment it ends")
@@ -103,13 +143,13 @@ final class WindowGestureTapTests: XCTestCase {
         var policy = WindowGesturePolicy()
         let spy = TitleBarSpy([true])
 
-        _ = policy.handle(began(), isOverTitleBar: spy.ask)
-        for _ in 0..<20 { _ = policy.handle(changed(dx: 3), isOverTitleBar: spy.ask) }
-        _ = policy.handle(ended, isOverTitleBar: spy.ask)
+        _ = policy.handle(began(), titleBarUnderPointer: spy.ask)
+        for _ in 0..<20 { _ = policy.handle(changed(dx: 3), titleBarUnderPointer: spy.ask) }
+        _ = policy.handle(ended, titleBarUnderPointer: spy.ask)
         XCTAssertEqual(spy.calls, 1, "one lookup for a whole gesture")
 
-        _ = policy.handle(began(), isOverTitleBar: spy.ask)
-        _ = policy.handle(ended, isOverTitleBar: spy.ask)
+        _ = policy.handle(began(), titleBarUnderPointer: spy.ask)
+        _ = policy.handle(ended, titleBarUnderPointer: spy.ask)
         XCTAssertEqual(spy.calls, 2, "and exactly one more for the next gesture")
     }
 
@@ -119,12 +159,12 @@ final class WindowGestureTapTests: XCTestCase {
         var policy = WindowGesturePolicy()
         let spy = TitleBarSpy([true])
 
-        _ = policy.handle(began(), isOverTitleBar: spy.ask)
-        _ = policy.handle(changed(dx: 200), isOverTitleBar: spy.ask)
-        XCTAssertEqual(policy.handle(ended, isOverTitleBar: spy.ask).commit,
+        _ = policy.handle(began(), titleBarUnderPointer: spy.ask)
+        _ = policy.handle(changed(dx: 200), titleBarUnderPointer: spy.ask)
+        XCTAssertEqual(policy.handle(ended, titleBarUnderPointer: spy.ask).commit,
                        .snap(WindowZoneMath.rightHalf))
 
-        let coast = policy.handle(coasting, isOverTitleBar: spy.ask)
+        let coast = policy.handle(coasting, titleBarUnderPointer: spy.ask)
         XCTAssertFalse(coast.swallow)
         XCTAssertNil(coast.commit)
         XCTAssertEqual(spy.calls, 1, "and it never even asks where the pointer is")
@@ -139,19 +179,19 @@ final class WindowGestureTapTests: XCTestCase {
         var policy = WindowGesturePolicy()
         let spy = TitleBarSpy([true])
 
-        _ = policy.handle(began(), isOverTitleBar: spy.ask)
-        _ = policy.handle(changed(dx: 200), isOverTitleBar: spy.ask)
+        _ = policy.handle(began(), titleBarUnderPointer: spy.ask)
+        _ = policy.handle(changed(dx: 200), titleBarUnderPointer: spy.ask)
         XCTAssertTrue(policy.ownsGesture)
 
-        let coast = policy.handle(coasting, isOverTitleBar: spy.ask)
+        let coast = policy.handle(coasting, titleBarUnderPointer: spy.ask)
         XCTAssertFalse(coast.swallow)
         XCTAssertNil(coast.commit)
         XCTAssertEqual(coast.preview, .show(nil), "and the orphaned preview comes down")
         XCTAssertFalse(policy.ownsGesture)
 
         // The late `ended` is now nobody's, and the next gesture is unaffected.
-        XCTAssertFalse(policy.handle(ended, isOverTitleBar: spy.ask).swallow)
-        XCTAssertTrue(policy.handle(began(), isOverTitleBar: spy.ask).swallow)
+        XCTAssertFalse(policy.handle(ended, titleBarUnderPointer: spy.ask).swallow)
+        XCTAssertTrue(policy.handle(began(), titleBarUnderPointer: spy.ask).swallow)
     }
 
     /// A momentum frame reaching the recogniser mid-gesture must be reported *as*
@@ -162,17 +202,17 @@ final class WindowGestureTapTests: XCTestCase {
         var policy = WindowGesturePolicy()
         let spy = TitleBarSpy([true])
 
-        _ = policy.handle(began(), isOverTitleBar: spy.ask)
-        let coast = policy.handle(changed(dx: 400, momentum: true), isOverTitleBar: spy.ask)
+        _ = policy.handle(began(), titleBarUnderPointer: spy.ask)
+        let coast = policy.handle(changed(dx: 400, momentum: true), titleBarUnderPointer: spy.ask)
         XCTAssertEqual(coast.preview, .unchanged, "inertia is not travel, so nothing is pending")
-        XCTAssertNil(policy.handle(ended, isOverTitleBar: spy.ask).commit)
+        XCTAssertNil(policy.handle(ended, titleBarUnderPointer: spy.ask).commit)
 
         // The identical travel with the fingers actually down does fire.
         var real = WindowGesturePolicy()
         let realSpy = TitleBarSpy([true])
-        _ = real.handle(began(), isOverTitleBar: realSpy.ask)
-        _ = real.handle(changed(dx: 400), isOverTitleBar: realSpy.ask)
-        XCTAssertEqual(real.handle(ended, isOverTitleBar: realSpy.ask).commit,
+        _ = real.handle(began(), titleBarUnderPointer: realSpy.ask)
+        _ = real.handle(changed(dx: 400), titleBarUnderPointer: realSpy.ask)
+        XCTAssertEqual(real.handle(ended, titleBarUnderPointer: realSpy.ask).commit,
                        .snap(WindowZoneMath.rightHalf))
     }
 
@@ -182,7 +222,7 @@ final class WindowGestureTapTests: XCTestCase {
         var policy = WindowGesturePolicy()
         let spy = TitleBarSpy([true])
 
-        let outcome = policy.handle(began(dx: 90, momentum: true), isOverTitleBar: spy.ask)
+        let outcome = policy.handle(began(dx: 90, momentum: true), titleBarUnderPointer: spy.ask)
         XCTAssertFalse(outcome.swallow)
         XCTAssertFalse(policy.ownsGesture)
         XCTAssertEqual(spy.calls, 0)
@@ -199,7 +239,7 @@ final class WindowGestureTapTests: XCTestCase {
         ]
 
         for frame in strays {
-            let outcome = policy.handle(frame, isOverTitleBar: spy.ask)
+            let outcome = policy.handle(frame, titleBarUnderPointer: spy.ask)
             XCTAssertFalse(outcome.swallow, "\(frame.phase) with no gesture open must pass through")
             XCTAssertNil(outcome.commit)
             XCTAssertEqual(outcome.preview, .unchanged)
@@ -213,13 +253,13 @@ final class WindowGestureTapTests: XCTestCase {
         var policy = WindowGesturePolicy()
         let spy = TitleBarSpy([true])
 
-        _ = policy.handle(began(), isOverTitleBar: spy.ask)
-        _ = policy.handle(changed(dx: 200), isOverTitleBar: spy.ask)
+        _ = policy.handle(began(), titleBarUnderPointer: spy.ask)
+        _ = policy.handle(changed(dx: 200), titleBarUnderPointer: spy.ask)
         XCTAssertFalse(
             policy.handle(ScrollFrame(phase: .other, isMomentum: false, dx: 0, dy: 0),
-                          isOverTitleBar: spy.ask).swallow)
+                          titleBarUnderPointer: spy.ask).swallow)
         XCTAssertTrue(policy.ownsGesture)
-        XCTAssertEqual(policy.handle(ended, isOverTitleBar: spy.ask).commit,
+        XCTAssertEqual(policy.handle(ended, titleBarUnderPointer: spy.ask).commit,
                        .snap(WindowZoneMath.rightHalf))
     }
 
@@ -234,11 +274,11 @@ final class WindowGestureTapTests: XCTestCase {
         let stray = policy.magnified(by: -0.8)
         XCTAssertEqual(stray, WindowGesturePolicy.Outcome(), "no gesture, no effect")
 
-        _ = policy.handle(began(), isOverTitleBar: spy.ask)
+        _ = policy.handle(began(), titleBarUnderPointer: spy.ask)
         let squeeze = policy.magnified(by: -0.7)
         XCTAssertFalse(squeeze.swallow, "a monitor cannot swallow")
         XCTAssertEqual(squeeze.preview, .show(.close))
-        XCTAssertEqual(policy.handle(ended, isOverTitleBar: spy.ask).commit, .close)
+        XCTAssertEqual(policy.handle(ended, titleBarUnderPointer: spy.ask).commit, .close)
     }
 
     // MARK: - Preview
@@ -249,16 +289,16 @@ final class WindowGestureTapTests: XCTestCase {
         var policy = WindowGesturePolicy()
         let spy = TitleBarSpy([true])
 
-        _ = policy.handle(began(), isOverTitleBar: spy.ask)
-        XCTAssertEqual(policy.handle(changed(dx: 200), isOverTitleBar: spy.ask).preview,
+        _ = policy.handle(began(), titleBarUnderPointer: spy.ask)
+        XCTAssertEqual(policy.handle(changed(dx: 200), titleBarUnderPointer: spy.ask).preview,
                        .show(.snap(WindowZoneMath.rightHalf)))
         for _ in 0..<5 {
-            XCTAssertEqual(policy.handle(changed(dx: 10), isOverTitleBar: spy.ask).preview,
+            XCTAssertEqual(policy.handle(changed(dx: 10), titleBarUnderPointer: spy.ask).preview,
                            .unchanged, "the same zone must not be re-sent")
         }
-        XCTAssertEqual(policy.handle(changed(dx: -600), isOverTitleBar: spy.ask).preview,
+        XCTAssertEqual(policy.handle(changed(dx: -600), titleBarUnderPointer: spy.ask).preview,
                        .show(.snap(WindowZoneMath.leftHalf)))
-        XCTAssertEqual(policy.handle(ended, isOverTitleBar: spy.ask).preview, .show(nil),
+        XCTAssertEqual(policy.handle(ended, titleBarUnderPointer: spy.ask).preview, .show(nil),
                        "the frame that commits also hides")
     }
 
@@ -266,9 +306,9 @@ final class WindowGestureTapTests: XCTestCase {
         var policy = WindowGesturePolicy()
         let spy = TitleBarSpy([true])
 
-        _ = policy.handle(began(), isOverTitleBar: spy.ask)
-        _ = policy.handle(changed(dx: 200), isOverTitleBar: spy.ask)
-        let outcome = policy.handle(cancelled, isOverTitleBar: spy.ask)
+        _ = policy.handle(began(), titleBarUnderPointer: spy.ask)
+        _ = policy.handle(changed(dx: 200), titleBarUnderPointer: spy.ask)
+        let outcome = policy.handle(cancelled, titleBarUnderPointer: spy.ask)
         XCTAssertTrue(outcome.swallow, "the cancel belongs to a gesture Pear owned")
         XCTAssertNil(outcome.commit)
         XCTAssertEqual(outcome.preview, .show(nil))
@@ -346,13 +386,14 @@ final class WindowGestureTapTests: XCTestCase {
     /// The clock never moves, so the resolver's own 100ms floor between lookups
     /// is in force for the whole test — which is what makes an `invalidate()`
     /// visible as an extra lookup rather than as nothing at all.
-    private func makeHitResolver(calls: @escaping () -> Void) -> WindowUnderPointer {
-        let element = AXUIElementCreateSystemWide()
-        return WindowUnderPointer(
+    private func makeHitResolver(
+        window: AXUIElement = windowA, calls: @escaping () -> Void
+    ) -> WindowUnderPointer {
+        WindowUnderPointer(
             lookup: { point in
                 calls()
                 let bar = CGRect(x: point.x - 20, y: point.y - 10, width: 40, height: 20)
-                return .titleBar(TitleBarHit(window: element, windowFrame: bar, titleBar: bar))
+                return .titleBar(TitleBarHit(window: window, windowFrame: bar, titleBar: bar))
             },
             clock: { 1_000 })
     }
@@ -451,5 +492,108 @@ final class WindowGestureTapTests: XCTestCase {
         XCTAssertFalse(tap.handle(ended, at: content))
         XCTAssertTrue(mover.commits.isEmpty)
         XCTAssertTrue(mover.previews.isEmpty)
+    }
+
+    // MARK: - Which window the action lands on
+
+    /// The bug this shape exists for, stated directly: the window a gesture acts
+    /// on is the window whose title bar it began over — never "whatever is
+    /// frontmost". Nothing in this test can even ask what is frontmost, which is
+    /// the point: the name travels with the gesture.
+    func testAGestureNamesTheWindowItsTitleBarNamed() {
+        XCTAssertFalse(CFEqual(Self.windowA, Self.windowB), "two fixtures, two windows")
+
+        var policy = WindowGesturePolicy()
+        let spy = TitleBarSpy(windows: [Self.windowB])
+
+        _ = policy.handle(began(), titleBarUnderPointer: spy.ask)
+        XCTAssertEqual(policy.target.map(WindowKey.init), WindowKey(Self.windowB),
+                       "the window is captured on the frame that takes ownership")
+        _ = policy.handle(changed(dx: 200), titleBarUnderPointer: spy.ask)
+        XCTAssertEqual(policy.handle(ended, titleBarUnderPointer: spy.ask).commit,
+                       .snap(WindowZoneMath.rightHalf))
+        XCTAssertEqual(policy.target.map(WindowKey.init), WindowKey(Self.windowB),
+                       "and is still that window when the caller reads it to commit")
+    }
+
+    /// Focus moving mid-gesture cannot drag the target with it. The resolver would
+    /// answer window B from the second question onward — and is never asked
+    /// again, which is the mechanism.
+    func testAFocusChangeMidGestureDoesNotMoveTheTarget() {
+        var policy = WindowGesturePolicy()
+        let spy = TitleBarSpy(windows: [Self.windowA, Self.windowB])
+
+        _ = policy.handle(began(), titleBarUnderPointer: spy.ask)
+        for _ in 0..<5 { _ = policy.handle(changed(dx: 60), titleBarUnderPointer: spy.ask) }
+        _ = policy.handle(ended, titleBarUnderPointer: spy.ask)
+
+        XCTAssertEqual(spy.calls, 1)
+        XCTAssertEqual(policy.target.map(WindowKey.init), WindowKey(Self.windowA))
+    }
+
+    /// A gesture Pear does not own names no window at all, so there is nothing
+    /// downstream for a stale target to be mistaken for.
+    func testAGestureThatIsNotOursNamesNoWindow() {
+        var policy = WindowGesturePolicy()
+        let spy = TitleBarSpy(windows: [Self.windowA, nil])
+
+        _ = policy.handle(began(), titleBarUnderPointer: spy.ask)
+        _ = policy.handle(ended, titleBarUnderPointer: spy.ask)
+        XCTAssertNotNil(policy.target)
+
+        _ = policy.handle(began(), titleBarUnderPointer: spy.ask)
+        XCTAssertNil(policy.target, "this one started over ordinary content")
+    }
+
+    /// Preview and commit must mean the same window — a preview drawn over one
+    /// window while another moves is its own bug. Asserted at the tap, which is
+    /// where both calls are made, from one stored target.
+    func testThePreviewAndTheCommitNameTheSameWindow() {
+        let mover = RecordingMover()
+        let tap = WindowGestureTap(
+            mover: mover, windows: makeHitResolver(window: Self.windowB, calls: {}))
+        tap.start()
+
+        XCTAssertTrue(tap.handle(began(), at: barPoint))
+        XCTAssertTrue(tap.handle(changed(dx: 200), at: barPoint))
+        XCTAssertTrue(tap.handle(ended, at: barPoint))
+
+        XCTAssertEqual(mover.commits, [.snap(WindowZoneMath.rightHalf)])
+        XCTAssertEqual(mover.previews, [.snap(WindowZoneMath.rightHalf), nil])
+        let named = mover.previewCalls.map(\.window) + mover.commitCalls.map(\.window)
+        XCTAssertEqual(named.count, 3, "two previews and the commit")
+        XCTAssertTrue(named.allSatisfy { $0.map(WindowKey.init) == WindowKey(Self.windowB) },
+                      "every one of them names the window the gesture began on")
+    }
+
+    /// The other half of the same contract, and the reason the window is an
+    /// optional rather than required: the ⌃⌥ chords and the Fn ring have no
+    /// pointer aimed at anything, so they name no window and the mover falls back
+    /// to the frontmost focused one, exactly as they always have. Driven against
+    /// an injected mover — no Accessibility, no ring, no real window.
+    func testTheChordsAndTheRingNameNoWindowSoTheyKeepActingOnTheFocusedOne() {
+        let mover = RecordingMover()
+        let tool = WindowsTool(mover: mover)
+
+        tool.snapRequested(.center)
+        tool.ringHighlight(.leading)
+        tool.ringClosed(commit: true)
+
+        XCTAssertFalse(mover.commitCalls.isEmpty, "the chord and the ring both committed")
+        XCTAssertFalse(mover.previewCalls.isEmpty, "and the ring previewed")
+        XCTAssertTrue(mover.commitCalls.allSatisfy { $0.window == nil })
+        XCTAssertTrue(mover.previewCalls.allSatisfy { $0.window == nil })
+    }
+
+    /// The gestures are a tool of their own now, with one switch — the registry's
+    /// — and no second preference to find. Off by default: enabling it arms a tap
+    /// that sees every scroll on the machine.
+    func testTheGesturesAreTheirOwnDefaultOffTool() {
+        let tool = WindowGesturesTool()
+        XCTAssertEqual(tool.id, "windowgestures")
+        XCTAssertFalse(tool.defaultEnabled)
+        XCTAssertNil(tool.hotkey, "there is nothing to fire: it is either watching or not")
+        XCTAssertFalse(tool.survivesExpiry)
+        XCTAssertFalse(tool.summary.isEmpty, "it stands on its own in the help sheet")
     }
 }
