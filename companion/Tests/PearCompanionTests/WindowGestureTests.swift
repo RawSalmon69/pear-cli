@@ -59,8 +59,17 @@ final class WindowGestureTests: XCTestCase {
         XCTAssertEqual(gesture(swipe(dx: 120)), .snap(WindowZoneMath.rightHalf))
     }
 
-    func testSwipeUpMaximises() {
-        XCTAssertEqual(gesture(swipe(dy: -120)), .snap(WindowZoneMath.maximize))
+    func testSwipeUpTogglesFullScreen() {
+        // Not maximise: Swish's up-swipe puts the window into a full-screen
+        // Space, and "it just moved up and got bigger" is exactly the complaint
+        // maximise-on-up earned.
+        XCTAssertEqual(gesture(swipe(dy: -120)), .fullScreen)
+    }
+
+    func testFullScreenIsNotDestructive() {
+        // The same gesture takes the window back out, so a mis-fire costs one
+        // more gesture and nothing else.
+        XCTAssertEqual(WindowAction.fullScreen.isDestructive, false)
     }
 
     func testSwipeDownMinimises() {
@@ -227,66 +236,109 @@ final class WindowGestureTests: XCTestCase {
         XCTAssertNil(recognizer.accept(.ended))
     }
 
-    // MARK: - Destructive actions
+    // MARK: - The pinch ladder
 
-    func testADeepSqueezeCloses() {
-        let action = gesture(pinch(-0.8))
+    // Each rung is asserted at exactly its threshold, from one frame, so the
+    // assertion is about the boundary and not about how four fractions of a
+    // squeeze happen to round when they are added up.
+
+    func testALightSqueezeRestores() {
+        XCTAssertEqual(gesture([.magnified(by: -T.pinch)]), .restore)
+    }
+
+    func testAFirmSqueezeCloses() {
+        let action = gesture([.magnified(by: -T.pinchClose)])
         XCTAssertEqual(action, .close)
         XCTAssertEqual(action?.isDestructive, true)
     }
 
-    func testADeepSqueezeThrownDownwardQuitsTheApp() {
-        let action = gesture(pinch(-0.8) + swipe(dy: T.destructiveTravel + 40))
+    func testSqueezingAllTheWayQuits() {
+        let action = gesture([.magnified(by: -T.pinchQuit)])
         XCTAssertEqual(action, .quitApp)
         XCTAssertEqual(action?.isDestructive, true)
     }
 
-    func testASqueezeThatStopsShortOfCloseOnlyRestores() {
-        XCTAssertEqual(gesture(pinch(-(T.pinchClose - 0.05))), .restore)
+    /// …and once across several frames, because the recogniser is what sums
+    /// them: a squeeze delivered in twenty increments still has to reach quit.
+    func testASqueezeAccumulatesAcrossItsFramesToTheDeepestRung() {
+        XCTAssertEqual(gesture(pinch(-0.95, frames: 20)), .quitApp)
     }
 
-    func testAQuitThatStopsShortOfTheThrowOnlyCloses() {
-        XCTAssertEqual(gesture(pinch(-0.8) + swipe(dy: T.destructiveTravel - 40)), .close)
+    /// The gaps between the rungs, not only the rungs themselves: a squeeze
+    /// landing anywhere inside a band has to read as that band's action.
+    func testEveryPointInABandReadsAsThatBandsAction() {
+        for total in stride(from: T.pinch, to: T.pinchClose, by: 0.05) {
+            XCTAssertEqual(gesture([.magnified(by: -total)]), .restore, "\(total)")
+        }
+        for total in stride(from: T.pinchClose, to: T.pinchQuit, by: 0.05) {
+            XCTAssertEqual(gesture([.magnified(by: -total)]), .close, "\(total)")
+        }
+        for total in stride(from: T.pinchQuit, through: 1.0, by: 0.05) {
+            XCTAssertEqual(gesture([.magnified(by: -total)]), .quitApp, "\(total)")
+        }
     }
 
-    func testAQuitSizedSwipeWithoutTheSqueezeOnlyMinimises() {
-        XCTAssertEqual(gesture(swipe(dy: T.destructiveTravel * 3)), .minimize)
-    }
-
-    func testTheThrowMustBeClearlyDownwardNotSideways() {
-        // Long, but slanted — reads as a plain close, never a quit.
+    /// Every shortfall degrades *downward*. Single-frame, so each assertion is
+    /// about the boundary rather than about floating-point accumulation.
+    func testASqueezeThatStopsShortOfQuitOnlyCloses() {
         XCTAssertEqual(
-            gesture(pinch(-0.8) + swipe(dx: 400, dy: T.destructiveTravel + 40)), .close)
-        // …and upward travel is not a throw at all.
-        XCTAssertEqual(gesture(pinch(-0.8) + swipe(dy: -(T.destructiveTravel * 2))), .close)
+            gesture([.magnified(by: -(T.pinchQuit - 0.01))]), .close,
+            "not-quite-quit must be close, not nothing")
     }
 
+    func testASqueezeThatStopsShortOfCloseOnlyRestores() {
+        XCTAssertEqual(gesture([.magnified(by: -(T.pinchClose - 0.01))]), .restore)
+    }
+
+    func testASqueezeThatStopsShortOfRestoreDoesNothing() {
+        XCTAssertNil(gesture([.magnified(by: -(T.pinch - 0.01))]))
+    }
+
+    /// An enthusiastic close must not land on quit. Overshooting the close
+    /// threshold by three quarters of itself is still a close.
+    func testOvershootingACloseIsStillAClose() {
+        XCTAssertEqual(gesture(pinch(-(T.pinchClose * 1.75))), .close)
+    }
+
+    /// The ladder lives on the pinch channel *only*. Scroll deltas are
+    /// pointer-accelerated, so travel alone must never reach an irreversible
+    /// action, however far it goes.
     func testNoSwipeOfAnyLengthInAnyDirectionIsDestructive() {
-        // The whole point of putting close and quit on the pinch channel:
-        // scroll deltas are pointer-accelerated, so travel alone must never be
-        // able to reach an irreversible action.
         for direction in compass {
-            for travel in [T.swipe, T.destructiveTravel, 2_000, 20_000] as [CGFloat] {
+            for travel in [T.swipe, 240, 2_000, 20_000] as [CGFloat] {
                 let action = gesture(swipe(dx: direction.dx * travel, dy: direction.dy * travel))
                 XCTAssertNotEqual(action?.isDestructive, true, "\(direction.name) \(travel)")
             }
         }
     }
 
-    func testMomentumCannotUpgradeACloseIntoAQuit() {
-        // The squeeze is real; the downward travel is inertia. Quit needs a
-        // throw the user actually made.
-        XCTAssertEqual(
-            gesture(pinch(-0.8) + momentum(dy: T.destructiveTravel * 5)), .close)
+    /// A long downward swipe is the shape the old quit gesture had — a deep
+    /// squeeze thrown downward. On its own it is a minimise and nothing else,
+    /// however long it is.
+    func testAVeryLongDownwardSwipeOnlyMinimises() {
+        XCTAssertEqual(gesture(swipe(dy: 2_000)), .minimize)
     }
 
-    func testDestructiveActionsNeedMateriallyMoreTravelThanASnap() {
-        // The table itself, so a later tweak cannot quietly bring the
-        // destructive tier down to snap range.
-        XCTAssertGreaterThanOrEqual(T.pinchClose, T.pinch * 4)
-        XCTAssertGreaterThanOrEqual(T.destructiveTravel, T.swipe * 4)
-        // And behaviourally: snap-sized versions of both destructive motions
-        // land on the mild action, not the destructive one.
+    func testTravelCannotDeepenAPinchVerdict() {
+        // Neither real travel nor inertia may promote a close into a quit: the
+        // rung is decided by the squeeze and by nothing else.
+        XCTAssertEqual(gesture(pinch(-0.6) + swipe(dy: 2_000)), .close)
+        XCTAssertEqual(gesture(pinch(-0.6) + momentum(dy: 2_000)), .close)
+        XCTAssertEqual(gesture(pinch(-0.6) + swipe(dx: -2_000, dy: 2_000)), .close)
+    }
+
+    func testTheThresholdTableKeepsItsRungsApart() {
+        // The table itself, so a later tweak cannot quietly bring a destructive
+        // rung down into benign range or bunch two rungs together.
+        XCTAssertGreaterThanOrEqual(T.pinchClose, T.pinch * 3)
+        XCTAssertGreaterThanOrEqual(T.pinchQuit, T.pinchClose * 1.8)
+        XCTAssertGreaterThanOrEqual(
+            T.pinchQuit - T.pinchClose, T.pinchClose - T.pinch,
+            "close→quit must be at least as wide as restore→close")
+        // A pinch-in of 1.0 is the fingers meeting, so the deepest rung has to
+        // stay inside the channel to be reachable at all.
+        XCTAssertLessThan(T.pinchQuit, 1.0)
+        // And behaviourally: a snap-sized squeeze lands on the mild action.
         XCTAssertEqual(gesture([.magnified(by: -T.pinch)]), .restore)
         XCTAssertEqual(gesture(swipe(dy: T.swipe)), .minimize)
     }

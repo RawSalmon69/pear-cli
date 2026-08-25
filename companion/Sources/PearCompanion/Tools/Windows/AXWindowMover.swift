@@ -237,6 +237,18 @@ final class AXWindowMover: WindowMover {
 
     func commit(_ action: WindowAction, on window: AXUIElement?) {
         endPreviewSession()
+
+        // Full-screen is resolved on its own, before `resolveTarget`, because
+        // that function deliberately refuses a window that is *already*
+        // full-screen (`isSettable`) — the window server owns its frame and no
+        // snap can have it. Going through it would make the toggle one-way: in,
+        // and then stuck. This needs none of what it provides either: no
+        // geometry, no display, no restore memory.
+        if action == .fullScreen {
+            toggleFullScreen(window)
+            return
+        }
+
         guard let target = resolveTarget(window) else { return }
 
         // The three that change a window's existence rather than its frame.
@@ -256,6 +268,8 @@ final class AXWindowMover: WindowMover {
             return
         case .snap, .center, .restore:
             break
+        case .fullScreen:
+            return // returned above
         }
 
         guard let goal = frame(for: action, on: target) else { return }
@@ -263,9 +277,34 @@ final class AXWindowMover: WindowMover {
         switch action {
         case .snap, .center: restoreMemory.rememberFirst(target.current, for: key)
         case .restore: restoreMemory.forget(key)
-        case .minimize, .close, .quitApp: break // returned above
+        case .minimize, .fullScreen, .close, .quitApp: break // returned above
         }
         apply(goal, to: target.window)
+    }
+
+    /// Toggles macOS full-screen on `window`: in if it is a normal window, back
+    /// out if it is already full-screen.
+    ///
+    /// The attribute is **read before it is written**, which is the whole toggle.
+    /// Writing `true` blind would make the gesture do nothing on a window that
+    /// is already full-screen, and a gesture that does nothing reads as broken.
+    ///
+    /// A window that does not answer `AXFullScreen` at all — a utility panel, an
+    /// app that does not support full-screen — is left alone rather than written
+    /// to on spec: nil is "no evidence", not "false".
+    ///
+    /// Pear's own windows are skipped by pid, the same check `resolveTarget`
+    /// makes for the same reason: the ring and the preview belong to this
+    /// process, and the point is to act on whatever sits behind them.
+    private func toggleFullScreen(_ window: AXUIElement?) {
+        guard let window = window ?? focusedWindow() else { return }
+        AXRead.capTimeout(window)
+        var pid: pid_t = 0
+        guard AXUIElementGetPid(window, &pid) == .success,
+            pid != ProcessInfo.processInfo.processIdentifier,
+            let isFullScreen = AXRead.bool(window, Self.fullScreenAttribute)
+        else { return }
+        set(!isFullScreen, Self.fullScreenAttribute, on: window)
     }
 
     /// Sets a boolean AX attribute, e.g. minimising a window.

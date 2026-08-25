@@ -23,9 +23,15 @@ struct WindowZone: Equatable, Sendable, Identifiable {
 
 /// Everything the engine can do to a window.
 ///
-/// Deliberately closed: three cases is the whole vocabulary the ring, the
-/// chords, and the mover have to agree on, so a new gesture is a new binding to
-/// an existing case rather than a new case every layer must learn.
+/// Deliberately closed and deliberately small: these seven cases are the whole
+/// vocabulary the ring, the chords, the trackpad gestures and the mover have to
+/// agree on. Every zone in the catalogue rides inside `snap`, so a new snapping
+/// gesture is a new *binding* rather than a new case; a case is added only for
+/// something that is not a frame at all — sending the window to the Dock, giving
+/// it a Space, closing it, quitting its app. Four layers switch exhaustively
+/// over this enum (`WindowZoneMath.frame`, `RingLabel.text`, the
+/// `WindowSettings` token pair, `AXWindowMover.commit`), which is the cost of
+/// each new case and the reason to keep earning it.
 enum WindowAction: Equatable, Sendable {
     case snap(WindowZone)
     case center           // keep the current size, center it
@@ -35,6 +41,15 @@ enum WindowAction: Equatable, Sendable {
     case restore
     /// Send the window to the Dock.
     case minimize
+    /// **Toggle** macOS full-screen: a normal window goes full-screen, one that
+    /// is already full-screen comes back out.
+    ///
+    /// A toggle rather than a one-way trip because a gesture that full-screens
+    /// an already-full-screen window does nothing, and a gesture that does
+    /// nothing reads as broken. Distinct from `.snap(maximize)`, which only
+    /// grows the frame to the visible area and leaves the menu bar, the Dock and
+    /// the window's own title bar in place — that is a frame, this is a Space.
+    case fullScreen
     /// Close the window. **Destructive** — a binding for this must require a
     /// deliberate motion, never a twitch, and must never fire from momentum.
     case close
@@ -44,10 +59,14 @@ enum WindowAction: Equatable, Sendable {
 
     /// Whether a mis-fire costs the user something they cannot undo with a
     /// second gesture. Bindings gate these behind a larger threshold.
+    ///
+    /// `fullScreen` is not on this list: the same gesture that entered
+    /// full-screen leaves it again, so a mis-fire costs a second gesture and
+    /// nothing else.
     var isDestructive: Bool {
         switch self {
         case .close, .quitApp: return true
-        case .snap, .center, .restore, .minimize: return false
+        case .snap, .center, .restore, .minimize, .fullScreen: return false
         }
     }
 }

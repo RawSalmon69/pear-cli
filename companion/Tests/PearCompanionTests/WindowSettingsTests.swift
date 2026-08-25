@@ -195,7 +195,8 @@ final class WindowSettingsTests: XCTestCase {
 @MainActor
 final class WindowActionTokenTests: XCTestCase {
     private let allActions: [WindowAction] = [
-        .snap(WindowZoneMath.leftHalf), .center, .restore, .minimize, .close, .quitApp,
+        .snap(WindowZoneMath.leftHalf), .center, .restore, .minimize, .fullScreen,
+        .close, .quitApp,
     ]
 
     func testEveryActionRoundTripsThroughItsToken() {
@@ -208,11 +209,26 @@ final class WindowActionTokenTests: XCTestCase {
     }
 
     /// A reserved word that also named a zone would resolve to the wrong thing.
+    /// `full-screen` is the one to watch: `maximize` is a zone id and the two
+    /// mean different things, so a token collision there would silently swap a
+    /// user's full-screen binding for a resize.
     func testNoZoneIdShadowsAReservedToken() {
-        let reserved: Set<String> = ["center", "restore", "minimize", "close", "quit-app"]
+        let reserved: Set<String> = [
+            "center", "restore", "minimize", "full-screen", "close", "quit-app",
+        ]
         for zone in WindowZoneMath.zones {
             XCTAssertFalse(reserved.contains(zone.id), "zone id \(zone.id) shadows a reserved token")
         }
+    }
+
+    /// Full-screen and maximise must stay two distinct actions all the way
+    /// through persistence: one gives the window a Space, the other resizes it.
+    func testFullScreenAndMaximiseRoundTripSeparately() {
+        let store = UserDefaults(suiteName: "token-\(UUID().uuidString)")!
+        WindowSettings.setAction(.fullScreen, for: .hub, store)
+        XCTAssertEqual(WindowSettings.action(for: .hub, store), .fullScreen)
+        WindowSettings.setAction(.snap(WindowZoneMath.maximize), for: .hub, store)
+        XCTAssertEqual(WindowSettings.action(for: .hub, store), .snap(WindowZoneMath.maximize))
     }
 
     /// Close and quit can lose unsaved work; nothing else can. Bindings gate the
@@ -224,18 +240,44 @@ final class WindowActionTokenTests: XCTestCase {
         XCTAssertFalse(WindowAction.restore.isDestructive)
         XCTAssertFalse(WindowAction.center.isDestructive)
         XCTAssertFalse(WindowAction.snap(WindowZoneMath.maximize).isDestructive)
+        XCTAssertFalse(WindowAction.fullScreen.isDestructive)
     }
 
-    /// Minimise, close and quit change a window's existence, not its frame, so
-    /// the geometry layer must decline them rather than inventing a rect.
+    /// Minimise, full-screen, close and quit change a window's existence, not
+    /// its frame, so the geometry layer must decline them rather than inventing
+    /// a rect. Full-screen is the newest and the easiest to get wrong: it looks
+    /// like a zone, but the window server owns the frame, so there is nothing to
+    /// compute and nothing to preview.
     func testExistenceActionsHaveNoFrame() {
         let visible = CGRect(x: 0, y: 0, width: 1000, height: 800)
         let current = CGRect(x: 10, y: 10, width: 400, height: 300)
-        for action in [WindowAction.minimize, .close, .quitApp] {
+        for action in [WindowAction.minimize, .fullScreen, .close, .quitApp] {
             XCTAssertNil(
                 WindowZoneMath.frame(
                     for: action, in: visible, current: current, lastFrame: current),
                 "\(action) must produce no frame")
         }
+    }
+
+    /// …and it must decline even with a remembered frame in hand, which is the
+    /// one input that could tempt the geometry layer into answering: a
+    /// full-screen toggle must never spend the restore memory.
+    func testFullScreenDeclinesAFrameEvenWithARestoreMemory() {
+        XCTAssertNil(
+            WindowZoneMath.frame(
+                for: .fullScreen, in: CGRect(x: 0, y: 0, width: 1000, height: 800),
+                current: CGRect(x: 10, y: 10, width: 400, height: 300),
+                lastFrame: CGRect(x: 50, y: 60, width: 700, height: 500)))
+    }
+
+    /// Maximise still resolves to the whole visible frame. The two actions live
+    /// on either side of this line: one has geometry, the other does not.
+    func testMaximiseStillResolvesToTheWholeVisibleFrame() {
+        let visible = CGRect(x: 0, y: 25, width: 1000, height: 775)
+        XCTAssertEqual(
+            WindowZoneMath.frame(
+                for: .snap(WindowZoneMath.maximize), in: visible,
+                current: CGRect(x: 10, y: 10, width: 400, height: 300), lastFrame: nil),
+            visible)
     }
 }

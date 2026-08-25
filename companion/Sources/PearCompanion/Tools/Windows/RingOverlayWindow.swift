@@ -148,6 +148,7 @@ enum RingLabel {
         case .center: "Center"
         case .restore: "Restore"
         case .minimize: "Minimize"
+        case .fullScreen: "Full Screen"
         case .close: "Close"
         case .quitApp: "Quit App"
         case nil: ""

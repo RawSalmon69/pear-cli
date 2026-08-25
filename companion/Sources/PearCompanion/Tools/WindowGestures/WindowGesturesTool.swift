@@ -82,10 +82,10 @@ private struct WindowGesturesPopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             SectionLabel(text: "On a window's title bar")
-            Text("Two-finger swipe to snap it to that side or corner, pinch out to maximise, pinch in to restore.")
+            Text("Two-finger swipe to snap it to that side or corner, swipe up for full screen, down to minimise. Pinch out to maximise, pinch in to restore.")
                 .font(Theme.body)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("A full squeeze closes the window; a full squeeze thrown downwards quits the app.")
+            Text("Pinch in firmly to close the window; pinch in all the way to quit the app.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

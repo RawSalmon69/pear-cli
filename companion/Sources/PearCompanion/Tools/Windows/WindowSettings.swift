@@ -161,6 +161,7 @@ enum WindowSettings {
         case .center: "center"
         case .restore: "restore"
         case .minimize: "minimize"
+        case .fullScreen: "full-screen"
         case .close: "close"
         case .quitApp: "quit-app"
         }
@@ -171,6 +172,7 @@ enum WindowSettings {
         case "center": .center
         case "restore": .restore
         case "minimize": .minimize
+        case "full-screen": .fullScreen
         case "close": .close
         case "quit-app": .quitApp
         default: WindowZoneMath.zone(id: token).map(WindowAction.snap)

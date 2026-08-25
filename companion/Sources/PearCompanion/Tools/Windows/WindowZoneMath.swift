@@ -80,10 +80,12 @@ enum WindowZoneMath {
             return centered(current, in: visibleFrame)
         case .restore:
             return lastFrame.map(integral)
-        case .minimize, .close, .quitApp:
+        case .minimize, .fullScreen, .close, .quitApp:
             // Not geometry: these change a window's existence, not its frame.
             // Nil means "no frame to apply", which the mover reads as "handle
-            // this one yourself".
+            // this one yourself". `fullScreen` belongs here and not with the
+            // zones: the window server owns a full-screen window's frame, so
+            // there is no rect to compute and none to preview.
             return nil
         }
     }

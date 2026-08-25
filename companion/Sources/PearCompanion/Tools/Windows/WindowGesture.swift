@@ -34,14 +34,24 @@ enum GestureInput: Equatable, Sendable {
 ///
 /// ## The gestures
 ///
+/// Shaped after Swish, which is the yardstick the owner measures this against.
+///
 /// | motion | action |
 /// | --- | --- |
 /// | swipe left / right | left half / right half |
-/// | swipe up / down | maximise / minimise |
+/// | swipe up | **full screen** (toggle) |
+/// | swipe down | minimise |
 /// | swipe into a corner | that quarter |
-/// | pinch out / pinch in | maximise / restore |
-/// | **deep** pinch in | **close** |
-/// | **deep** pinch in *plus* a long swipe down | **quit the app** |
+/// | pinch out | maximise |
+/// | pinch in, lightly | restore |
+/// | pinch in, firmly | **close** |
+/// | pinch in, all the way | **quit the app** |
+///
+/// Up is full-screen and not maximise because those are different things and
+/// only one of them is what an up-swipe looks like it should do: maximise grows
+/// the frame to the visible area, which reads on screen as the window jumping up
+/// and getting bigger with the menu bar and its own title bar still there.
+/// Maximise keeps the pinch-out gesture, the ⌃⌥↩ chord and the ring hub.
 ///
 /// ## Why it decides on `ended`, not mid-gesture
 ///
@@ -50,33 +60,44 @@ enum GestureInput: Equatable, Sendable {
 /// you move, commit when you let go), and `pending` exposes that live preview.
 /// It is also what makes the destructive tier safe: if the recogniser fired the
 /// instant a threshold was crossed, a deep pinch would fire `restore` on its way
-/// down and could never reach `close`, and any "further travel means something
-/// worse" scheme would turn an over-shot benign gesture into a destructive one.
-/// Judging the finished motion means the gesture you performed is the gesture
-/// that is read, and a gesture that stops short simply downgrades to the milder
-/// action or to nothing.
+/// down and could never reach `close` or `quitApp`. Judging the finished motion
+/// means the gesture you performed is the gesture that is read, and a gesture
+/// that stops short simply downgrades to the milder action or to nothing.
 ///
 /// ## Why close and quit cannot happen by accident
 ///
 /// Both live on the **pinch** channel, never on the swipe channel, and that is
-/// deliberate. Scroll deltas are pointer-accelerated, so a fast flick can
-/// manufacture several hundred points of travel out of a two-centimetre finger
-/// movement — "a longer swipe" is therefore *not* a trustworthy way to gate
-/// something irreversible. Magnification is not accelerated: it tracks the
-/// fractional change in finger separation, so it is bounded by the user's own
-/// hand. `pinchClose` (0.6) is four times `pinch` (0.15) and needs the fingers
-/// squeezed to under half their starting separation — a determined full
-/// squeeze, not an overshoot of the light one that means `restore`.
+/// the load-bearing rule. Scroll deltas are pointer-accelerated, so a fast flick
+/// can manufacture several hundred points of travel out of a two-centimetre
+/// finger movement — "a longer swipe" is therefore *not* a trustworthy way to
+/// gate something irreversible, and no swipe of any length in any direction can
+/// reach a destructive action.
 ///
-/// `quitApp` then needs that same full squeeze **and** a clearly downward swipe
-/// of `destructiveTravel` (240 pt, four times a snap) in the same gesture:
-/// crush the window and throw it away. Coming up short on either half degrades
-/// to `close`, and coming up short on the squeeze degrades to `restore` — every
-/// failure mode of the destructive gestures lands on a milder action, never a
-/// worse one.
+/// The pinch channel is where a magnitude ladder *is* defensible, which is why
+/// Swish has one there. `NSEvent.magnification` is not accelerated: it is the
+/// fractional change in finger separation, and the convention it is summed
+/// under is `scale = 1 + Σmagnification`, so a pinch-in of -1.0 is the fingers
+/// meeting. The whole pinch-in channel therefore lives in `(0, 1]` — bounded by
+/// the hand, not by a driver curve — and "squeeze further" is a thing the user
+/// can feel, unlike "flick harder".
+///
+/// The three rungs and the gaps between them:
+///
+/// | Σ pinch-in | action | why there |
+/// | --- | --- | --- |
+/// | 0.15 | `restore` | a light, deliberate squeeze |
+/// | 0.45 | `close` | three times the light one: a firm squeeze |
+/// | 0.85 | `quitApp` | fingers all but touching, near the channel's ceiling |
+///
+/// The close→quit gap is **0.40**, wider than the entire restore→close gap
+/// (0.30) and nearly as large as the close threshold itself: overshooting a
+/// close by 88% of the squeeze it took still lands on close. Every shortfall
+/// degrades downward — not-quite-quit is close, not-quite-close is restore,
+/// not-quite-restore is nothing — so no failure mode of a benign gesture is a
+/// destructive one.
 struct WindowGestureRecognizer {
     /// The one threshold table. Every number here is in device-independent
-    /// points, except the two magnifications, which are the unitless fractional
+    /// points, except the three magnifications, which are the unitless fractional
     /// change in finger separation that `NSEvent.magnification` reports.
     enum Threshold {
         /// Travel before a swipe means anything at all. The shipped
@@ -95,12 +116,15 @@ struct WindowGestureRecognizer {
         /// Cumulative magnification for maximise (out) or restore (in). A light,
         /// deliberate squeeze or spread.
         static let pinch: CGFloat = 0.15
-        /// Cumulative pinch-in for `close`: fingers squeezed to under half their
-        /// starting separation.
-        static let pinchClose: CGFloat = 0.6
-        /// Downward travel the *second* half of `quitApp` needs, on top of a
-        /// full squeeze. Four times a snap.
-        static let destructiveTravel: CGFloat = 240
+        /// Cumulative pinch-in for `close`: three times the light squeeze, i.e.
+        /// fingers brought to a bit over half their starting separation. A firm
+        /// squeeze, not an overshoot of the light one.
+        static let pinchClose: CGFloat = 0.45
+        /// Cumulative pinch-in for `quitApp`: fingers all but touching, near the
+        /// ceiling of a channel that bottoms out at 1.0. Nearly twice
+        /// `pinchClose`, and the 0.40 between them is wider than the whole
+        /// restore→close gap, so an enthusiastic close cannot land here.
+        static let pinchQuit: CGFloat = 0.85
     }
 
     /// True between `began` and `ended`/`cancelled`. A gesture is spent the
@@ -166,10 +190,10 @@ struct WindowGestureRecognizer {
     /// magnification at all, so when both channels have something to say the
     /// pinch is the one the user meant.
     private func verdict() -> WindowAction? {
-        if magnification <= -Threshold.pinchClose {
-            let flungDown = dy >= Threshold.destructiveTravel && abs(dx) <= dy * Threshold.axisBand
-            return flungDown ? .quitApp : .close
-        }
+        // The ladder, deepest rung first: reading it the other way round would
+        // return `close` for a squeeze that earned `quitApp`.
+        if magnification <= -Threshold.pinchQuit { return .quitApp }
+        if magnification <= -Threshold.pinchClose { return .close }
         if magnification >= Threshold.pinch { return .snap(WindowZoneMath.maximize) }
         if magnification <= -Threshold.pinch { return .restore }
         return swipeVerdict()
@@ -186,8 +210,8 @@ struct WindowGestureRecognizer {
             if ax >= ay {
                 return .snap(dx < 0 ? WindowZoneMath.leftHalf : WindowZoneMath.rightHalf)
             }
-            // Up maximises, down minimises. +y is down.
-            return dy < 0 ? .snap(WindowZoneMath.maximize) : .minimize
+            // Up full-screens, down minimises. +y is down.
+            return dy < 0 ? .fullScreen : .minimize
         }
         // A corner needs a real leg on both axes, not just a favourable ratio.
         guard ratio >= Threshold.diagonalBand, min(ax, ay) >= Threshold.swipe else { return nil }
