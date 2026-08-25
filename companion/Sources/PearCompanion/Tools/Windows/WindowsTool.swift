@@ -37,13 +37,19 @@ final class WindowsTool: Tool, WindowTriggerDelegate {
     private var mover: AXWindowMover?
     private var ring: RingOverlayWindow?
     private var trigger: WindowTrigger?
+    /// The trackpad gestures, behind their own preference and off by default —
+    /// see `Prefs.windowTitleBarGestures`. Nil whenever they are switched off,
+    /// so a user who wants only the chords never has a scroll tap installed.
+    private var gestures: WindowGestureTap?
 
     /// The action the ring is currently pointing at, so `ringClosed(commit:)`
     /// knows what to apply without asking the ring again.
     private var pending: WindowAction?
 
     var entry: ToolEntry {
-        .popover { AnyView(WindowsPopover()) }
+        .popover {
+            AnyView(WindowsPopover(setGestures: { [weak self] on in self?.setGestures(on) }))
+        }
     }
 
     // MARK: - Lifecycle
@@ -57,18 +63,36 @@ final class WindowsTool: Tool, WindowTriggerDelegate {
         self.mover = AXWindowMover()
         self.trigger = trigger
         trigger.start()
+        if Prefs.windowTitleBarGestures { setGestures(true) }
     }
 
     /// A disabled tool must leave the machine exactly as it found it: no tap, no
     /// hotkeys, no overlay, no preview.
     func stop() {
         trigger?.stop()
+        setGestures(false)
         ring?.hide()
         mover?.preview(nil)
         trigger = nil
         ring = nil
         mover = nil
         pending = nil
+    }
+
+    /// Arms or disarms the trackpad gestures live, so the popover's toggle takes
+    /// effect the moment it is flipped rather than at the next launch. A feature
+    /// that watches every scroll on the machine should be switchable off without
+    /// quitting the app.
+    private func setGestures(_ enabled: Bool) {
+        guard enabled else {
+            gestures?.stop()
+            gestures = nil
+            return
+        }
+        guard gestures == nil, let mover else { return }
+        let tap = WindowGestureTap(mover: mover)
+        gestures = tap
+        tap.start()
     }
 
     // MARK: - WindowTriggerDelegate
@@ -108,7 +132,12 @@ final class WindowsTool: Tool, WindowTriggerDelegate {
 /// permission, and the prompt lives here rather than at launch so the app never
 /// asks for it before the user has touched the feature.
 private struct WindowsPopover: View {
+    /// Arms or disarms the gesture tap live, so the toggle below means something
+    /// the moment it is flipped.
+    let setGestures: (Bool) -> Void
+
     @State private var trusted = AXIsProcessTrusted()
+    @AppStorage(Prefs.windowTitleBarGesturesKey) private var gestures = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
@@ -128,6 +157,13 @@ private struct WindowsPopover: View {
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
 
+            Divider()
+            Toggle("Trackpad gestures", isOn: $gestures)
+            Text("Two-finger swipe or pinch on a window's title bar to snap, minimise or close it.")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
             if !trusted {
                 Divider()
                 Text("Needs Accessibility to move windows.")
@@ -145,5 +181,6 @@ private struct WindowsPopover: View {
         .padding(Theme.cardPadding)
         .frame(width: 260)
         .onAppear { trusted = AXIsProcessTrusted() }
+        .onChange(of: gestures) { _, on in setGestures(on) }
     }
 }

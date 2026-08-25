@@ -10,6 +10,7 @@ enum Prefs {
     static let previewMaxStackKey = "screenshotPreviewMaxStack"
     static let panelClosesOnFocusLossKey = "panelClosesOnFocusLoss"
     static let hdBackgroundRemovalKey = "hdBackgroundRemoval"
+    static let windowTitleBarGesturesKey = "windowTitleBarGestures"
 
     /// Default on for both — opt-out, not opt-in.
     static var soundsEnabled: Bool {
@@ -31,6 +32,15 @@ enum Prefs {
     /// removal. Default off — the built-in Vision cutout needs no download.
     static var hdBackgroundRemoval: Bool {
         UserDefaults.standard.bool(forKey: hdBackgroundRemovalKey)
+    }
+
+    /// Opt-in: two-finger swipe and pinch on a window's title bar snap, minimise
+    /// or close it. Separate from the Windows tool's own on/off and default off,
+    /// because it is a different bargain: the ⌃⌥ chords are Carbon hotkeys that
+    /// touch nothing else, while this arms an event tap that sees every scroll
+    /// event on the machine. Off until the owner has driven it on real hardware.
+    static var windowTitleBarGestures: Bool {
+        UserDefaults.standard.bool(forKey: windowTitleBarGesturesKey)
     }
 
     /// Which format the eyedropper drops on the clipboard — read by both the
