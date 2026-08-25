@@ -289,3 +289,78 @@ final class HotkeyOverrideTests: XCTestCase {
             "⌘←")
     }
 }
+
+/// The settings toggle reads its state from `known`, so `setEnabled` has to
+/// publish there. Bound straight to `UserDefaults` the write lands but the
+/// switch never redraws, which shipped as "the tool turns on but the toggle
+/// stays off until you click it twice".
+@MainActor
+final class ToolEnabledPublishingTests: XCTestCase {
+    private final class FakeTool: Tool {
+        let id: String
+        let title = "Fake"
+        let icon = "star"
+        let hotkey: HotKeyChord? = nil
+        init(id: String) { self.id = id }
+        var entry: ToolEntry { .action {} }
+    }
+
+    private let id = "publish.fake"
+
+    private func scrub() {
+        UserDefaults.standard.removeObject(forKey: Prefs.toolEnabledKey(id))
+        UserDefaults.standard.removeObject(forKey: Prefs.toolHotkeyKey(id))
+    }
+
+    func testTogglingPublishesTheNewStateWhereTheToggleReadsIt() {
+        scrub()
+        defer { scrub() }
+        let registry = ToolRegistry()
+        registry.offer(FakeTool(id: id))
+        XCTAssertTrue(registry.isEnabled(id), "a default-on tool reads as on")
+
+        registry.setEnabled(id, false)
+        XCTAssertFalse(registry.isEnabled(id), "off must be visible immediately")
+        XCTAssertEqual(registry.known.first { $0.id == id }?.isEnabled, false)
+
+        registry.setEnabled(id, true)
+        XCTAssertTrue(registry.isEnabled(id), "and on again, without a second call")
+        XCTAssertEqual(registry.known.first { $0.id == id }?.isEnabled, true)
+    }
+
+    /// The observable mirror must agree with the stored preference, or the switch
+    /// and the behaviour drift apart.
+    func testThePublishedStateMatchesThePreference() {
+        scrub()
+        defer { scrub() }
+        let registry = ToolRegistry()
+        registry.offer(FakeTool(id: id))
+        for value in [false, true, false] {
+            registry.setEnabled(id, value)
+            XCTAssertEqual(
+                registry.isEnabled(id),
+                Prefs.isToolEnabled(id, default: true),
+                "mirror disagreed with Prefs at \(value)")
+        }
+    }
+
+    /// A tool that ships off must not read as on before anyone touches it.
+    func testADefaultOffToolReadsAsOff() {
+        let offID = "publish.fake.off"
+        UserDefaults.standard.removeObject(forKey: Prefs.toolEnabledKey(offID))
+        defer { UserDefaults.standard.removeObject(forKey: Prefs.toolEnabledKey(offID)) }
+
+        final class OffTool: Tool {
+            let id: String
+            let title = "Off"
+            let icon = "star"
+            let hotkey: HotKeyChord? = nil
+            var defaultEnabled: Bool { false }
+            init(id: String) { self.id = id }
+            var entry: ToolEntry { .action {} }
+        }
+        let registry = ToolRegistry()
+        registry.offer(OffTool(id: offID))
+        XCTAssertFalse(registry.isEnabled(offID))
+    }
+}

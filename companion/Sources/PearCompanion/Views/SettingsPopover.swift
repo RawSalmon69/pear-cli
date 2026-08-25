@@ -259,7 +259,7 @@ struct SettingsPopover: View {
                 .foregroundStyle(.secondary)
             ForEach(env.tools.known, id: \.id) { tool in
                 VStack(alignment: .leading, spacing: 2) {
-                    Toggle(isOn: toolBinding(tool.id, default: tool.defaultEnabled)) {
+                    Toggle(isOn: toolBinding(tool.id)) {
                         Label(tool.title, systemImage: tool.icon)
                             .font(Theme.body)
                     }
@@ -276,9 +276,10 @@ struct SettingsPopover: View {
         }
     }
 
-    private func toolBinding(_ id: String, default defaultEnabled: Bool) -> Binding<Bool> {
+    private func toolBinding(_ id: String) -> Binding<Bool> {
         Binding(
-            get: { Prefs.isToolEnabled(id, default: defaultEnabled) },
+            // Observable, not a raw UserDefaults read: see KnownTool.isEnabled.
+            get: { env.tools.isEnabled(id) },
             set: { env.tools.setEnabled(id, $0) }
         )
     }

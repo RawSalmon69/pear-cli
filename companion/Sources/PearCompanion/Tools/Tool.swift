@@ -115,6 +115,12 @@ final class ToolRegistry {
         let category: ToolCategory
         let summary: String
         let defaultEnabled: Bool
+        /// Whether the user has this tool switched on. Held here rather than
+        /// read from `Prefs` at the point of use because `UserDefaults` is not
+        /// observable: a settings toggle bound straight to `Prefs` writes fine
+        /// and then never redraws, so the switch stays visually off until
+        /// something unrelated happens to invalidate the view.
+        let isEnabled: Bool
     }
 
     /// Enabled tools, in offer order.
@@ -149,7 +155,8 @@ final class ToolRegistry {
         known.append(KnownTool(
             id: tool.id, title: tool.title, icon: tool.icon,
             hotkeyLabel: effectiveChord(for: tool)?.label, category: tool.category,
-            summary: tool.summary, defaultEnabled: tool.defaultEnabled))
+            summary: tool.summary, defaultEnabled: tool.defaultEnabled,
+            isEnabled: Prefs.isToolEnabled(tool.id, default: tool.defaultEnabled)))
         catalog.append((id: tool.id, tool: tool))
         guard shouldRun(tool) else { return }
         all.append(tool)
@@ -170,6 +177,7 @@ final class ToolRegistry {
     /// Rebuilds `all` from catalog order so panel tile order never shifts.
     func setEnabled(_ id: String, _ enabled: Bool) {
         Prefs.setToolEnabled(id, enabled)
+        refreshKnownEnabled(id, enabled)
         guard let entry = catalog.first(where: { $0.id == id }) else { return }
         if shouldRun(entry.tool) { activate(entry.tool) } else { deactivate(entry.tool) }
         rebuildAll()
@@ -295,6 +303,25 @@ final class ToolRegistry {
         known[index] = KnownTool(
             id: existing.id, title: existing.title, icon: existing.icon,
             hotkeyLabel: effectiveChord(for: tool)?.label, category: existing.category,
-            summary: existing.summary, defaultEnabled: existing.defaultEnabled)
+            summary: existing.summary, defaultEnabled: existing.defaultEnabled,
+            isEnabled: existing.isEnabled)
+    }
+
+    /// Republishes a tool's on/off into `known`, which is what a settings toggle
+    /// observes. Without this the write happens and the switch does not move.
+    private func refreshKnownEnabled(_ id: String, _ enabled: Bool) {
+        guard let index = known.firstIndex(where: { $0.id == id }) else { return }
+        let existing = known[index]
+        known[index] = KnownTool(
+            id: existing.id, title: existing.title, icon: existing.icon,
+            hotkeyLabel: existing.hotkeyLabel, category: existing.category,
+            summary: existing.summary, defaultEnabled: existing.defaultEnabled,
+            isEnabled: enabled)
+    }
+
+    /// The user's on/off for a tool, read from observable state so a view bound
+    /// to it actually redraws when it changes.
+    func isEnabled(_ id: String) -> Bool {
+        known.first { $0.id == id }?.isEnabled ?? false
     }
 }
