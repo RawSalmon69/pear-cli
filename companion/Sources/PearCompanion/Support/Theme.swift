@@ -104,6 +104,10 @@ enum Theme {
     @MainActor static var accent: Color { ThemeStore.shared.color }
     @MainActor static var accentSoft: Color { ThemeStore.shared.color.opacity(0.16) }
     static let warn = Color(red: 0.86, green: 0.62, blue: 0.22)
+    /// One step past `warn`: for the thing that cannot be undone by trying again
+    /// — quitting an app and whatever it had not saved. Deliberately not the
+    /// accent, which the user may have set to any colour, including amber.
+    static let danger = Color(red: 0.93, green: 0.36, blue: 0.36)
 
     static let sectionGap: CGFloat = 20
     static let itemGap: CGFloat = 8

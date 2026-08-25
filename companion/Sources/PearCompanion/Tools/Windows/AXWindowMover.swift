@@ -218,12 +218,37 @@ final class AXWindowMover: WindowMover {
             previewKey = key
             previewTarget = resolveTarget(window)
         }
-        guard let target = previewTarget, let goal = frame(for: action, on: target) else {
+        guard let target = previewTarget, let rect = previewRect(for: action, on: target) else {
             overlay.hide()
             return
         }
         let pivot = WindowSpace.primaryHeight(of: NSScreen.screens.map(\.frame))
-        overlay.show(WindowSpace.flip(goal, primaryHeight: pivot))
+        overlay.show(
+            WindowSpace.flip(rect, primaryHeight: pivot), style: WindowPreviewStyle(action))
+    }
+
+    /// The rect the preview is drawn over, y-down.
+    ///
+    /// A geometric action draws the frame the window is about to take: the
+    /// rectangle *is* the answer and the caption only names it. The actions that
+    /// change a window's existence rather than its frame have no such rectangle,
+    /// and used to draw nothing at all — so the gestures with the most to warn
+    /// about were the only ones that gave no warning. They draw over the window
+    /// itself, which is the thing about to be sent to the Dock, closed, or taken
+    /// away along with its app.
+    ///
+    /// `.restore` with nothing remembered stays nil on purpose: committing it
+    /// would do nothing, and an overlay promising a move that will not happen is
+    /// worse than no overlay.
+    private func previewRect(for action: WindowAction, on target: Target) -> CGRect? {
+        switch action {
+        case .snap, .center, .restore: frame(for: action, on: target)
+        // No target frame of their own: the label over the window it will happen
+        // to is the whole message. Full screen is the window's *next* state, and
+        // guessing the eventual display rect would draw a rectangle the window
+        // may not end up filling.
+        case .minimize, .fullScreen, .close, .quitApp: target.current
+        }
     }
 
     private func endPreviewSession() {
@@ -497,7 +522,131 @@ final class AXWindowMover: WindowMover {
 
 // MARK: - Preview overlay
 
-/// The translucent rectangle showing where a window would land.
+/// How alarming a previewed action should look.
+///
+/// Three steps rather than a destructive/benign flag, because `close` and
+/// `quitApp` are not the same size of mistake: closing loses at most that
+/// window's unsaved work, quitting takes every other window of the app with it.
+/// The overlay is the whole of the warning a gesture gives before either, so
+/// they must not read as each other — and neither may read as a snap, which the
+/// user can undo with a second flick.
+enum WindowPreviewTone: Equatable {
+    /// A move or a resize, and minimising: the accent tint the snap preview has
+    /// always worn. Minimising looks like a big change and is not one — the
+    /// window is a Dock click away — so it stays here.
+    case benign
+    /// The window is about to go away. A rectangle cannot say that.
+    case caution
+    /// The window's app is about to go away, and every unsaved document in it.
+    case danger
+
+    init(_ action: WindowAction) {
+        switch action {
+        // Full screen is benign for the same reason it is not `isDestructive`:
+        // the same gesture reverses it, so a mis-fire costs one more gesture.
+        case .snap, .center, .restore, .minimize, .fullScreen: self = .benign
+        case .close: self = .caution
+        case .quitApp: self = .danger
+        }
+    }
+
+    /// The colour the wash and the border wear. Benign follows the user's accent,
+    /// re-read live so a colour just picked applies mid-gesture; the two warnings
+    /// are fixed, because a warning that changes colour with the accent is not a
+    /// warning.
+    @MainActor var tint: Color {
+        switch self {
+        case .benign: Theme.accent
+        case .caution: Theme.warn
+        case .danger: Theme.danger
+        }
+    }
+
+    /// Weight escalates with the tone alongside the colour, in both the wash and
+    /// the border. Colour alone would not carry it: the accent is user-chosen and
+    /// one of the presets is amber, so a caution has to differ from a snap by
+    /// more than hue.
+    ///
+    /// The benign figure is the long-standing one — enough frost to read as a
+    /// surface, little enough to see the desktop and the neighbouring windows
+    /// through it, which is the snap preview's whole job.
+    var washAlpha: CGFloat {
+        switch self {
+        case .benign: 0.22
+        case .caution: 0.30
+        case .danger: 0.38
+        }
+    }
+
+    var borderWidth: CGFloat {
+        switch self {
+        case .benign: 2
+        case .caution: 3
+        case .danger: 4
+        }
+    }
+}
+
+/// What the preview says, and how loudly, for one action.
+///
+/// Pure and `Equatable`: `preview` runs at scroll-event rate, so the overlay
+/// compares this against what it last drew and does nothing when they match.
+/// Being a plain value is also what makes the wording and the tone testable
+/// without putting a panel on a display — interactive overlay smoke is the
+/// owner's job.
+struct WindowPreviewStyle: Equatable {
+    /// Taken from `RingLabel`, the radial ring's own table, so the ring and a
+    /// gesture can never word the same action differently. A new action gets its
+    /// word there or nowhere.
+    let label: String
+    let tone: WindowPreviewTone
+
+    init(_ action: WindowAction) {
+        label = RingLabel.text(for: action)
+        tone = WindowPreviewTone(action)
+    }
+}
+
+/// Everything the overlay draws that is not its frame: the caption's words and
+/// the tint, with the live accent already resolved.
+///
+/// One value for both, so the overlay asks "is this already on screen?" once per
+/// gesture frame instead of measuring text and building `CGColor`s. The accent is
+/// resolved into it rather than read at draw time, which is what keeps a colour
+/// the user just picked applying mid-gesture with no second comparison.
+struct WindowPreviewLook: Equatable {
+    let style: WindowPreviewStyle
+    let tint: Color
+
+    @MainActor init(_ style: WindowPreviewStyle) {
+        self.style = style
+        self.tint = style.tone.tint
+    }
+}
+
+/// The overlay's one-slot memory of what it last drew.
+///
+/// Its own type because the overlay itself cannot be exercised in a test — that
+/// would put a panel on the owner's display — while the rule that matters can be:
+/// a repeat costs nothing, and only a genuine change pays for a text measurement.
+struct WindowPreviewLookCache {
+    private var current: WindowPreviewLook?
+
+    /// True the first time, and on every genuine change; false for a repeat,
+    /// meaning there is nothing for the caller to redraw.
+    mutating func accept(_ look: WindowPreviewLook) -> Bool {
+        guard current != look else { return false }
+        current = look
+        return true
+    }
+}
+
+/// The translucent rectangle showing what a gesture is about to do, captioned
+/// with the action's name.
+///
+/// The rectangle alone is a complete answer for a snap and says nothing about a
+/// minimise, a close or a quit — which is why there is a caption, and why the
+/// tone of the tint escalates for the two that cannot be taken back.
 ///
 /// Plain AppKit with explicit frames, **not** SwiftUI: hosting an
 /// `NSHostingView` with a material inside a small borderless `NSPanel` can enter
@@ -512,22 +661,49 @@ final class AXWindowMover: WindowMover {
 /// window-server round trip per highlight.
 @MainActor
 private final class ZonePreviewOverlay {
-    /// Enough frost to read as a surface, little enough to see the desktop and
-    /// the neighbouring windows through it — the preview's whole job is showing
-    /// what the target rect covers.
-    private static let washAlpha: CGFloat = 0.22
     private static let cornerRadius: CGFloat = 10
-    private static let borderWidth: CGFloat = 2
+    /// Breathing room either side of the caption before it truncates: a preview
+    /// laid over a narrow window still has to say which action it is.
+    private static let captionInset: CGFloat = 12
+
+    /// `Theme.emphasis` — 15pt medium rounded — reached through AppKit, since
+    /// there is no SwiftUI here to hand a `Font` to. The ring's labels use the
+    /// same idiom one step down the type scale; this text sits alone in a large
+    /// rectangle rather than inside a wedge.
+    private static let captionFont: NSFont = {
+        let base = NSFont.systemFont(ofSize: 15, weight: .medium)
+        guard let rounded = base.fontDescriptor.withDesign(.rounded) else { return base }
+        return NSFont(descriptor: rounded, size: 15) ?? base
+    }()
 
     private var panel: NSPanel?
     private var wash: NSView?
-    private var tint: Color?
+    private var caption: NSTextField?
+    /// The caption's measured size, kept so the recentring that follows a frame
+    /// change does not re-measure the text.
+    private var captionSize: NSSize = .zero
+    private var drawn = WindowPreviewLookCache()
 
     /// `frame` is AppKit-space, y-up: the caller owns the conversion.
-    func show(_ frame: NSRect) {
+    func show(_ frame: NSRect, style: WindowPreviewStyle) {
         let panel = self.panel ?? makePanel()
         self.panel = panel
-        recolor(panel)
+
+        // Two independent reasons to touch the content, each gated: this runs on
+        // every ring highlight and every gesture frame, where a text measurement
+        // or a `CGColor` per event is the AppKit equivalent of re-rendering on
+        // every keystroke.
+        var recentre = panel.frame.size != frame.size
+        let look = WindowPreviewLook(style)
+        if drawn.accept(look) {
+            restyle(panel, look)
+            recentre = true  // the words changed, so the caption is a new size
+        }
+        // Placed against the incoming frame rather than the panel's current one,
+        // so the caption lands in a single pass instead of being positioned and
+        // then moved. Nowhere near `layout()`, which this type does not override:
+        // resizing a window from inside a layout pass is its own crash.
+        if recentre { centreCaption(in: frame.size) }
         // Redrawn on the spot rather than deferred: moving between zones resizes
         // the panel, and a deferred redraw shows the old content stretched into
         // the new frame for a beat. Guarded on the frame having actually changed,
@@ -536,7 +712,9 @@ private final class ZonePreviewOverlay {
         if !panel.isVisible { panel.orderFrontRegardless() }
     }
 
-    /// Ordered out, never closed: the panel is the reused one.
+    /// Ordered out, never closed: the panel is the reused one. What it is wearing
+    /// is kept too — a hidden panel keeps its colours and its caption, so showing
+    /// the same action again has nothing to redo.
     func hide() { panel?.orderOut(nil) }
 
     private func makePanel() -> NSPanel {
@@ -567,7 +745,6 @@ private final class ZonePreviewOverlay {
         card.wantsLayer = true
         card.layer?.cornerRadius = Self.cornerRadius
         card.layer?.masksToBounds = true
-        card.layer?.borderWidth = Self.borderWidth
         panel.contentView = card
 
         // The accent wash is its own layer-backed view rather than a background
@@ -579,19 +756,47 @@ private final class ZonePreviewOverlay {
         card.addSubview(wash)
         self.wash = wash
 
+        // A sibling of the wash, not a subview of it, so the words are not
+        // tinted by it. No autoresizing: `show` gives it a frame whenever the
+        // panel's size or the words change, which is the only time it can need
+        // one, and an autoresized label would stretch rather than recentre.
+        let caption = NSTextField(labelWithString: "")
+        caption.font = Self.captionFont
+        caption.textColor = .labelColor
+        caption.alignment = .center
+        caption.usesSingleLineMode = true
+        caption.lineBreakMode = .byTruncatingTail
+        card.addSubview(caption)
+        self.caption = caption
+
         return panel
     }
 
-    /// The tint follows the app's accent, re-read on each `show` so a colour the
-    /// user just picked is live — but written only when it actually changed.
-    /// `show` runs on every ring highlight, and a `CGColor` write per event is
-    /// the AppKit version of re-rendering on every keystroke.
-    private func recolor(_ panel: NSPanel) {
-        let accent = Theme.accent
-        guard tint != accent else { return }
-        tint = accent
-        let color = NSColor(accent)
+    /// The caption's words and every tinted colour — the only expensive part of a
+    /// show, and reached only when `drawn` says the look actually changed.
+    private func restyle(_ panel: NSPanel, _ look: WindowPreviewLook) {
+        let tone = look.style.tone
+        let color = NSColor(look.tint)
+        panel.contentView?.layer?.borderWidth = tone.borderWidth
         panel.contentView?.layer?.borderColor = color.cgColor
-        wash?.layer?.backgroundColor = color.withAlphaComponent(Self.washAlpha).cgColor
+        wash?.layer?.backgroundColor = color.withAlphaComponent(tone.washAlpha).cgColor
+
+        guard let caption else { return }
+        caption.stringValue = look.style.label
+        caption.sizeToFit()
+        captionSize = caption.frame.size
+    }
+
+    /// The caption sits in the middle of the rectangle — right for a half-screen
+    /// zone, and still right for a caption laid over the window itself. Clamped
+    /// to the card's width so a preview over a narrow window truncates instead of
+    /// running out past the border.
+    private func centreCaption(in size: NSSize) {
+        guard let caption else { return }
+        let width = min(captionSize.width, max(0, size.width - Self.captionInset * 2))
+        caption.frame = NSRect(
+            x: ((size.width - width) / 2).rounded(),
+            y: ((size.height - captionSize.height) / 2).rounded(),
+            width: width, height: captionSize.height)
     }
 }

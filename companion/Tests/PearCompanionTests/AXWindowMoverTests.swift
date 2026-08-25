@@ -1,5 +1,6 @@
 import ApplicationServices
 import CoreGraphics
+import SwiftUI
 import XCTest
 @testable import PearCompanion
 
@@ -381,5 +382,151 @@ final class RestoreMemoryTests: XCTestCase {
         memory.rememberFirst(frameB, for: key(pid_t(RestoreMemory.capacity + 1)))
         XCTAssertEqual(memory.frame(for: key(2)), frameA, "eviction skipped past the freed slot")
         XCTAssertEqual(memory.count, RestoreMemory.capacity)
+    }
+}
+
+/// What the gesture preview says, and how alarming it looks.
+///
+/// The overlay itself is deliberately absent: showing it would put a panel on a
+/// display, and interactive overlay smoke is the owner's job (`AGENTS.md`).
+/// Everything that decides *what* it shows is a plain value, and that is what is
+/// pinned here — the words per action, the escalation from a snap to a quit, and
+/// the one-slot cache that keeps a held gesture from re-measuring text at
+/// scroll-event rate.
+@MainActor
+final class WindowPreviewTests: XCTestCase {
+    /// Every action the engine has, snaps included — the vocabulary
+    /// `WindowAction` closes over. The switches in `WindowPreviewTone` and
+    /// `AXWindowMover.previewRect` are exhaustive, so a new case fails the
+    /// *build* rather than slipping past this list; the count is asserted anyway,
+    /// so a case added and left out of the list is still noticed.
+    private let actions: [WindowAction] =
+        WindowZoneMath.zones.map(WindowAction.snap)
+        + [.center, .restore, .minimize, .close, .quitApp]
+
+    // MARK: - The words
+
+    func testEveryActionSaysSomething() {
+        // The whole point of the caption: before it existed, minimise, close and
+        // quit drew nothing whatsoever.
+        for action in actions {
+            XCTAssertFalse(
+                WindowPreviewStyle(action).label.isEmpty, "\(action) previews with no label")
+        }
+        XCTAssertEqual(actions.count, WindowZoneMath.zones.count + 5)
+    }
+
+    func testTheWordsComeFromTheRingsOwnTable() {
+        // One table, so a gesture and the ring cannot word the same action
+        // differently — and a new action gets its word in `RingLabel` or nowhere.
+        for action in actions {
+            XCTAssertEqual(
+                WindowPreviewStyle(action).label, RingLabel.text(for: action), "\(action)")
+        }
+    }
+
+    func testASnapIsCaptionedWithItsZoneName() {
+        XCTAssertEqual(WindowPreviewStyle(.snap(WindowZoneMath.leftHalf)).label, "Left Half")
+        XCTAssertEqual(WindowPreviewStyle(.snap(WindowZoneMath.topRightQuarter)).label, "Top Right")
+        XCTAssertEqual(WindowPreviewStyle(.minimize).label, "Minimize")
+        XCTAssertEqual(WindowPreviewStyle(.close).label, "Close")
+        XCTAssertEqual(WindowPreviewStyle(.quitApp).label, "Quit App")
+    }
+
+    // MARK: - Tone
+
+    func testADestructiveActionNeverLooksLikeASnap() {
+        for zone in WindowZoneMath.zones {
+            XCTAssertEqual(WindowPreviewTone(.snap(zone)), .benign, zone.id)
+        }
+        XCTAssertEqual(WindowPreviewTone(.center), .benign)
+        XCTAssertEqual(WindowPreviewTone(.restore), .benign)
+        // Minimising is one Dock click from undone, so it is not a warning.
+        XCTAssertEqual(WindowPreviewTone(.minimize), .benign)
+
+        XCTAssertNotEqual(WindowPreviewTone(.close), .benign)
+        XCTAssertNotEqual(WindowPreviewTone(.quitApp), .benign)
+    }
+
+    func testQuittingReadsAsMoreSeriousThanClosing() {
+        XCTAssertNotEqual(WindowPreviewTone(.quitApp), WindowPreviewTone(.close))
+
+        // Colour is the obvious half and cannot carry it alone: the accent is
+        // user-chosen and one of the presets is amber. Weight escalates with it.
+        let steps: [WindowPreviewTone] = [.benign, .caution, .danger]
+        for (quieter, louder) in zip(steps, steps.dropFirst()) {
+            XCTAssertLessThan(quieter.washAlpha, louder.washAlpha, "\(quieter) vs \(louder)")
+            XCTAssertLessThan(quieter.borderWidth, louder.borderWidth, "\(quieter) vs \(louder)")
+        }
+    }
+
+    func testAWarningKeepsItsColourWhateverTheAccentIs() {
+        let previous = ThemeStore.shared.custom
+        defer { ThemeStore.shared.custom = previous }
+
+        // The accent set to the caution amber itself: the worst case, where
+        // colour stops distinguishing a snap from a close and only the heavier
+        // wash and border do.
+        ThemeStore.shared.custom = Theme.warn
+        XCTAssertEqual(WindowPreviewTone.benign.tint, Theme.warn, "benign follows the accent")
+        XCTAssertEqual(WindowPreviewTone.caution.tint, Theme.warn)
+        XCTAssertEqual(WindowPreviewTone.danger.tint, Theme.danger)
+        XCTAssertNotEqual(WindowPreviewTone.danger.tint, WindowPreviewTone.caution.tint)
+    }
+
+    // MARK: - Redraw only on a change
+
+    func testAnUnchangedActionIsNotRedrawn() {
+        // `preview` is called once per scroll event. A gesture held on one zone
+        // used to be free and has to stay free: one accepted look for the whole
+        // run, however many frames it takes.
+        var cache = WindowPreviewLookCache()
+        let look = WindowPreviewLook(WindowPreviewStyle(.snap(WindowZoneMath.leftHalf)))
+        var redraws = 0
+        for _ in 0..<200 where cache.accept(look) { redraws += 1 }
+        XCTAssertEqual(redraws, 1)
+    }
+
+    func testADifferentActionIsRedrawnEvenWhenItLooksSimilar() {
+        var cache = WindowPreviewLookCache()
+        // Two benign snaps: same tone, same colours, different words. The caption
+        // is the only difference, and skipping it would leave the previous zone's
+        // name on screen.
+        let left = WindowPreviewLook(WindowPreviewStyle(.snap(WindowZoneMath.leftHalf)))
+        let right = WindowPreviewLook(WindowPreviewStyle(.snap(WindowZoneMath.rightHalf)))
+        XCTAssertTrue(cache.accept(left))
+        XCTAssertTrue(cache.accept(right))
+        XCTAssertTrue(cache.accept(WindowPreviewLook(WindowPreviewStyle(.close))))
+        XCTAssertFalse(cache.accept(WindowPreviewLook(WindowPreviewStyle(.close))))
+        // One slot, so coming back is a change like any other.
+        XCTAssertTrue(cache.accept(left))
+    }
+
+    func testANewAccentRedrawsMidGesture() {
+        let previous = ThemeStore.shared.custom
+        defer { ThemeStore.shared.custom = previous }
+
+        var cache = WindowPreviewLookCache()
+        let style = WindowPreviewStyle(.snap(WindowZoneMath.maximize))
+        ThemeStore.shared.custom = Color(red: 0.1, green: 0.2, blue: 0.3)
+        XCTAssertTrue(cache.accept(WindowPreviewLook(style)))
+        XCTAssertFalse(cache.accept(WindowPreviewLook(style)))
+
+        // Same action, new accent: the look has to differ, or a colour the user
+        // just picked would never reach a preview already on screen.
+        ThemeStore.shared.custom = Color(red: 0.9, green: 0.8, blue: 0.7)
+        XCTAssertTrue(cache.accept(WindowPreviewLook(style)))
+    }
+
+    func testAWarningIsNotRedrawnWhenTheAccentChanges() {
+        let previous = ThemeStore.shared.custom
+        defer { ThemeStore.shared.custom = previous }
+
+        var cache = WindowPreviewLookCache()
+        let style = WindowPreviewStyle(.quitApp)
+        ThemeStore.shared.custom = Color(red: 0.1, green: 0.2, blue: 0.3)
+        XCTAssertTrue(cache.accept(WindowPreviewLook(style)))
+        ThemeStore.shared.custom = Color(red: 0.9, green: 0.8, blue: 0.7)
+        XCTAssertFalse(cache.accept(WindowPreviewLook(style)), "a fixed tint should not redraw")
     }
 }

@@ -21,8 +21,10 @@ struct KeyCluOverlayView: View {
     static let columnGap: CGFloat = 32
     /// Rough per-column row budget used to choose the column count.
     private static let rowsPerColumn = 22
-    /// Eye-catch tint for destructive shortcuts (Quit …).
-    private static let destructiveTint = Color(red: 0.93, green: 0.36, blue: 0.36)
+    /// Eye-catch tint for destructive shortcuts (Quit …). The same red the
+    /// window-gesture preview wears for a quit, so "this one is irreversible"
+    /// looks the same wherever the app says it.
+    private static let destructiveTint = Theme.danger
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
