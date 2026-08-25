@@ -58,6 +58,7 @@ final class AppEnvironment {
         tools.offer(SwitchesTool())
         tools.offer(CleanModeTool())
         tools.offer(KeyCluTool())
+        tools.offer(HighlightCopyTool())
         tools.offer(PanelTool())
         // A licence entered mid-session must bring the tools back without a
         // relaunch: `isLocked` is read live, but only re-registration restores
