@@ -147,6 +147,9 @@ enum RingLabel {
         case .snap(let zone): zone.name
         case .center: "Center"
         case .restore: "Restore"
+        case .minimize: "Minimize"
+        case .close: "Close"
+        case .quitApp: "Quit App"
         case nil: ""
         }
     }

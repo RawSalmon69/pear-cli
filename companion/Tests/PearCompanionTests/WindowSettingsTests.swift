@@ -189,3 +189,53 @@ final class WindowSettingsTests: XCTestCase {
         XCTAssertEqual(binding?.action, .restore)
     }
 }
+
+/// The action vocabulary grew for trackpad gestures. Persistence is by token, so
+/// a token collision or a dropped case silently loses a user's binding.
+@MainActor
+final class WindowActionTokenTests: XCTestCase {
+    private let allActions: [WindowAction] = [
+        .snap(WindowZoneMath.leftHalf), .center, .restore, .minimize, .close, .quitApp,
+    ]
+
+    func testEveryActionRoundTripsThroughItsToken() {
+        for action in allActions {
+            let slot = RingSlot.hub
+            let store = UserDefaults(suiteName: "token-\(UUID().uuidString)")!
+            WindowSettings.setAction(action, for: slot, store)
+            XCTAssertEqual(WindowSettings.action(for: slot, store), action, "\(action)")
+        }
+    }
+
+    /// A reserved word that also named a zone would resolve to the wrong thing.
+    func testNoZoneIdShadowsAReservedToken() {
+        let reserved: Set<String> = ["center", "restore", "minimize", "close", "quit-app"]
+        for zone in WindowZoneMath.zones {
+            XCTAssertFalse(reserved.contains(zone.id), "zone id \(zone.id) shadows a reserved token")
+        }
+    }
+
+    /// Close and quit can lose unsaved work; nothing else can. Bindings gate the
+    /// destructive pair behind a larger gesture, so this flag has to stay right.
+    func testOnlyCloseAndQuitAreDestructive() {
+        XCTAssertTrue(WindowAction.close.isDestructive)
+        XCTAssertTrue(WindowAction.quitApp.isDestructive)
+        XCTAssertFalse(WindowAction.minimize.isDestructive)
+        XCTAssertFalse(WindowAction.restore.isDestructive)
+        XCTAssertFalse(WindowAction.center.isDestructive)
+        XCTAssertFalse(WindowAction.snap(WindowZoneMath.maximize).isDestructive)
+    }
+
+    /// Minimise, close and quit change a window's existence, not its frame, so
+    /// the geometry layer must decline them rather than inventing a rect.
+    func testExistenceActionsHaveNoFrame() {
+        let visible = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let current = CGRect(x: 10, y: 10, width: 400, height: 300)
+        for action in [WindowAction.minimize, .close, .quitApp] {
+            XCTAssertNil(
+                WindowZoneMath.frame(
+                    for: action, in: visible, current: current, lastFrame: current),
+                "\(action) must produce no frame")
+        }
+    }
+}

@@ -153,13 +153,16 @@ enum WindowSettings {
     // MARK: - Action tokens
 
     /// Persisted form of an action: the zone's id, or a reserved word for the
-    /// two actions that aren't a zone. No zone id is `center` or `restore`, so
-    /// the reserved words cannot shadow one.
+    /// actions that aren't a zone. No zone id collides with a reserved word, and
+    /// `reservedWords` is asserted against the catalogue in tests.
     private static func token(for action: WindowAction) -> String {
         switch action {
         case .snap(let zone): zone.id
         case .center: "center"
         case .restore: "restore"
+        case .minimize: "minimize"
+        case .close: "close"
+        case .quitApp: "quit-app"
         }
     }
 
@@ -167,6 +170,9 @@ enum WindowSettings {
         switch token {
         case "center": .center
         case "restore": .restore
+        case "minimize": .minimize
+        case "close": .close
+        case "quit-app": .quitApp
         default: WindowZoneMath.zone(id: token).map(WindowAction.snap)
         }
     }

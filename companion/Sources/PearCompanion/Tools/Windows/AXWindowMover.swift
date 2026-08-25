@@ -174,6 +174,9 @@ final class AXWindowMover: WindowMover {
         let window: AXUIElement
         let current: CGRect
         let visible: CGRect
+        /// Owning app, carried so `.quitApp` does not have to re-resolve the
+        /// frontmost application and risk picking a different one.
+        let pid: pid_t
     }
 
     /// Resolved once when a preview session begins and reused until it ends.
@@ -219,15 +222,48 @@ final class AXWindowMover: WindowMover {
 
     func commit(_ action: WindowAction) {
         endPreviewSession()
+        guard let target = resolveTarget() else { return }
 
-        guard let target = resolveTarget(), let goal = frame(for: action, on: target) else { return }
+        // The three that change a window's existence rather than its frame.
+        // They have no goal frame, so they are handled before the geometry path
+        // and never touch the restore memory: there is nothing to restore to.
+        switch action {
+        case .minimize:
+            set(true, kAXMinimizedAttribute, on: target.window)
+            return
+        case .close:
+            press(kAXCloseButtonAttribute, on: target.window)
+            return
+        case .quitApp:
+            // Terminate, not force-terminate: this asks the app to quit, so it
+            // still gets to prompt about unsaved work rather than losing it.
+            NSRunningApplication(processIdentifier: target.pid)?.terminate()
+            return
+        case .snap, .center, .restore:
+            break
+        }
 
+        guard let goal = frame(for: action, on: target) else { return }
         let key = WindowKey(target.window)
         switch action {
         case .snap, .center: restoreMemory.rememberFirst(target.current, for: key)
         case .restore: restoreMemory.forget(key)
+        case .minimize, .close, .quitApp: break // returned above
         }
         apply(goal, to: target.window)
+    }
+
+    /// Sets a boolean AX attribute, e.g. minimising a window.
+    private func set(_ value: Bool, _ attribute: String, on window: AXUIElement) {
+        _ = AXUIElementSetAttributeValue(window, attribute as CFString, value as CFBoolean)
+    }
+
+    /// Presses one of a window's title-bar buttons through AX. Nil for a window
+    /// that has no such button (a panel with no close box) — nothing happens,
+    /// which is the right answer.
+    private func press(_ buttonAttribute: String, on window: AXUIElement) {
+        guard let button = AXRead.element(window, buttonAttribute) else { return }
+        _ = AXUIElementPerformAction(button, kAXPressAction as CFString)
     }
 
     private func frame(for action: WindowAction, on target: Target) -> CGRect? {
@@ -256,7 +292,9 @@ final class AXWindowMover: WindowMover {
         guard isSettable(window), let current = frame(of: window),
             let visible = visibleFrame(holding: current)
         else { return nil }
-        return Target(window: window, current: current, visible: visible)
+        return Target(
+            window: window, current: current, visible: visible,
+            pid: app.processIdentifier)
     }
 
     /// Whether this is a window to move at all, rather than one to leave alone:

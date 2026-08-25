@@ -26,11 +26,28 @@ struct WindowZone: Equatable, Sendable, Identifiable {
 /// an existing case rather than a new case every layer must learn.
 enum WindowAction: Equatable, Sendable {
     case snap(WindowZone)
-    case center           // keep the current size, centre it
+    case center           // keep the current size, center it
     /// Back to the frame the window had before the *first* snap of a run, so
     /// left-half then right-half then restore lands where the user started
     /// rather than one step back. Undo, not a step backwards.
     case restore
+    /// Send the window to the Dock.
+    case minimize
+    /// Close the window. **Destructive** — a binding for this must require a
+    /// deliberate motion, never a twitch, and must never fire from momentum.
+    case close
+    /// Quit the window's application. **Destructive**, same rule as `close`,
+    /// and more so: it can take unsaved work in every other window of that app.
+    case quitApp
+
+    /// Whether a mis-fire costs the user something they cannot undo with a
+    /// second gesture. Bindings gate these behind a larger threshold.
+    var isDestructive: Bool {
+        switch self {
+        case .close, .quitApp: return true
+        case .snap, .center, .restore, .minimize: return false
+        }
+    }
 }
 
 /// A slot on the radial ring: eight around, one hub.

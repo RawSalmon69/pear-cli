@@ -80,6 +80,11 @@ enum WindowZoneMath {
             return centered(current, in: visibleFrame)
         case .restore:
             return lastFrame.map(integral)
+        case .minimize, .close, .quitApp:
+            // Not geometry: these change a window's existence, not its frame.
+            // Nil means "no frame to apply", which the mover reads as "handle
+            // this one yourself".
+            return nil
         }
     }
 
