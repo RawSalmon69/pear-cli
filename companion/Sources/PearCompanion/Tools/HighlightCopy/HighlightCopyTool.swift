@@ -95,6 +95,13 @@ private struct HighlightCopyPopover: View {
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            // Named because the silence is otherwise unreadable: a Firefox-based
+            // browser with its accessibility tree off looks exactly like a
+            // broken feature, and that is where the first real report came from.
+            Text("Apps that don't expose their selection to Accessibility are skipped — Firefox-based browsers ship that tree off (about:config → accessibility.force_disabled → 0).")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             if !trusted {
                 Divider()
