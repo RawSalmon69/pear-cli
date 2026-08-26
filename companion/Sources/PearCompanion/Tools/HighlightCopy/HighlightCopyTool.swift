@@ -95,10 +95,15 @@ private struct HighlightCopyPopover: View {
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            // Named because the silence is otherwise unreadable: a Firefox-based
-            // browser with its accessibility tree off looks exactly like a
-            // broken feature, and that is where the first real report came from.
-            Text("Apps that don't expose their selection to Accessibility are skipped — Firefox-based browsers ship that tree off (about:config → accessibility.force_disabled → 0).")
+            // Named because the silence is otherwise unreadable: the first real
+            // report was a Firefox-based browser, and it cost a full bisect to
+            // tell "nothing was copied" apart from "nothing was shown".
+            // Measured in Zen with text selected: the accessibility tree is
+            // there (AXWebArea → AXScrollArea → AXGroups → AXWindow all answer
+            // their role) but no node on that chain publishes AXSelectedText or
+            // AXSelectedTextMarkerRange. Nothing to read at any depth, so this
+            // is a statement of fact, not a setting the user can go fix.
+            Text("Firefox-based browsers, including Zen, don't publish text selections to Accessibility, so highlight to copy can't see them. Native apps and other browsers work.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
