@@ -21,6 +21,8 @@ enum SwitchCommands {
     static let defaultsBinary = "/usr/bin/defaults"
     static let killallBinary = "/usr/bin/killall"
     static let openBinary = "/usr/bin/open"
+    static let pmsetBinary = "/usr/bin/pmset"
+    static let osascriptBinary = "/usr/bin/osascript"
 
     // MARK: Hide Desktop (com.apple.finder CreateDesktop)
     // "On" = icons hidden = CreateDesktop false. Absent key = macOS default
@@ -92,6 +94,42 @@ enum SwitchCommands {
         return size > 1.5
     }
 
+    // MARK: Lid Closed (pmset disablesleep / SleepDisabled)
+    // The one switch that needs root: `disablesleep` is a system-wide power
+    // setting, not a per-process assertion, so IOKit cannot reach it and
+    // `caffeinate` does not cover a closed lid. Authorization goes through
+    // osascript's `with administrator privileges`, which shows the standard
+    // macOS auth dialog for that one command; the app installs no sudoers rule
+    // and holds no privilege between toggles.
+    //
+    // KNOWN CEILING: the setting outlives the app. Turning it on and quitting
+    // Pear leaves sleep disabled, because reverting at quit would mean another
+    // password prompt during teardown (and would not run at all on a kill).
+    // `refresh()` therefore reads the live value on every popover open, and the
+    // grid states the risk in words. Do not "fix" this with a sudoers rule.
+
+    static let lidClosedRead = ShellCommand(binary: pmsetBinary, arguments: ["-g", "live"])
+
+    static func lidClosed(_ on: Bool) -> [ShellCommand] {
+        [
+            ShellCommand(
+                binary: osascriptBinary,
+                arguments: [
+                    "-e",
+                    "do shell script \"\(pmsetBinary) -a disablesleep \(on ? 1 : 0)\""
+                        + " with administrator privileges",
+                ]),
+        ]
+    }
+
+    /// Reads the `SleepDisabled` row out of `pmset -g live`. Line shape is
+    /// ` SleepDisabled\t\t0`, under a `System-wide power settings:` header.
+    static func lidClosedIsOn(fromRead output: String?) -> Bool {
+        guard let line = output?.split(separator: "\n").first(where: { $0.contains("SleepDisabled") })
+        else { return false }
+        return line.split(whereSeparator: \.isWhitespace).last == "1"
+    }
+
     // MARK: Screen Saver (launch the engine; momentary)
     // Public path: hand the engine to LaunchServices via `open`. Version-
     // independent (LaunchServices resolves the moved bundle on macOS 14+).
@@ -112,6 +150,7 @@ enum SwitchCommands {
 final class SwitchesModel {
     // Live toggle states (momentary switches carry no state).
     var keepAwakeOn = false
+    var lidClosedOn = false
     var muteOn = false
     var hideDesktopOn = false
     var showHiddenOn = false
@@ -144,9 +183,11 @@ final class SwitchesModel {
         async let hideDesktop = read(SwitchCommands.hideDesktopRead)
         async let showHidden = read(SwitchCommands.showHiddenRead)
         async let bigCursor = read(SwitchCommands.bigCursorRead)
+        async let lidClosed = read(SwitchCommands.lidClosedRead)
         hideDesktopOn = SwitchCommands.hideDesktopIsOn(fromRead: await hideDesktop)
         showHiddenOn = SwitchCommands.showHiddenIsOn(fromRead: await showHidden)
         bigCursorOn = SwitchCommands.bigCursorIsOn(fromRead: await bigCursor)
+        lidClosedOn = SwitchCommands.lidClosedIsOn(fromRead: await lidClosed)
     }
 
     // MARK: - Toggles
@@ -154,6 +195,16 @@ final class SwitchesModel {
     func setKeepAwake(_ on: Bool) {
         if on { power.acquire() } else { power.release() }
         keepAwakeOn = power.isActive
+    }
+
+    /// Flips the system-wide sleep lock. Long timeout: the command sits on the
+    /// macOS auth dialog until the user answers it. Cancelling the dialog exits
+    /// nonzero, so the optimistic toggle reconciles against the live value.
+    func setLidClosed(_ on: Bool) async {
+        lidClosedOn = on
+        if await run(SwitchCommands.lidClosed(on), timeout: 180) == false {
+            lidClosedOn = SwitchCommands.lidClosedIsOn(fromRead: await read(SwitchCommands.lidClosedRead))
+        }
     }
 
     func setMute(_ on: Bool) {
@@ -206,11 +257,11 @@ final class SwitchesModel {
     /// Runs each command in order. Returns false if any command reported
     /// anything other than success, so a toggle can reconcile itself.
     @discardableResult
-    private func run(_ commands: [ShellCommand]) async -> Bool {
+    private func run(_ commands: [ShellCommand], timeout: TimeInterval = 8) async -> Bool {
         var ok = true
         for command in commands {
             if case .success = await commandRunner.run(
-                binary: command.binary, arguments: command.arguments, timeout: 8) {
+                binary: command.binary, arguments: command.arguments, timeout: timeout) {
                 continue
             }
             ok = false

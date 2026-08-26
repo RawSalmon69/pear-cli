@@ -12,6 +12,8 @@ struct SwitchesView: View {
     // Per-switch visibility, live via @AppStorage.
     @AppStorage(SwitchesSettings.showKey(.keepAwake))
     private var showKeepAwake = SystemSwitch.keepAwake.defaultVisible
+    @AppStorage(SwitchesSettings.showKey(.lidClosed))
+    private var showLidClosed = SystemSwitch.lidClosed.defaultVisible
     @AppStorage(SwitchesSettings.showKey(.mute))
     private var showMute = SystemSwitch.mute.defaultVisible
     @AppStorage(SwitchesSettings.showKey(.screenSaver))
@@ -75,6 +77,13 @@ struct SwitchesView: View {
                     SwitchTile(toggle: toggle, model: model)
                 }
             }
+            if isShown(.lidClosed) {
+                Text("Lid Closed asks for your admin password, then turns off sleep for the whole system so a closed lid keeps running. It stays off after Pear quits, and a closed Mac in a bag will run warm and drain the battery. Turn it back off when you are done.")
+                    .font(Theme.caption)
+                    .foregroundStyle(Theme.warn)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
+            }
             if isShown(.bigCursor) {
                 Text("Big Cursor writes an Accessibility setting that may need a nudge in System Settings › Accessibility › Pointer to take effect.")
                     .font(Theme.caption)
@@ -107,6 +116,7 @@ struct SwitchesView: View {
     private func isShown(_ toggle: SystemSwitch) -> Bool {
         switch toggle {
         case .keepAwake: showKeepAwake
+        case .lidClosed: showLidClosed
         case .mute: showMute
         case .screenSaver: showScreenSaver
         case .lockScreen: showLockScreen
@@ -119,6 +129,7 @@ struct SwitchesView: View {
     private func visibilityBinding(_ toggle: SystemSwitch) -> Binding<Bool> {
         switch toggle {
         case .keepAwake: $showKeepAwake
+        case .lidClosed: $showLidClosed
         case .mute: $showMute
         case .screenSaver: $showScreenSaver
         case .lockScreen: $showLockScreen
@@ -173,6 +184,7 @@ private struct SwitchTile: View {
     private var isOn: Bool {
         switch toggle {
         case .keepAwake: model.keepAwakeOn
+        case .lidClosed: model.lidClosedOn
         case .mute: model.muteOn
         case .hideDesktop: model.hideDesktopOn
         case .showHidden: model.showHiddenOn
@@ -187,6 +199,7 @@ private struct SwitchTile: View {
             set: { newValue in
                 switch toggle {
                 case .keepAwake: model.setKeepAwake(newValue)
+                case .lidClosed: Task { await model.setLidClosed(newValue) }
                 case .mute: model.setMute(newValue)
                 case .hideDesktop: Task { await model.setHideDesktop(newValue) }
                 case .showHidden: Task { await model.setShowHidden(newValue) }

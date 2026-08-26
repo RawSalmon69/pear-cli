@@ -103,7 +103,13 @@ snippet: an X11-style silent copy is indistinguishable from the feature having
 done nothing, which is exactly how it read in use).
 System: **Disk** (sunburst/treemap + safe Trash delete), **Monitor** (CPU/mem/net/
 battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
-(7 toggles — Screen Test was removed after it hard-locked a machine), **Clean Mode**
+(8 toggles — Screen Test was removed after it hard-locked a machine. **Lid Closed**
+is the only switch that needs root: it flips the system-wide `pmset disablesleep`,
+which IOKit assertions and `caffeinate` cannot reach, through one
+`osascript … with administrator privileges` call. No sudoers rule is installed and
+no privilege is held between toggles. It defaults hidden (Rule B) and the setting
+outlives the app, so the grid states that in a warning line and `refresh()` reads
+the live value on every open), **Clean Mode**
 (screen blanker, default OFF), **RunCat** menu-bar runner.
 
 ## Key decisions & invariants

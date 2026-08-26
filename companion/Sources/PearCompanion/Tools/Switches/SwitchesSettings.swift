@@ -11,6 +11,7 @@ import Foundation
 /// from momentary actions (fire once, no persistent state).
 enum SystemSwitch: String, CaseIterable, Identifiable {
     case keepAwake
+    case lidClosed
     case mute
     case screenSaver
     case lockScreen
@@ -29,7 +30,7 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
 
     var kind: Kind {
         switch self {
-        case .keepAwake, .mute, .hideDesktop, .showHidden, .bigCursor: .toggle
+        case .keepAwake, .lidClosed, .mute, .hideDesktop, .showHidden, .bigCursor: .toggle
         case .screenSaver, .lockScreen: .momentary
         }
     }
@@ -37,6 +38,7 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .keepAwake: "Keep Awake"
+        case .lidClosed: "Lid Closed"
         case .mute: "Mute"
         case .screenSaver: "Screen Saver"
         case .lockScreen: "Lock Screen"
@@ -50,6 +52,7 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .keepAwake: "cup.and.saucer.fill"
+        case .lidClosed: "laptopcomputer"
         case .mute: "speaker.slash.fill"
         case .screenSaver: "sparkles"
         case .lockScreen: "lock.fill"
@@ -68,13 +71,13 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Whether the tile appears in the grid on a fresh install. The three
-    /// switches that write a persistent, system-mutating `defaults` domain
-    /// (Hide Desktop, Show Hidden, Big Cursor) default hidden; the transient
-    /// ones default shown. Owner standing rule (Rule B).
+    /// Whether the tile appears in the grid on a fresh install. The switches
+    /// that write persistent, system-mutating state (Hide Desktop, Show Hidden,
+    /// Big Cursor via a `defaults` domain; Lid Closed via `pmset`) default
+    /// hidden; the transient ones default shown. Owner standing rule (Rule B).
     var defaultVisible: Bool {
         switch self {
-        case .hideDesktop, .showHidden, .bigCursor: false
+        case .lidClosed, .hideDesktop, .showHidden, .bigCursor: false
         default: true
         }
     }

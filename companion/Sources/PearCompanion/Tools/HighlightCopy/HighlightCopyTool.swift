@@ -88,10 +88,10 @@ private struct HighlightCopyPopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             SectionLabel(text: "Highlight to copy")
-            Text("Select text with the mouse and it lands on the clipboard, ready for ⌘V — no ⌘C.")
+            Text("Select text with the mouse and it goes on the clipboard. Paste it with ⌘V, no ⌘C first.")
                 .font(Theme.body)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Password fields are never copied, and auto-copies are marked as generated so they stay out of your clipboard history.")
+            Text("Password fields are never copied. These copies are marked as auto-generated, so they stay out of your clipboard history.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -103,7 +103,7 @@ private struct HighlightCopyPopover: View {
             // their role) but no node on that chain publishes AXSelectedText or
             // AXSelectedTextMarkerRange. Nothing to read at any depth, so this
             // is a statement of fact, not a setting the user can go fix.
-            Text("Firefox-based browsers, including Zen, don't publish text selections to Accessibility, so highlight to copy can't see them. Native apps and other browsers work.")
+            Text("Firefox-based browsers, including Zen, do not publish text selections to Accessibility, so this cannot see them. Native apps and other browsers work.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

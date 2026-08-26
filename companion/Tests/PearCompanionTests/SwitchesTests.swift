@@ -70,18 +70,21 @@ private func success(_ string: String) -> CommandResult { .success(Data(string.u
 final class SwitchesTests: XCTestCase {
     // MARK: - SystemSwitch metadata
 
-    func testSevenOwnerLockedSwitches() {
-        // Was eight: Screen Test was removed at the owner's order (hard-locked
-        // a machine with undismissable fullscreen overlays).
-        XCTAssertEqual(SystemSwitch.allCases.count, 7)
+    func testEightOwnerLockedSwitches() {
+        // Screen Test was removed at the owner's order (hard-locked a machine
+        // with undismissable fullscreen overlays); Lid Closed was added later.
+        XCTAssertEqual(SystemSwitch.allCases.count, 8)
         XCTAssertEqual(
             SystemSwitch.allCases.map(\.rawValue),
-            ["keepAwake", "mute", "screenSaver", "lockScreen", "hideDesktop", "showHidden", "bigCursor"]
+            ["keepAwake", "lidClosed", "mute", "screenSaver", "lockScreen",
+             "hideDesktop", "showHidden", "bigCursor"]
         )
     }
 
     func testSwitchKinds() {
-        let toggles: Set<SystemSwitch> = [.keepAwake, .mute, .hideDesktop, .showHidden, .bigCursor]
+        let toggles: Set<SystemSwitch> = [
+            .keepAwake, .lidClosed, .mute, .hideDesktop, .showHidden, .bigCursor,
+        ]
         for toggle in SystemSwitch.allCases {
             let expected: SystemSwitch.Kind = toggles.contains(toggle) ? .toggle : .momentary
             XCTAssertEqual(toggle.kind, expected, "\(toggle.rawValue)")
@@ -89,6 +92,7 @@ final class SwitchesTests: XCTestCase {
     }
 
     func testSystemMutatingSwitchesDefaultHidden() {
+        XCTAssertFalse(SystemSwitch.lidClosed.defaultVisible)
         XCTAssertFalse(SystemSwitch.hideDesktop.defaultVisible)
         XCTAssertFalse(SystemSwitch.showHidden.defaultVisible)
         XCTAssertFalse(SystemSwitch.bigCursor.defaultVisible)
@@ -208,6 +212,29 @@ final class SwitchesTests: XCTestCase {
         XCTAssertFalse(SwitchCommands.bigCursorIsOn(fromRead: "garbage"))
     }
 
+    func testLidClosedCommandGoesThroughAdminAuthorization() {
+        let on = SwitchCommands.lidClosed(true)
+        XCTAssertEqual(on.count, 1, "one authorized command, not a sudoers install")
+        XCTAssertEqual(on.first?.binary, "/usr/bin/osascript")
+        XCTAssertEqual(on.first?.arguments.first, "-e")
+        let script = on.first?.arguments.last ?? ""
+        XCTAssertEqual(
+            script,
+            "do shell script \"/usr/bin/pmset -a disablesleep 1\" with administrator privileges")
+        XCTAssertTrue(SwitchCommands.lidClosed(false).first?.arguments.last?.contains(
+            "disablesleep 0") == true)
+    }
+
+    func testLidClosedParse() {
+        let live = "System-wide power settings:\n SleepDisabled\t\t1\nCurrently in use:\n sleep 1\n"
+        XCTAssertTrue(SwitchCommands.lidClosedIsOn(fromRead: live))
+        XCTAssertFalse(SwitchCommands.lidClosedIsOn(
+            fromRead: "System-wide power settings:\n SleepDisabled\t\t0\n"))
+        // No SleepDisabled row at all (desktop Macs omit it) reads as off.
+        XCTAssertFalse(SwitchCommands.lidClosedIsOn(fromRead: "Currently in use:\n sleep 1\n"))
+        XCTAssertFalse(SwitchCommands.lidClosedIsOn(fromRead: nil))
+    }
+
     func testScreenSaverCommand() {
         XCTAssertEqual(SwitchCommands.screenSaver,
                        ShellCommand(binary: "/usr/bin/open", arguments: ["-a", "ScreenSaverEngine"]))
@@ -249,6 +276,28 @@ final class SwitchesTests: XCTestCase {
         XCTAssertTrue(model.bigCursorOn)
     }
 
+    func testSetLidClosedRunsExactCommand() async {
+        let runner = MockCommandRunner { _ in .success(Data()) }
+        let model = makeModel(runner: runner)
+        await model.setLidClosed(true)
+        XCTAssertEqual(runner.recorded, SwitchCommands.lidClosed(true))
+        XCTAssertTrue(model.lidClosedOn)
+    }
+
+    func testCancelledLidClosedAuthReconcilesBackToOff() async {
+        // Cancelling the macOS auth dialog exits nonzero, so the optimistic
+        // toggle must snap back to what the system really reports.
+        let runner = MockCommandRunner { command in
+            command == SwitchCommands.lidClosedRead
+                ? success("System-wide power settings:\n SleepDisabled\t\t0\n")
+                : .failed
+        }
+        let model = makeModel(runner: runner)
+        await model.setLidClosed(true)
+        XCTAssertFalse(model.lidClosedOn)
+        XCTAssertEqual(runner.recorded.last, SwitchCommands.lidClosedRead)
+    }
+
     func testFailedWriteReReadsAndSelfCorrects() async {
         // The write "fails"; the reconciling read reports the switch is really
         // off, so the optimistic on-toggle must snap back to reality.
@@ -278,6 +327,8 @@ final class SwitchesTests: XCTestCase {
             case SwitchCommands.hideDesktopRead: success("0")   // hidden
             case SwitchCommands.showHiddenRead: success("1")    // showing
             case SwitchCommands.bigCursorRead: success("3")     // large
+            case SwitchCommands.lidClosedRead:
+                success("System-wide power settings:\n SleepDisabled\t\t1\n")
             default: .failed
             }
         }
@@ -293,6 +344,7 @@ final class SwitchesTests: XCTestCase {
         XCTAssertTrue(model.hideDesktopOn)
         XCTAssertTrue(model.showHiddenOn)
         XCTAssertTrue(model.bigCursorOn)
+        XCTAssertTrue(model.lidClosedOn)
     }
 
     func testRefreshDefaultsOffWhenReadsFail() async {
@@ -304,6 +356,7 @@ final class SwitchesTests: XCTestCase {
         XCTAssertFalse(model.hideDesktopOn)
         XCTAssertFalse(model.showHiddenOn)
         XCTAssertFalse(model.bigCursorOn)
+        XCTAssertFalse(model.lidClosedOn)
     }
 
     // MARK: - Model effect seams
