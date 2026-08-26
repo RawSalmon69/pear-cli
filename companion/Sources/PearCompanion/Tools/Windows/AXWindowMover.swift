@@ -651,7 +651,7 @@ struct WindowPreviewLookCache {
 /// Plain AppKit with explicit frames, **not** SwiftUI: hosting an
 /// `NSHostingView` with a material inside a small borderless `NSPanel` can enter
 /// an unbreakable constraint-invalidation loop and crash on macOS 26 (see
-/// `AGENTS.md`; `ColorToast` is the same shape for the same reason). There is no
+/// `AGENTS.md`; `CopyToast` is the same shape for the same reason). There is no
 /// `layout()` override here either, which covers the other half of that rule —
 /// resizing a window from inside a layout pass is its own crash — the panel is
 /// resized only from `show`, driven by the ring.

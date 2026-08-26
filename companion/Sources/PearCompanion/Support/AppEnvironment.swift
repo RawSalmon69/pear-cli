@@ -54,7 +54,6 @@ final class AppEnvironment {
         tools.offer(ColorPickerTool())
         tools.offer(MonitorTool(window: monitorWindow))
         tools.offer(WindowsTool())
-        tools.offer(WindowGesturesTool())
         tools.offer(MenuBarTool())
         tools.offer(SwitchesTool())
         tools.offer(CleanModeTool())

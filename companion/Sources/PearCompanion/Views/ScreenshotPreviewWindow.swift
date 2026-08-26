@@ -87,13 +87,17 @@ private final class PreviewEntry {
 final class ScreenshotPreviewController {
     static let shared = ScreenshotPreviewController()
 
-    private init() { observeCaptures() }
+    private init() {
+        observeCaptures()
+        observeFocusedScreen()
+    }
 
     private var entries: [PreviewEntry] = [] // index 0 = newest, nearest edge
     private var scrollMonitor: Any?
-    /// Visible frame the stack lives in — the screen the capture came from,
-    /// resolved when the first card appears (see `show`). Fixed for the stack's
-    /// lifetime so cards never jump displays mid-stack.
+    /// Visible frame the stack lives in — the screen the capture came from when
+    /// the first card appears (see `show`), and thereafter the screen holding
+    /// the focused window (see `followFocusedScreen`), so the cards are on the
+    /// display the user is working on rather than the one they have left.
     private var anchorVisible: NSRect = .zero
 
     /// Thumbnail (208×130) plus the card's 3pt glass rim on each side.
@@ -395,6 +399,44 @@ final class ScreenshotPreviewController {
                 MainActor.assumeIsolated { self?.setStackVisible(visible) }
             }
         }
+    }
+
+    /// Moves a live stack to whichever display now has the focused window.
+    ///
+    /// `NSScreen.main` is the focused window's screen, not this app's — the
+    /// property the anchor comment calls out as drifting "to whatever app is
+    /// focused" is exactly the wanted behaviour here. Re-anchoring runs through
+    /// the same pure `anchor` decision as a capture, so an unplugged display or
+    /// a nil `main` keeps the stack where it is rather than flinging it
+    /// off-screen. Nothing happens with no cards up.
+    ///
+    /// App activation is the trigger: switching windows *within* one app across
+    /// displays does not move the stack until the next app switch.
+    /// ponytail: per-app AX focus observers would catch that too, at the cost of
+    /// an AX client per running app; add only if the in-app case actually bites.
+    private func observeFocusedScreen() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: nil
+        ) { _ in
+            // A beat after the activation: `main` follows the new key window,
+            // which AppKit has not always installed by the time the notification
+            // lands. The singleton is read inside the task rather than captured,
+            // so nothing non-Sendable crosses the hop.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(150))
+                ScreenshotPreviewController.shared.followFocusedScreen()
+            }
+        }
+    }
+
+    private func followFocusedScreen() {
+        guard !entries.isEmpty else { return }
+        let next = resolvedAnchor(capturedOn: NSScreen.main)
+        guard next != anchorVisible else { return }
+        anchorVisible = next
+        // The new display can be shorter than the old one.
+        evictOverflow()
+        layout(newItem: nil)
     }
 
     /// Drops every card backed by `url`. Called when a read of that file fails:

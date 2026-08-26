@@ -165,7 +165,7 @@ enum RingLabel {
 ///
 /// **Pure AppKit on purpose.** A small borderless panel hosting a SwiftUI view
 /// with a material can enter a constraint-invalidation runaway on macOS 26 (see
-/// `ColorToast`, which is the same shape and cites the crash). This is an
+/// `CopyToast`, which is the same shape and cites the crash). This is an
 /// `NSVisualEffectView` with an explicit frame and a `CAShapeLayer`/`CATextLayer`
 /// tree — no view graph, no `updateConstraints`, and no `layout()` override, so
 /// none of the re-entrant-layout family applies either.

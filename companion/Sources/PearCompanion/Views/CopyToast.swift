@@ -1,11 +1,13 @@
 import AppKit
 
-/// A small non-activating floating panel that confirms a color copy: the
-/// picked swatch plus the copied value, shown at the cursor and auto-fading
+/// A small non-activating floating panel that confirms a copy: the copied value
+/// (plus a color swatch when there is one), shown at the cursor and auto-fading
 /// after ~1.5 s. Both the tile "Pick color" button and the global hotkey copy
 /// through here, so the feedback is identical whether or not a popover was
 /// open — the eyedropper closes the popover the instant it opens, so an
-/// in-popover confirmation would never be seen.
+/// in-popover confirmation would never be seen. Highlight-to-Copy uses the same
+/// toast, swatchless: a clipboard write nobody asked for out loud is otherwise
+/// indistinguishable from nothing happening at all.
 ///
 /// Built in plain AppKit, NOT SwiftUI. An `NSHostingView` as a small panel's
 /// content view enters a constraint-update runaway on macOS 26 (its
@@ -15,16 +17,20 @@ import AppKit
 /// exact 92×47 toast panel, 2.5.x). A plain `NSView` tree has no view graph and
 /// no `updateConstraints` hosting behavior, so that loop cannot occur.
 @MainActor
-enum ColorToast {
+enum CopyToast {
     private static var panel: NSPanel?
     private static var dismissTask: Task<Void, Never>?
 
     static func show(color: PickedColor, text: String) {
+        show(
+            text: text,
+            swatch: NSColor(srgbRed: color.red, green: color.green, blue: color.blue, alpha: 1))
+    }
+
+    static func show(text: String, swatch: NSColor? = nil) {
         hide() // one toast at a time
 
-        let content = makeToast(
-            swatch: NSColor(srgbRed: color.red, green: color.green, blue: color.blue, alpha: 1),
-            text: text)
+        let content = makeToast(swatch: swatch, text: text)
         let size = content.frame.size
 
         let panel = NSPanel(
@@ -66,11 +72,15 @@ enum ColorToast {
         }
     }
 
-    /// The card: a frosted rounded background with a color swatch, a "Copied"
-    /// caption, and the copied value. Laid out with explicit frames (no Auto
-    /// Layout, no SwiftUI) so it cannot trigger the hosting-view constraint loop.
-    private static func makeToast(swatch: NSColor, text: String) -> NSView {
-        let hPad: CGFloat = 12, vPad: CGFloat = 8, gap: CGFloat = 8, chip: CGFloat = 22
+    /// The card: a frosted rounded background with an optional color swatch, a
+    /// "Copied" caption, and the copied value. Laid out with explicit frames (no
+    /// Auto Layout, no SwiftUI) so it cannot trigger the hosting-view constraint
+    /// loop. With no swatch the chip and its gap collapse to zero width, so the
+    /// text sits against the same left padding.
+    private static func makeToast(swatch: NSColor?, text: String) -> NSView {
+        let hPad: CGFloat = 12, vPad: CGFloat = 8
+        let gap: CGFloat = swatch == nil ? 0 : 8
+        let chip: CGFloat = swatch == nil ? 0 : 22
 
         let copied = NSTextField(labelWithString: "Copied")
         copied.font = .systemFont(ofSize: 10)
@@ -96,12 +106,16 @@ enum ColorToast {
         card.layer?.cornerRadius = 12
         card.layer?.masksToBounds = true
 
-        let chipView = NSView(frame: NSRect(x: hPad, y: (height - chip) / 2, width: chip, height: chip))
-        chipView.wantsLayer = true
-        chipView.layer?.backgroundColor = swatch.cgColor
-        chipView.layer?.cornerRadius = 5
-        chipView.layer?.borderWidth = 1
-        chipView.layer?.borderColor = NSColor.black.withAlphaComponent(0.12).cgColor
+        let chipView = swatch.map { colour -> NSView in
+            let view = NSView(
+                frame: NSRect(x: hPad, y: (height - chip) / 2, width: chip, height: chip))
+            view.wantsLayer = true
+            view.layer?.backgroundColor = colour.cgColor
+            view.layer?.cornerRadius = 5
+            view.layer?.borderWidth = 1
+            view.layer?.borderColor = NSColor.black.withAlphaComponent(0.12).cgColor
+            return view
+        }
 
         // AppKit's origin is bottom-left: the value sits lower, "Copied" above it.
         let textX = hPad + chip + gap
@@ -109,7 +123,7 @@ enum ColorToast {
         value.frame.origin = NSPoint(x: textX, y: blockBottom)
         copied.frame.origin = NSPoint(x: textX, y: blockBottom + value.frame.height + 1)
 
-        card.addSubview(chipView)
+        if let chipView { card.addSubview(chipView) }
         card.addSubview(value)
         card.addSubview(copied)
         return card

@@ -14,7 +14,7 @@ import SwiftUI
 /// The glass is this view; the marks live in one layer-backed subview on top of
 /// it. `NSVisualEffectView` owns its own backdrop layers, so a sublayer added
 /// straight to it can end up behind the blur — the same "effect view as
-/// container, layer-backed subviews on top" shape `ColorToast` uses.
+/// container, layer-backed subviews on top" shape `CopyToast` uses.
 @MainActor
 final class RingOverlayView: NSVisualEffectView {
     /// Wide enough for "Bottom Right" on one line inside a wedge, narrow enough

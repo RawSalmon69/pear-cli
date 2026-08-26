@@ -236,6 +236,25 @@ final class HighlightCopyTests: XCTestCase {
         XCTAssertEqual(removed, installed)
     }
 
+    // MARK: - The confirmation snippet
+
+    func testAShortSelectionShowsWhole() {
+        XCTAssertEqual(HighlightCopy.snippet(for: "hello"), "hello")
+    }
+
+    /// A multi-line selection still has to read as one line in a one-line toast.
+    func testAMultiLineSelectionCollapsesToOneLine() {
+        XCTAssertEqual(HighlightCopy.snippet(for: "  one\n\ttwo   three  "), "one two three")
+    }
+
+    /// The toast sizes itself to its text: without this the panel would be as
+    /// wide as the paragraph.
+    func testALongSelectionIsElided() {
+        let snippet = HighlightCopy.snippet(for: String(repeating: "ab", count: 200))
+        XCTAssertEqual(snippet.count, HighlightCopy.snippetLimit + 1)
+        XCTAssertTrue(snippet.hasSuffix("\u{2026}"))
+    }
+
     func testTheToolIsOffByDefault() {
         // It rewrites the clipboard whenever you drag across text; that ships
         // opt-in, like every other system-touching tool here.

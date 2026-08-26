@@ -98,6 +98,16 @@ final class ScreenshotAnchorTests: XCTestCase {
             laptop)
     }
 
+    /// Focus moving to the other display re-anchors a live stack through the
+    /// same decision, with the focused screen in the `captured` slot: the cards
+    /// follow the user rather than sitting on the display they left.
+    func testFocusMovingToAnotherScreenMovesTheStack() {
+        XCTAssertEqual(
+            ScreenshotPreviewController.anchor(
+                captured: laptop, current: external, available: both, fallback: laptop),
+            laptop)
+    }
+
     /// First card of a fresh stack with no capture screen — nothing to keep.
     func testNoCaptureAndNoCurrentAnchorFallsBack() {
         XCTAssertEqual(

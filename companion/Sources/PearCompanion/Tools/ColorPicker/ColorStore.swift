@@ -222,7 +222,7 @@ final class ColorStore {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(value, forType: .string)
                 SoundEffects.play(.copy)
-                ColorToast.show(color: picked, text: value)
+                CopyToast.show(color: picked, text: value)
             }
         }
     }
