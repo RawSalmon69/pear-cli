@@ -46,6 +46,41 @@ private final class MockPowerAssertion: PowerAssertioning {
     }
 }
 
+/// A device with whatever knobs a test says it has. `flag == nil` models the
+/// outputs that publish no mute element at all (AirPods, most HDMI); `honoursFlag
+/// == false` models the ones that accept the write, report it back, and keep
+/// playing anyway — which is what made the switch look dead.
+@MainActor
+private final class FakeOutputDevice: AudioOutputDevice {
+    var flag: Bool?
+    var volume: Float?
+    var writtenVolumes: [Float] = []
+
+    init(flag: Bool? = false, volume: Float? = 0.6) {
+        self.flag = flag
+        self.volume = volume
+    }
+
+    func readMuteFlag() -> Bool? { flag }
+
+    @discardableResult
+    func writeMuteFlag(_ muted: Bool) -> Bool {
+        guard flag != nil else { return false }
+        flag = muted
+        return true
+    }
+
+    func readVolume() -> Float? { volume }
+
+    @discardableResult
+    func writeVolume(_ newVolume: Float) -> Bool {
+        guard volume != nil else { return false }
+        volume = newVolume
+        writtenVolumes.append(newVolume)
+        return true
+    }
+}
+
 @MainActor
 private final class MockAudioMuting: AudioMuting {
     var muted = false
@@ -297,6 +332,84 @@ final class SwitchesTests: XCTestCase {
         // No SleepDisabled row at all (desktop Macs omit it) reads as off.
         XCTAssertFalse(SwitchCommands.lidClosedIsOn(fromRead: "Currently in use:\n sleep 1\n"))
         XCTAssertFalse(SwitchCommands.lidClosedIsOn(fromRead: nil))
+    }
+
+    // MARK: - Mute (flag plus level, because the flag alone is ignored)
+
+    func testMutingZeroesTheLevelAsWellAsSettingTheFlag() {
+        // The bug this covers: a device accepts the flag, reports it back, and
+        // keeps playing. Silence has to come from the level.
+        let device = FakeOutputDevice(flag: false, volume: 0.6)
+        let store = ephemeralDefaults()
+        let controller = CoreAudioMuteController(device: device, store: store)
+
+        controller.setMuted(true)
+        XCTAssertEqual(device.flag, true)
+        XCTAssertEqual(device.volume, 0)
+        XCTAssertEqual(store.object(forKey: Prefs.preMuteVolumeKey) as? Float, 0.6)
+    }
+
+    func testUnmutingPutsTheSavedLevelBack() {
+        let device = FakeOutputDevice(flag: false, volume: 0.6)
+        let store = ephemeralDefaults()
+        let controller = CoreAudioMuteController(device: device, store: store)
+
+        controller.setMuted(true)
+        controller.setMuted(false)
+        XCTAssertEqual(device.flag, false)
+        XCTAssertEqual(device.volume, 0.6)
+        XCTAssertNil(
+            store.object(forKey: Prefs.preMuteVolumeKey),
+            "a stale level must not survive to raise the volume on some later unmute")
+    }
+
+    func testUnmutingLeavesAVolumeTheUserAlreadyRaisedAlone() {
+        let device = FakeOutputDevice(flag: false, volume: 0.6)
+        let store = ephemeralDefaults()
+        let controller = CoreAudioMuteController(device: device, store: store)
+
+        controller.setMuted(true)
+        device.volume = 0.2      // the user reached for the media key meanwhile
+        controller.setMuted(false)
+        XCTAssertEqual(device.volume, 0.2, "restoring over the user's own level is not our call")
+    }
+
+    func testDeviceWithNoMuteElementIsStillMutedByLevel() {
+        // AirPods, most HDMI: no mute element at all, so the old code silently
+        // did nothing and reported not-muted.
+        let device = FakeOutputDevice(flag: nil, volume: 0.8)
+        let controller = CoreAudioMuteController(device: device, store: ephemeralDefaults())
+
+        XCTAssertFalse(controller.isMuted())
+        controller.setMuted(true)
+        XCTAssertEqual(device.volume, 0)
+        XCTAssertTrue(controller.isMuted(), "with no flag to read, silence is the state")
+
+        controller.setMuted(false)
+        XCTAssertEqual(device.volume, 0.8)
+        XCTAssertFalse(controller.isMuted())
+    }
+
+    func testMutingTwiceDoesNotSaveZeroAsTheLevelToRestore() {
+        let device = FakeOutputDevice(flag: false, volume: 0.6)
+        let store = ephemeralDefaults()
+        let controller = CoreAudioMuteController(device: device, store: store)
+
+        controller.setMuted(true)
+        controller.setMuted(true)   // second flip must not overwrite 0.6 with 0
+        controller.setMuted(false)
+        XCTAssertEqual(device.volume, 0.6)
+    }
+
+    func testFlagIsPreferredOverLevelWhenReadingState() {
+        // A device sitting at zero volume but unmuted reads as unmuted, so the
+        // tile does not claim a mute the user did not ask for.
+        let device = FakeOutputDevice(flag: false, volume: 0)
+        let controller = CoreAudioMuteController(device: device, store: ephemeralDefaults())
+        XCTAssertFalse(controller.isMuted())
+
+        device.flag = true
+        XCTAssertTrue(controller.isMuted())
     }
 
     func testScreenSaverCommand() {
@@ -575,6 +688,15 @@ final class SwitchesTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    /// A throwaway defaults domain, named per test and wiped on creation, so a
+    /// saved pre-mute level cannot leak from one test into another.
+    private func ephemeralDefaults(_ name: String = #function) -> UserDefaults {
+        let suite = "switches-mute-\(name)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }
 
     private func makeModel(
         runner: CommandRunner = MockCommandRunner(),

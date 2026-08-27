@@ -288,6 +288,18 @@ maintainer before tagging.
   (fp16-level, ~1s load, ~1.6s inference). Same pattern the old RMBG model had —
   don't "optimize" it back to `.all`/ANE. Conversion recipe (torch.export +
   run_decompositions + a bitwise_not→logical_not op override) is in root memory.
+- **`kAudioDevicePropertyMute` is advisory on plenty of outputs.** The write
+  returns `noErr`, a read back reports the new value, and the device keeps
+  playing; other outputs (AirPods, most HDMI/DisplayPort, some USB) publish no
+  mute element at all, in which case the old per-channel fallback found nothing
+  either and the switch silently did nothing while reporting "not muted". The
+  Mute switch therefore saves the current level, sets the flag, **and takes
+  `kAudioDevicePropertyVolumeScalar` to zero**, which no device argues with.
+  Unmuting restores the saved level only if the output is still silent, so a
+  level the user raised by hand meanwhile is left alone. Do not "simplify" this
+  back to the flag alone. Measured on the owner's box: built-in speakers publish
+  the flag as settable and round-trip it correctly, which is why this reproduces
+  on some outputs and not others.
 - **Verify the shipped zip by directly launching it** (not just spctl/stapler) —
   toolchain/launch bugs pass every other check.
 - **Footprint metric**: `top -l1 -pid N -stats mem` (Activity Monitor number),
