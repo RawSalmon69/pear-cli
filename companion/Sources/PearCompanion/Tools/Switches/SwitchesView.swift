@@ -78,11 +78,7 @@ struct SwitchesView: View {
                 }
             }
             if isShown(.lidClosed) {
-                Text("Lid Closed asks for your admin password, then turns off sleep for the whole system so a closed lid keeps running. It stays off after Pear quits, and a closed Mac in a bag will run warm and drain the battery. Turn it back off when you are done.")
-                    .font(Theme.caption)
-                    .foregroundStyle(Theme.warn)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 2)
+                LidClosedPanel(model: model)
             }
             if isShown(.bigCursor) {
                 Text("Big Cursor writes an Accessibility setting that may need a nudge in System Settings › Accessibility › Pointer to take effect.")
@@ -137,6 +133,72 @@ struct SwitchesView: View {
         case .showHidden: $showShowHidden
         case .bigCursor: $showBigCursor
         }
+    }
+}
+
+/// Everything about Lid Closed that will not fit in a tile: the standing
+/// warning, the auto-sleep deadline, and the one-time grant. Rendered only when
+/// the tile is visible, which it is not on a fresh install.
+private struct LidClosedPanel: View {
+    @Bindable var model: SwitchesModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(warning)
+                .font(Theme.caption)
+                .foregroundStyle(Theme.warn)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let end = model.lidSessionEnd {
+                HStack(spacing: 8) {
+                    Text("Sleeps at \(end.formatted(date: .omitted, time: .shortened))")
+                        .font(Theme.caption)
+                    Spacer()
+                    Button("Cancel timer") { model.cancelLidSession() }
+                        .font(Theme.caption)
+                        .buttonStyle(.link)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    Text("Sleep after")
+                        .font(Theme.caption)
+                        .foregroundStyle(.secondary)
+                    Button("5 hours") { Task { await model.startLidSession(hours: 5) } }
+                        .controlSize(.mini)
+                    Button("12 hours") { Task { await model.startLidSession(hours: 12) } }
+                        .controlSize(.mini)
+                    Spacer()
+                }
+            }
+
+            if model.lidRuleInstalled {
+                Button("Remove password-free permission") {
+                    Task { await model.removeLidPermission() }
+                }
+                .font(Theme.caption)
+                .buttonStyle(.link)
+            } else {
+                Button("Grant permission once, skip the prompts") {
+                    Task { await model.installLidPermission() }
+                }
+                .font(Theme.caption)
+                .buttonStyle(.link)
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    /// Says less once the two escape hatches are in place, because with a
+    /// deadline set and the grant installed the machine really does put itself
+    /// back. What survives in every case is the crash.
+    private var warning: String {
+        if model.lidRuleInstalled {
+            return "Lid Closed turns off sleep for the whole system, so a closed lid keeps running warm"
+                + " and draining. Quitting Pear and the timer above both restore it; a crash cannot."
+        }
+        return "Lid Closed asks for your admin password and turns off sleep for the whole system, so a"
+            + " closed lid keeps running warm and draining. It stays off after Pear quits unless you"
+            + " grant permission below. Turn it back off when you are done."
     }
 }
 

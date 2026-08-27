@@ -105,11 +105,17 @@ System: **Disk** (sunburst/treemap + safe Trash delete), **Monitor** (CPU/mem/ne
 battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
 (8 toggles — Screen Test was removed after it hard-locked a machine. **Lid Closed**
 is the only switch that needs root: it flips the system-wide `pmset disablesleep`,
-which IOKit assertions and `caffeinate` cannot reach, through one
-`osascript … with administrator privileges` call. No sudoers rule is installed and
-no privilege is held between toggles. It defaults hidden (Rule B) and the setting
-outlives the app, so the grid states that in a warning line and `refresh()` reads
-the live value on every open), **Clean Mode**
+which IOKit assertions and `caffeinate` cannot reach, so a closed lid keeps
+running. Every flip tries `sudo -n` first and falls back to one
+`osascript … with administrator privileges` call, so the switch works with no
+grant at all. An **optional one-time grant** installs a NOPASSWD sudoers rule
+scoped to those two exact command lines, which is what buys silent flips, the
+5h/12h auto-sleep timers, and the restore-on-quit — install it by validating a
+dot-prefixed staged file with `visudo -cf` **before** renaming it into place, never
+the other way round: a malformed file in `/etc/sudoers.d` makes sudo refuse to
+parse its config at all. The switch defaults hidden (Rule B), the panel states the
+risk, and `refresh()` reads the live value on every open. Prior art:
+[awake](https://github.com/pistachionet/awake) (MIT), mechanism only), **Clean Mode**
 (screen blanker, default OFF), **RunCat** menu-bar runner.
 
 ## Key decisions & invariants

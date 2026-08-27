@@ -66,6 +66,16 @@ private final class MockScreenLocking: ScreenLocking {
 
 private func success(_ string: String) -> CommandResult { .success(Data(string.utf8)) }
 
+/// Stands in for the sudoers rule's presence on disk, so a test can prove the
+/// model re-reads it after the install/remove command rather than assuming.
+private final class RuleFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var present: Bool
+    init(present: Bool) { self.present = present }
+    var isPresent: Bool { lock.withLock { present } }
+    func set(_ value: Bool) { lock.withLock { present = value } }
+}
+
 @MainActor
 final class SwitchesTests: XCTestCase {
     // MARK: - SystemSwitch metadata
@@ -212,17 +222,71 @@ final class SwitchesTests: XCTestCase {
         XCTAssertFalse(SwitchCommands.bigCursorIsOn(fromRead: "garbage"))
     }
 
-    func testLidClosedCommandGoesThroughAdminAuthorization() {
-        let on = SwitchCommands.lidClosed(true)
-        XCTAssertEqual(on.count, 1, "one authorized command, not a sudoers install")
-        XCTAssertEqual(on.first?.binary, "/usr/bin/osascript")
-        XCTAssertEqual(on.first?.arguments.first, "-e")
-        let script = on.first?.arguments.last ?? ""
+    func testLidClosedPromptedGoesThroughAdminAuthorization() {
+        let on = SwitchCommands.lidClosedPrompted(true)
+        XCTAssertEqual(on.binary, "/usr/bin/osascript")
+        XCTAssertEqual(on.arguments.first, "-e")
         XCTAssertEqual(
-            script,
+            on.arguments.last,
             "do shell script \"/usr/bin/pmset -a disablesleep 1\" with administrator privileges")
-        XCTAssertTrue(SwitchCommands.lidClosed(false).first?.arguments.last?.contains(
-            "disablesleep 0") == true)
+        XCTAssertTrue(
+            SwitchCommands.lidClosedPrompted(false).arguments.last?.contains("disablesleep 0") == true)
+    }
+
+    func testLidClosedSilentNeverPrompts() {
+        XCTAssertEqual(
+            SwitchCommands.lidClosedSilent(true),
+            ShellCommand(binary: "/usr/bin/sudo",
+                         arguments: ["-n", "/usr/bin/pmset", "-a", "disablesleep", "1"]))
+        XCTAssertEqual(
+            SwitchCommands.lidClosedSilent(false).arguments.first, "-n",
+            "-n is what keeps the fallback path from racing a hidden password prompt")
+    }
+
+    func testLidClosedRuleGrantsExactlyTwoCommandLines() {
+        let rule = SwitchCommands.lidClosedRule(user: "casey")
+        XCTAssertEqual(
+            rule,
+            "casey ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 1,"
+                + " /usr/bin/pmset -a disablesleep 0\n")
+        XCTAssertFalse(rule.contains("ALL=(ALL)"), "the grant must not widen past those two lines")
+        XCTAssertFalse(rule.contains("*"), "no wildcard: sudoers matches arguments exactly")
+    }
+
+    func testInstallLidRuleValidatesBeforeItInstalls() {
+        let script = SwitchCommands.installLidRule(stagedAt: "/tmp/pear.rule").arguments.last ?? ""
+        guard let validate = script.range(of: "visudo -cf"),
+              let install = script.range(of: "mv '/etc/sudoers.d/.pear-lidclosed.staged'")
+        else { return XCTFail("expected a validate step and a rename step, got: \(script)") }
+        XCTAssertTrue(
+            validate.lowerBound < install.lowerBound,
+            "visudo must gate the rename: a malformed file in /etc/sudoers.d breaks sudo entirely")
+        XCTAssertTrue(
+            script.contains("&& mv"), "the rename must be conditional on every step before it")
+        XCTAssertTrue(
+            script.contains("rm -f '/etc/sudoers.d/.pear-lidclosed.staged'; exit 1"),
+            "a failed install must clean up and report failure")
+    }
+
+    func testStagedRuleNameIsInvisibleToSudo() {
+        // sudo's includedir skips any filename containing a dot, which is what
+        // keeps the half-installed file from being read while it is staged.
+        let staged = (SwitchCommands.sudoersStagePath as NSString).lastPathComponent
+        XCTAssertTrue(staged.contains("."))
+        XCTAssertFalse((SwitchCommands.sudoersRulePath as NSString).lastPathComponent.contains("."))
+    }
+
+    func testRemoveLidRuleTargetsOnlyOurFile() {
+        XCTAssertEqual(
+            SwitchCommands.removeLidRule.arguments.last,
+            "do shell script \"rm -f '/etc/sudoers.d/pear-lidclosed'\" with administrator privileges")
+    }
+
+    func testShellSafetyRejectsQuotedPaths() {
+        XCTAssertTrue(SwitchCommands.isShellSafe("/var/folders/ab/T/pear-lidclosed.rule"))
+        XCTAssertFalse(SwitchCommands.isShellSafe("/tmp/pear'; rm -rf /; echo '.rule"))
+        XCTAssertFalse(SwitchCommands.isShellSafe("/tmp/pear\".rule"))
+        XCTAssertFalse(SwitchCommands.isShellSafe("/tmp/pear\\.rule"))
     }
 
     func testLidClosedParse() {
@@ -276,11 +340,27 @@ final class SwitchesTests: XCTestCase {
         XCTAssertTrue(model.bigCursorOn)
     }
 
-    func testSetLidClosedRunsExactCommand() async {
+    func testGrantedLidFlipNeverReachesTheAuthDialog() async {
+        // With the rule installed the silent path succeeds, and the prompted
+        // command must not run at all.
         let runner = MockCommandRunner { _ in .success(Data()) }
+        let model = makeModel(runner: runner, ruleExists: { true })
+        await model.setLidClosed(true)
+        XCTAssertEqual(runner.recorded, [SwitchCommands.lidClosedSilent(true)])
+        XCTAssertTrue(model.lidClosedOn)
+    }
+
+    func testUngrantedLidFlipFallsBackToTheAuthDialog() async {
+        // No rule: `sudo -n` fails instantly, and the prompted command carries
+        // the flip. Order matters — silent first, prompt second.
+        let runner = MockCommandRunner { command in
+            command == SwitchCommands.lidClosedSilent(true) ? .failed : .success(Data())
+        }
         let model = makeModel(runner: runner)
         await model.setLidClosed(true)
-        XCTAssertEqual(runner.recorded, SwitchCommands.lidClosed(true))
+        XCTAssertEqual(
+            runner.recorded,
+            [SwitchCommands.lidClosedSilent(true), SwitchCommands.lidClosedPrompted(true)])
         XCTAssertTrue(model.lidClosedOn)
     }
 
@@ -296,6 +376,93 @@ final class SwitchesTests: XCTestCase {
         await model.setLidClosed(true)
         XCTAssertFalse(model.lidClosedOn)
         XCTAssertEqual(runner.recorded.last, SwitchCommands.lidClosedRead)
+    }
+
+    func testTimedSessionSetsADeadlineAndTurningOffClearsIt() async {
+        let runner = MockCommandRunner { _ in .success(Data()) }
+        let model = makeModel(runner: runner)
+        await model.startLidSession(hours: 5)
+        XCTAssertTrue(model.lidClosedOn)
+        guard let end = model.lidSessionEnd else { return XCTFail("expected a deadline") }
+        XCTAssertEqual(end.timeIntervalSinceNow, 5 * 3600, accuracy: 5)
+
+        await model.setLidClosed(false)
+        XCTAssertNil(model.lidSessionEnd, "turning the switch off must drop the pending timer")
+    }
+
+    func testCancellingTheTimerLeavesTheSwitchOn() async {
+        let runner = MockCommandRunner { _ in .success(Data()) }
+        let model = makeModel(runner: runner)
+        await model.startLidSession(hours: 12)
+        model.cancelLidSession()
+        XCTAssertNil(model.lidSessionEnd)
+        XCTAssertTrue(model.lidClosedOn, "cancelling a deadline is not the same as switching off")
+    }
+
+    func testSessionExpiryRestoresSleepThenSleeps() async {
+        let runner = MockCommandRunner { _ in .success(Data()) }
+        let model = makeModel(runner: runner)
+        await model.startLidSession(hours: 5)
+        await model.endLidSession()
+        XCTAssertFalse(model.lidClosedOn)
+        XCTAssertNil(model.lidSessionEnd)
+        XCTAssertEqual(runner.recorded.last, SwitchCommands.sleepNow)
+        guard let restore = runner.recorded.firstIndex(of: SwitchCommands.lidClosedSilent(false)),
+              let sleep = runner.recorded.firstIndex(of: SwitchCommands.sleepNow)
+        else { return XCTFail("expected a restore and a sleep, got \(runner.recorded)") }
+        XCTAssertTrue(restore < sleep, "sleeping before restoring would just be undone on wake")
+    }
+
+    func testExpiryDoesNotSleepWhenSleepCouldNotBeRestored() async {
+        // Both flip paths fail and the re-read says the lock is still on. Putting
+        // the machine to sleep now would strand it: it cannot wake on a lid open
+        // it already had, and the lock is still in place.
+        let runner = MockCommandRunner { command in
+            command == SwitchCommands.lidClosedRead
+                ? success("System-wide power settings:\n SleepDisabled\t\t1\n")
+                : .failed
+        }
+        let model = makeModel(runner: runner)
+        await model.endLidSession()
+        XCTAssertTrue(model.lidClosedOn)
+        XCTAssertFalse(runner.recorded.contains(SwitchCommands.sleepNow))
+    }
+
+    func testGrantInstallRunsTheValidatedInstall() async {
+        // The flag flips only because the install command ran, so the model has
+        // to re-read it afterwards to notice.
+        let rule = RuleFlag(present: false)
+        let runner = MockCommandRunner { _ in
+            rule.set(true)
+            return .success(Data())
+        }
+        let model = makeModel(runner: runner, ruleExists: { rule.isPresent })
+        XCTAssertFalse(model.lidRuleInstalled)
+        await model.installLidPermission()
+        XCTAssertTrue(model.lidRuleInstalled)
+        guard let script = runner.recorded.last?.arguments.last else {
+            return XCTFail("expected an install command")
+        }
+        XCTAssertTrue(script.contains("visudo -cf"))
+        XCTAssertTrue(script.contains("with administrator privileges"))
+    }
+
+    func testRemovingTheGrantTurnsTheSwitchOffFirst() async {
+        let rule = RuleFlag(present: true)
+        let runner = MockCommandRunner { command in
+            if command == SwitchCommands.removeLidRule { rule.set(false) }
+            return .success(Data())
+        }
+        let model = makeModel(runner: runner, ruleExists: { rule.isPresent })
+        await model.setLidClosed(true)
+        await model.removeLidPermission()
+        XCTAssertFalse(model.lidRuleInstalled)
+        guard let off = runner.recorded.firstIndex(of: SwitchCommands.lidClosedSilent(false)),
+              let remove = runner.recorded.firstIndex(of: SwitchCommands.removeLidRule)
+        else { return XCTFail("expected an off-flip and a rule removal, got \(runner.recorded)") }
+        XCTAssertTrue(
+            off < remove,
+            "revoking the grant before the flip would leave a machine that never sleeps")
     }
 
     func testFailedWriteReReadsAndSelfCorrects() async {
@@ -413,8 +580,11 @@ final class SwitchesTests: XCTestCase {
         runner: CommandRunner = MockCommandRunner(),
         power: PowerAssertioning = MockPowerAssertion(),
         audio: AudioMuting = MockAudioMuting(),
-        locker: ScreenLocking = MockScreenLocking()
+        locker: ScreenLocking = MockScreenLocking(),
+        ruleExists: @escaping @Sendable () -> Bool = { false }
     ) -> SwitchesModel {
-        SwitchesModel(commandRunner: runner, power: power, audio: audio, locker: locker)
+        SwitchesModel(
+            commandRunner: runner, power: power, audio: audio, locker: locker,
+            ruleExists: ruleExists)
     }
 }
