@@ -10,9 +10,6 @@ enum Prefs {
     static let previewMaxStackKey = "screenshotPreviewMaxStack"
     static let panelClosesOnFocusLossKey = "panelClosesOnFocusLoss"
     static let hdBackgroundRemovalKey = "hdBackgroundRemoval"
-    /// Output level to put back when the Mute switch is turned off. Written only
-    /// while that switch is on, so a stale value cannot raise anyone's volume.
-    static let preMuteVolumeKey = "switchesPreMuteVolume"
 
     /// Default on for both — opt-out, not opt-in.
     static var soundsEnabled: Bool {

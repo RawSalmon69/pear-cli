@@ -212,7 +212,6 @@ final class SwitchesModel {
     // Live toggle states (momentary switches carry no state).
     var keepAwakeOn = false
     var lidClosedOn = false
-    var muteOn = false
     var hideDesktopOn = false
     var showHiddenOn = false
     var bigCursorOn = false
@@ -227,9 +226,18 @@ final class SwitchesModel {
     /// timestamp from their own terminal, which would make the UI lie.
     var lidRuleInstalled = false
 
+    /// Whether *this* app turned the sleep lock on. Pear never enables it by
+    /// itself: `refresh()` reports what the system says, and a lock somebody
+    /// else set (another app, a terminal, a previous run that crashed) is shown
+    /// as on but stays disowned, so quitting Pear leaves it exactly as found.
+    @ObservationIgnored private(set) var lidClosedIsOurs = false
+
+    /// Quitting restores the lock only when Pear both set it and can clear it
+    /// without a dialog nobody would be there to answer.
+    var shouldRestoreLidOnQuit: Bool { lidClosedOn && lidClosedIsOurs && lidRuleInstalled }
+
     @ObservationIgnored private let commandRunner: CommandRunner
     @ObservationIgnored private let power: PowerAssertioning
-    @ObservationIgnored private let audio: AudioMuting
     @ObservationIgnored private let locker: ScreenLocking
     @ObservationIgnored private let ruleExists: @Sendable () -> Bool
     @ObservationIgnored private var lidSessionTask: Task<Void, Never>?
@@ -240,7 +248,6 @@ final class SwitchesModel {
     init(
         commandRunner: CommandRunner = ProcessRunner(),
         power: PowerAssertioning = IOKitPowerAssertion(),
-        audio: AudioMuting = CoreAudioMuteController(),
         locker: ScreenLocking = CGEventScreenLocker(),
         ruleExists: @escaping @Sendable () -> Bool = {
             FileManager.default.fileExists(atPath: SwitchCommands.sudoersRulePath)
@@ -248,7 +255,6 @@ final class SwitchesModel {
     ) {
         self.commandRunner = commandRunner
         self.power = power
-        self.audio = audio
         self.locker = locker
         self.ruleExists = ruleExists
         lidRuleInstalled = ruleExists()
@@ -271,7 +277,6 @@ final class SwitchesModel {
 
     func refresh() async {
         keepAwakeOn = power.isActive
-        muteOn = audio.isMuted()
         // The three `defaults read`s are independent, so spawn them together
         // rather than paying three sequential process round-trips on open.
         async let hideDesktop = read(SwitchCommands.hideDesktopRead)
@@ -284,7 +289,10 @@ final class SwitchesModel {
         lidClosedOn = SwitchCommands.lidClosedIsOn(fromRead: await lidClosed)
         lidRuleInstalled = ruleExists()
         // A session the user cannot see the effect of is just a stale label.
-        if !lidClosedOn { clearLidSession() }
+        if !lidClosedOn {
+            clearLidSession()
+            lidClosedIsOurs = false
+        }
     }
 
     // MARK: - Toggles
@@ -298,13 +306,26 @@ final class SwitchesModel {
     /// auth dialog when it is not. The prompted path gets a long timeout because
     /// the command sits on that dialog until the user answers it; cancelling it
     /// exits nonzero, so the optimistic toggle reconciles against the live value.
+    ///
+    /// **This is the only place the lock is ever turned on**, and it is reached
+    /// only from a tile tap or one of the session buttons. Nothing in `init`,
+    /// `refresh()`, `start()` or `teardown()` may call it with `true` — see
+    /// `lidClosedIsOurs`.
     func setLidClosed(_ on: Bool) async {
         if !on { clearLidSession() }
         lidClosedOn = on
-        if await run([SwitchCommands.lidClosedSilent(on)]) { return }
-        if await run([SwitchCommands.lidClosedPrompted(on)], timeout: 180) == false {
-            lidClosedOn = SwitchCommands.lidClosedIsOn(fromRead: await read(SwitchCommands.lidClosedRead))
+        if await run([SwitchCommands.lidClosedSilent(on)]) {
+            lidClosedIsOurs = on
+            return
         }
+        if await run([SwitchCommands.lidClosedPrompted(on)], timeout: 180) {
+            lidClosedIsOurs = on
+            return
+        }
+        lidClosedOn = SwitchCommands.lidClosedIsOn(fromRead: await read(SwitchCommands.lidClosedRead))
+        // A failed flip owns nothing: if the lock is still on, it is on because
+        // something else put it there.
+        lidClosedIsOurs = false
     }
 
     // MARK: - Lid Closed timed sessions
@@ -372,18 +393,13 @@ final class SwitchesModel {
     /// would be answered, so it is synchronous and silent: only the granted path
     /// can work here, and without the grant the grid's warning is what stands.
     private func restoreLidOnQuit() {
-        guard lidClosedOn, lidRuleInstalled, !SwitchTestGuard.isRunningTests else { return }
+        guard shouldRestoreLidOnQuit, !SwitchTestGuard.isRunningTests else { return }
         let command = SwitchCommands.lidClosedSilent(false)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: command.binary)
         process.arguments = command.arguments
         try? process.run()
         process.waitUntilExit()
-    }
-
-    func setMute(_ on: Bool) {
-        audio.setMuted(on)
-        muteOn = audio.isMuted()
     }
 
     func setHideDesktop(_ on: Bool) async {

@@ -103,7 +103,11 @@ snippet: an X11-style silent copy is indistinguishable from the feature having
 done nothing, which is exactly how it read in use).
 System: **Disk** (sunburst/treemap + safe Trash delete), **Monitor** (CPU/mem/net/
 battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
-(8 toggles — Screen Test was removed after it hard-locked a machine. **Lid Closed**
+(7 toggles — Screen Test was removed after it hard-locked a machine, and **Mute**
+was removed entirely in 2.25.0 at the owner's order after it failed on his
+hardware; `kAudioDevicePropertyMute` turned out to be advisory on many outputs
+and the volume-zeroing replacement was not worth keeping. Do not reintroduce
+either. **Lid Closed**
 is the only switch that needs root: it flips the system-wide `pmset disablesleep`,
 which IOKit assertions and `caffeinate` cannot reach, so a closed lid keeps
 running. Every flip tries `sudo -n` first and falls back to one
@@ -114,7 +118,11 @@ scoped to those two exact command lines, which is what buys silent flips, the
 dot-prefixed staged file with `visudo -cf` **before** renaming it into place, never
 the other way round: a malformed file in `/etc/sudoers.d` makes sudo refuse to
 parse its config at all. The switch defaults hidden (Rule B), the panel states the
-risk, and `refresh()` reads the live value on every open. Prior art:
+risk, and `refresh()` reads the live value on every open. **Pear never enables
+the lock by itself**: `setLidClosed` is the only writer of `disablesleep 1` and is
+reached only from a tap or a session button, and `lidClosedIsOurs` records whether
+this app was the one that set it, so a lock somebody else set is displayed but left
+alone at quit. Four tests hold that line. Prior art:
 [awake](https://github.com/pistachionet/awake) (MIT), mechanism only), **Clean Mode**
 (screen blanker, default OFF), **RunCat** menu-bar runner.
 
@@ -288,18 +296,6 @@ maintainer before tagging.
   (fp16-level, ~1s load, ~1.6s inference). Same pattern the old RMBG model had —
   don't "optimize" it back to `.all`/ANE. Conversion recipe (torch.export +
   run_decompositions + a bitwise_not→logical_not op override) is in root memory.
-- **`kAudioDevicePropertyMute` is advisory on plenty of outputs.** The write
-  returns `noErr`, a read back reports the new value, and the device keeps
-  playing; other outputs (AirPods, most HDMI/DisplayPort, some USB) publish no
-  mute element at all, in which case the old per-channel fallback found nothing
-  either and the switch silently did nothing while reporting "not muted". The
-  Mute switch therefore saves the current level, sets the flag, **and takes
-  `kAudioDevicePropertyVolumeScalar` to zero**, which no device argues with.
-  Unmuting restores the saved level only if the output is still silent, so a
-  level the user raised by hand meanwhile is left alone. Do not "simplify" this
-  back to the flag alone. Measured on the owner's box: built-in speakers publish
-  the flag as settable and round-trip it correctly, which is why this reproduces
-  on some outputs and not others.
 - **Verify the shipped zip by directly launching it** (not just spctl/stapler) —
   toolchain/launch bugs pass every other check.
 - **Footprint metric**: `top -l1 -pid N -stats mem` (Activity Monitor number),

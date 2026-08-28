@@ -14,8 +14,6 @@ struct SwitchesView: View {
     private var showKeepAwake = SystemSwitch.keepAwake.defaultVisible
     @AppStorage(SwitchesSettings.showKey(.lidClosed))
     private var showLidClosed = SystemSwitch.lidClosed.defaultVisible
-    @AppStorage(SwitchesSettings.showKey(.mute))
-    private var showMute = SystemSwitch.mute.defaultVisible
     @AppStorage(SwitchesSettings.showKey(.screenSaver))
     private var showScreenSaver = SystemSwitch.screenSaver.defaultVisible
     @AppStorage(SwitchesSettings.showKey(.lockScreen))
@@ -113,7 +111,6 @@ struct SwitchesView: View {
         switch toggle {
         case .keepAwake: showKeepAwake
         case .lidClosed: showLidClosed
-        case .mute: showMute
         case .screenSaver: showScreenSaver
         case .lockScreen: showLockScreen
         case .hideDesktop: showHideDesktop
@@ -126,7 +123,6 @@ struct SwitchesView: View {
         switch toggle {
         case .keepAwake: $showKeepAwake
         case .lidClosed: $showLidClosed
-        case .mute: $showMute
         case .screenSaver: $showScreenSaver
         case .lockScreen: $showLockScreen
         case .hideDesktop: $showHideDesktop
@@ -247,7 +243,6 @@ private struct SwitchTile: View {
         switch toggle {
         case .keepAwake: model.keepAwakeOn
         case .lidClosed: model.lidClosedOn
-        case .mute: model.muteOn
         case .hideDesktop: model.hideDesktopOn
         case .showHidden: model.showHiddenOn
         case .bigCursor: model.bigCursorOn
@@ -262,7 +257,6 @@ private struct SwitchTile: View {
                 switch toggle {
                 case .keepAwake: model.setKeepAwake(newValue)
                 case .lidClosed: Task { await model.setLidClosed(newValue) }
-                case .mute: model.setMute(newValue)
                 case .hideDesktop: Task { await model.setHideDesktop(newValue) }
                 case .showHidden: Task { await model.setShowHidden(newValue) }
                 case .bigCursor: Task { await model.setBigCursor(newValue) }

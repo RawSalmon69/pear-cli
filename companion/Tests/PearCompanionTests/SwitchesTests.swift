@@ -46,53 +46,6 @@ private final class MockPowerAssertion: PowerAssertioning {
     }
 }
 
-/// A device with whatever knobs a test says it has. `flag == nil` models the
-/// outputs that publish no mute element at all (AirPods, most HDMI); `honoursFlag
-/// == false` models the ones that accept the write, report it back, and keep
-/// playing anyway — which is what made the switch look dead.
-@MainActor
-private final class FakeOutputDevice: AudioOutputDevice {
-    var flag: Bool?
-    var volume: Float?
-    var writtenVolumes: [Float] = []
-
-    init(flag: Bool? = false, volume: Float? = 0.6) {
-        self.flag = flag
-        self.volume = volume
-    }
-
-    func readMuteFlag() -> Bool? { flag }
-
-    @discardableResult
-    func writeMuteFlag(_ muted: Bool) -> Bool {
-        guard flag != nil else { return false }
-        flag = muted
-        return true
-    }
-
-    func readVolume() -> Float? { volume }
-
-    @discardableResult
-    func writeVolume(_ newVolume: Float) -> Bool {
-        guard volume != nil else { return false }
-        volume = newVolume
-        writtenVolumes.append(newVolume)
-        return true
-    }
-}
-
-@MainActor
-private final class MockAudioMuting: AudioMuting {
-    var muted = false
-    private(set) var setCount = 0
-
-    func isMuted() -> Bool { muted }
-    func setMuted(_ value: Bool) {
-        setCount += 1
-        muted = value
-    }
-}
-
 @MainActor
 private final class MockScreenLocking: ScreenLocking {
     private(set) var lockCount = 0
@@ -115,20 +68,23 @@ private final class RuleFlag: @unchecked Sendable {
 final class SwitchesTests: XCTestCase {
     // MARK: - SystemSwitch metadata
 
-    func testEightOwnerLockedSwitches() {
-        // Screen Test was removed at the owner's order (hard-locked a machine
-        // with undismissable fullscreen overlays); Lid Closed was added later.
-        XCTAssertEqual(SystemSwitch.allCases.count, 8)
+    func testSevenOwnerLockedSwitches() {
+        // Two removals at the owner's order: Screen Test (hard-locked a machine
+        // with undismissable fullscreen overlays) and Mute. Lid Closed was added.
+        XCTAssertEqual(SystemSwitch.allCases.count, 7)
         XCTAssertEqual(
             SystemSwitch.allCases.map(\.rawValue),
-            ["keepAwake", "lidClosed", "mute", "screenSaver", "lockScreen",
+            ["keepAwake", "lidClosed", "screenSaver", "lockScreen",
              "hideDesktop", "showHidden", "bigCursor"]
         )
+        XCTAssertFalse(
+            SystemSwitch.allCases.contains { $0.rawValue == "mute" },
+            "Mute was removed entirely; do not reintroduce it")
     }
 
     func testSwitchKinds() {
         let toggles: Set<SystemSwitch> = [
-            .keepAwake, .lidClosed, .mute, .hideDesktop, .showHidden, .bigCursor,
+            .keepAwake, .lidClosed, .hideDesktop, .showHidden, .bigCursor,
         ]
         for toggle in SystemSwitch.allCases {
             let expected: SystemSwitch.Kind = toggles.contains(toggle) ? .toggle : .momentary
@@ -141,7 +97,7 @@ final class SwitchesTests: XCTestCase {
         XCTAssertFalse(SystemSwitch.hideDesktop.defaultVisible)
         XCTAssertFalse(SystemSwitch.showHidden.defaultVisible)
         XCTAssertFalse(SystemSwitch.bigCursor.defaultVisible)
-        for toggle in [SystemSwitch.keepAwake, .mute, .screenSaver, .lockScreen] {
+        for toggle in [SystemSwitch.keepAwake, .screenSaver, .lockScreen] {
             XCTAssertTrue(toggle.defaultVisible, "\(toggle.rawValue) should default shown")
         }
     }
@@ -166,9 +122,7 @@ final class SwitchesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
 
         SwitchesSettings.setVisible(.bigCursor, true, defaults)
-        SwitchesSettings.setVisible(.mute, false, defaults)
         XCTAssertTrue(SwitchesSettings.isVisible(.bigCursor, defaults))
-        XCTAssertFalse(SwitchesSettings.isVisible(.mute, defaults))
     }
 
     func testVisibleSwitchesFiltersAndKeepsOrder() {
@@ -180,14 +134,14 @@ final class SwitchesTests: XCTestCase {
         // Defaults: the four transient switches, in owner-locked order.
         XCTAssertEqual(
             SwitchesSettings.visibleSwitches(defaults),
-            [.keepAwake, .mute, .screenSaver, .lockScreen]
+            [.keepAwake, .screenSaver, .lockScreen]
         )
 
         SwitchesSettings.setVisible(.hideDesktop, true, defaults)
         SwitchesSettings.setVisible(.keepAwake, false, defaults)
         XCTAssertEqual(
             SwitchesSettings.visibleSwitches(defaults),
-            [.mute, .screenSaver, .lockScreen, .hideDesktop]
+            [.screenSaver, .lockScreen, .hideDesktop]
         )
     }
 
@@ -334,84 +288,6 @@ final class SwitchesTests: XCTestCase {
         XCTAssertFalse(SwitchCommands.lidClosedIsOn(fromRead: nil))
     }
 
-    // MARK: - Mute (flag plus level, because the flag alone is ignored)
-
-    func testMutingZeroesTheLevelAsWellAsSettingTheFlag() {
-        // The bug this covers: a device accepts the flag, reports it back, and
-        // keeps playing. Silence has to come from the level.
-        let device = FakeOutputDevice(flag: false, volume: 0.6)
-        let store = ephemeralDefaults()
-        let controller = CoreAudioMuteController(device: device, store: store)
-
-        controller.setMuted(true)
-        XCTAssertEqual(device.flag, true)
-        XCTAssertEqual(device.volume, 0)
-        XCTAssertEqual(store.object(forKey: Prefs.preMuteVolumeKey) as? Float, 0.6)
-    }
-
-    func testUnmutingPutsTheSavedLevelBack() {
-        let device = FakeOutputDevice(flag: false, volume: 0.6)
-        let store = ephemeralDefaults()
-        let controller = CoreAudioMuteController(device: device, store: store)
-
-        controller.setMuted(true)
-        controller.setMuted(false)
-        XCTAssertEqual(device.flag, false)
-        XCTAssertEqual(device.volume, 0.6)
-        XCTAssertNil(
-            store.object(forKey: Prefs.preMuteVolumeKey),
-            "a stale level must not survive to raise the volume on some later unmute")
-    }
-
-    func testUnmutingLeavesAVolumeTheUserAlreadyRaisedAlone() {
-        let device = FakeOutputDevice(flag: false, volume: 0.6)
-        let store = ephemeralDefaults()
-        let controller = CoreAudioMuteController(device: device, store: store)
-
-        controller.setMuted(true)
-        device.volume = 0.2      // the user reached for the media key meanwhile
-        controller.setMuted(false)
-        XCTAssertEqual(device.volume, 0.2, "restoring over the user's own level is not our call")
-    }
-
-    func testDeviceWithNoMuteElementIsStillMutedByLevel() {
-        // AirPods, most HDMI: no mute element at all, so the old code silently
-        // did nothing and reported not-muted.
-        let device = FakeOutputDevice(flag: nil, volume: 0.8)
-        let controller = CoreAudioMuteController(device: device, store: ephemeralDefaults())
-
-        XCTAssertFalse(controller.isMuted())
-        controller.setMuted(true)
-        XCTAssertEqual(device.volume, 0)
-        XCTAssertTrue(controller.isMuted(), "with no flag to read, silence is the state")
-
-        controller.setMuted(false)
-        XCTAssertEqual(device.volume, 0.8)
-        XCTAssertFalse(controller.isMuted())
-    }
-
-    func testMutingTwiceDoesNotSaveZeroAsTheLevelToRestore() {
-        let device = FakeOutputDevice(flag: false, volume: 0.6)
-        let store = ephemeralDefaults()
-        let controller = CoreAudioMuteController(device: device, store: store)
-
-        controller.setMuted(true)
-        controller.setMuted(true)   // second flip must not overwrite 0.6 with 0
-        controller.setMuted(false)
-        XCTAssertEqual(device.volume, 0.6)
-    }
-
-    func testFlagIsPreferredOverLevelWhenReadingState() {
-        // A device sitting at zero volume but unmuted reads as unmuted, so the
-        // tile does not claim a mute the user did not ask for.
-        let device = FakeOutputDevice(flag: false, volume: 0)
-        let controller = CoreAudioMuteController(device: device, store: ephemeralDefaults())
-        XCTAssertFalse(controller.isMuted())
-
-        device.flag = true
-        XCTAssertTrue(controller.isMuted())
-    }
-
     func testScreenSaverCommand() {
         XCTAssertEqual(SwitchCommands.screenSaver,
                        ShellCommand(binary: "/usr/bin/open", arguments: ["-a", "ScreenSaverEngine"]))
@@ -489,6 +365,94 @@ final class SwitchesTests: XCTestCase {
         await model.setLidClosed(true)
         XCTAssertFalse(model.lidClosedOn)
         XCTAssertEqual(runner.recorded.last, SwitchCommands.lidClosedRead)
+    }
+
+    // MARK: - Lid Closed never turns itself on
+
+    /// Every command that would enable the lock, in both flip shapes.
+    private func turnsLidOn(_ command: ShellCommand) -> Bool {
+        command == SwitchCommands.lidClosedSilent(true)
+            || command == SwitchCommands.lidClosedPrompted(true)
+    }
+
+    func testNothingButAnExplicitFlipEverEnablesTheLock() async {
+        // Construct, open the popover, disable the tool. The system reports the
+        // lock already on, which is the state most likely to tempt a re-assert.
+        let runner = MockCommandRunner { command in
+            command == SwitchCommands.lidClosedRead
+                ? success("System-wide power settings:\n SleepDisabled\t\t1\n")
+                : .failed
+        }
+        let model = makeModel(runner: runner, ruleExists: { true })
+        await model.refresh()
+        model.teardown()
+
+        XCTAssertTrue(model.lidClosedOn, "refresh reports what the system says")
+        XCTAssertFalse(
+            runner.recorded.contains(where: turnsLidOn),
+            "no lifecycle step may enable the lock; only a tap may")
+    }
+
+    func testALockPearDidNotSetIsNeverRestoredOnQuit() async {
+        // Somebody else disabled sleep (a terminal, another app, a crashed run).
+        // Pear shows it, and leaves it alone at quit.
+        let runner = MockCommandRunner { command in
+            command == SwitchCommands.lidClosedRead
+                ? success("System-wide power settings:\n SleepDisabled\t\t1\n")
+                : .failed
+        }
+        let model = makeModel(runner: runner, ruleExists: { true })
+        await model.refresh()
+
+        XCTAssertTrue(model.lidClosedOn)
+        XCTAssertFalse(model.lidClosedIsOurs)
+        XCTAssertFalse(
+            model.shouldRestoreLidOnQuit,
+            "quitting must not clear a lock the user set outside Pear")
+    }
+
+    func testALockPearSetIsRestoredOnQuit() async {
+        let runner = MockCommandRunner { _ in .success(Data()) }
+        let model = makeModel(runner: runner, ruleExists: { true })
+        await model.setLidClosed(true)
+
+        XCTAssertTrue(model.lidClosedIsOurs)
+        XCTAssertTrue(model.shouldRestoreLidOnQuit)
+
+        await model.setLidClosed(false)
+        XCTAssertFalse(model.lidClosedIsOurs)
+        XCTAssertFalse(model.shouldRestoreLidOnQuit)
+    }
+
+    func testAFailedFlipClaimsNoOwnership() async {
+        // Both paths fail and the lock turns out to be on anyway: that is not
+        // ours to undo.
+        let runner = MockCommandRunner { command in
+            command == SwitchCommands.lidClosedRead
+                ? success("System-wide power settings:\n SleepDisabled\t\t1\n")
+                : .failed
+        }
+        let model = makeModel(runner: runner, ruleExists: { true })
+        await model.setLidClosed(true)
+
+        XCTAssertTrue(model.lidClosedOn)
+        XCTAssertFalse(model.lidClosedIsOurs)
+        XCTAssertFalse(model.shouldRestoreLidOnQuit)
+    }
+
+    func testRefreshDisownsALockThatWentAwayBehindOurBack() async {
+        let runner = MockCommandRunner { _ in .success(Data()) }
+        let model = makeModel(runner: runner, ruleExists: { true })
+        await model.setLidClosed(true)
+        XCTAssertTrue(model.lidClosedIsOurs)
+
+        // Somebody cleared it elsewhere; the next popover open must not keep
+        // claiming a lock that no longer exists.
+        let quiet = MockCommandRunner { _ in .failed }
+        let reopened = makeModel(runner: quiet, ruleExists: { true })
+        await reopened.refresh()
+        XCTAssertFalse(reopened.lidClosedOn)
+        XCTAssertFalse(reopened.lidClosedIsOurs)
     }
 
     func testTimedSessionSetsADeadlineAndTurningOffClearsIt() async {
@@ -614,13 +578,10 @@ final class SwitchesTests: XCTestCase {
         }
         let power = MockPowerAssertion()
         power.acquire() // becomes active
-        let audio = MockAudioMuting()
-        audio.muted = true
-        let model = makeModel(runner: runner, power: power, audio: audio)
+        let model = makeModel(runner: runner, power: power)
 
         await model.refresh()
         XCTAssertTrue(model.keepAwakeOn)
-        XCTAssertTrue(model.muteOn)
         XCTAssertTrue(model.hideDesktopOn)
         XCTAssertTrue(model.showHiddenOn)
         XCTAssertTrue(model.bigCursorOn)
@@ -632,7 +593,6 @@ final class SwitchesTests: XCTestCase {
         let model = makeModel(runner: runner)
         await model.refresh()
         XCTAssertFalse(model.keepAwakeOn)
-        XCTAssertFalse(model.muteOn)
         XCTAssertFalse(model.hideDesktopOn)
         XCTAssertFalse(model.showHiddenOn)
         XCTAssertFalse(model.bigCursorOn)
@@ -662,15 +622,6 @@ final class SwitchesTests: XCTestCase {
         XCTAssertFalse(model.keepAwakeOn, "a failed assertion must not report on")
     }
 
-    func testSetMuteWritesAndReadsBack() {
-        let audio = MockAudioMuting()
-        let model = makeModel(audio: audio)
-        model.setMute(true)
-        XCTAssertEqual(audio.setCount, 1)
-        XCTAssertTrue(audio.muted)
-        XCTAssertTrue(model.muteOn)
-    }
-
     func testLockScreenCallsLocker() {
         let locker = MockScreenLocking()
         let model = makeModel(locker: locker)
@@ -689,24 +640,14 @@ final class SwitchesTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// A throwaway defaults domain, named per test and wiped on creation, so a
-    /// saved pre-mute level cannot leak from one test into another.
-    private func ephemeralDefaults(_ name: String = #function) -> UserDefaults {
-        let suite = "switches-mute-\(name)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        return defaults
-    }
-
     private func makeModel(
         runner: CommandRunner = MockCommandRunner(),
         power: PowerAssertioning = MockPowerAssertion(),
-        audio: AudioMuting = MockAudioMuting(),
         locker: ScreenLocking = MockScreenLocking(),
         ruleExists: @escaping @Sendable () -> Bool = { false }
     ) -> SwitchesModel {
         SwitchesModel(
-            commandRunner: runner, power: power, audio: audio, locker: locker,
+            commandRunner: runner, power: power, locker: locker,
             ruleExists: ruleExists)
     }
 }

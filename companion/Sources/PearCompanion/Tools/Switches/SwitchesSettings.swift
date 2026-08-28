@@ -12,7 +12,6 @@ import Foundation
 enum SystemSwitch: String, CaseIterable, Identifiable {
     case keepAwake
     case lidClosed
-    case mute
     case screenSaver
     case lockScreen
     case hideDesktop
@@ -30,7 +29,7 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
 
     var kind: Kind {
         switch self {
-        case .keepAwake, .lidClosed, .mute, .hideDesktop, .showHidden, .bigCursor: .toggle
+        case .keepAwake, .lidClosed, .hideDesktop, .showHidden, .bigCursor: .toggle
         case .screenSaver, .lockScreen: .momentary
         }
     }
@@ -39,7 +38,6 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
         switch self {
         case .keepAwake: "Keep Awake"
         case .lidClosed: "Lid Closed"
-        case .mute: "Mute"
         case .screenSaver: "Screen Saver"
         case .lockScreen: "Lock Screen"
         case .hideDesktop: "Hide Desktop"
@@ -53,7 +51,6 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
         switch self {
         case .keepAwake: "cup.and.saucer.fill"
         case .lidClosed: "laptopcomputer"
-        case .mute: "speaker.slash.fill"
         case .screenSaver: "sparkles"
         case .lockScreen: "lock.fill"
         case .hideDesktop: "square.grid.2x2.fill"
