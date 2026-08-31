@@ -22,8 +22,6 @@ struct SwitchesView: View {
     private var showHideDesktop = SystemSwitch.hideDesktop.defaultVisible
     @AppStorage(SwitchesSettings.showKey(.showHidden))
     private var showShowHidden = SystemSwitch.showHidden.defaultVisible
-    @AppStorage(SwitchesSettings.showKey(.bigCursor))
-    private var showBigCursor = SystemSwitch.bigCursor.defaultVisible
 
     private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
@@ -78,13 +76,6 @@ struct SwitchesView: View {
             if isShown(.lidClosed) {
                 LidClosedPanel(model: model)
             }
-            if isShown(.bigCursor) {
-                Text("Big Cursor writes an Accessibility setting that may need a nudge in System Settings › Accessibility › Pointer to take effect.")
-                    .font(Theme.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 2)
-            }
         }
     }
 
@@ -115,7 +106,6 @@ struct SwitchesView: View {
         case .lockScreen: showLockScreen
         case .hideDesktop: showHideDesktop
         case .showHidden: showShowHidden
-        case .bigCursor: showBigCursor
         }
     }
 
@@ -127,7 +117,6 @@ struct SwitchesView: View {
         case .lockScreen: $showLockScreen
         case .hideDesktop: $showHideDesktop
         case .showHidden: $showShowHidden
-        case .bigCursor: $showBigCursor
         }
     }
 }
@@ -245,7 +234,6 @@ private struct SwitchTile: View {
         case .lidClosed: model.lidClosedOn
         case .hideDesktop: model.hideDesktopOn
         case .showHidden: model.showHiddenOn
-        case .bigCursor: model.bigCursorOn
         case .screenSaver, .lockScreen: false
         }
     }
@@ -259,7 +247,6 @@ private struct SwitchTile: View {
                 case .lidClosed: Task { await model.setLidClosed(newValue) }
                 case .hideDesktop: Task { await model.setHideDesktop(newValue) }
                 case .showHidden: Task { await model.setShowHidden(newValue) }
-                case .bigCursor: Task { await model.setBigCursor(newValue) }
                 case .screenSaver, .lockScreen: break
                 }
             }

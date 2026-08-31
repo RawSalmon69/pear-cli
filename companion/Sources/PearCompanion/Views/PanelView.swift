@@ -23,7 +23,6 @@ struct PanelView: View {
                 LockedStateCard(reason: reason)
             }
             ToolsSection()
-            StatsSection()
             BottomBar()
         }
         .padding(16)
@@ -398,9 +397,13 @@ struct ToolsSection: View {
         let hint = env.tools.hotkeyLabel(for: tool.id)
         switch tool.entry {
         case .action(let run):
-            ToolTile(symbol: tool.icon, label: tool.title, hint: hint, action: run)
+            ToolTile(symbol: tool.icon, label: tool.title, hint: hint) {
+                env.usage.recordTileTap(tool.id)
+                run()
+            }
         case .popover(let content):
             ToolTile(symbol: tool.icon, label: tool.title, hint: hint) {
+                env.usage.recordTileTap(tool.id)
                 if popovers.request(tool.id) {
                     Task { @MainActor in popovers.present(tool.id) }
                 }
@@ -462,99 +465,6 @@ struct ToolTile: View {
 }
 
 // MARK: - Stats
-
-struct StatsSection: View {
-    @Environment(AppEnvironment.self) private var env
-    // 3 s so the numbers visibly move while the panel is open (60 s read as
-    // frozen). The panel only exists while open, so this costs nothing idle.
-    private let refreshTimer = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
-
-    @State private var hovering = false
-
-    var body: some View {
-        Button {
-            env.monitorWindow.show()
-        } label: {
-            VStack(alignment: .leading, spacing: Theme.itemGap) {
-                HStack(spacing: 4) {
-                    SectionLabel(text: "Mac")
-                    if hovering {
-                        Image(systemName: "arrow.up.forward.app")
-                            .font(.system(size: 9))
-                            .foregroundStyle(Theme.accent)
-                    }
-                    Spacer()
-                    if let uptime = env.stats.uptime {
-                        Text("up \(uptime)")
-                            .font(Theme.caption)
-                            .foregroundStyle(.quaternary)
-                    }
-                }
-
-                let tiles = env.stats.items
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.itemGap), count: 4),
-                          spacing: Theme.itemGap) {
-                    ForEach(tiles, id: \.label) { StatTile(stat: $0) }
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        // First focusable control in the panel: without this it grabbed
-        // first-responder on open and drew a grey focus box around the row.
-        .focusable(false)
-        .help("Open the full Monitor")
-        .onHover { hovering = $0 }
-        .task { await env.stats.refresh() }
-        .onReceive(refreshTimer) { _ in
-            Task { await env.stats.refresh() }
-        }
-    }
-}
-
-struct StatTile: View {
-    let stat: StatItem
-
-    private var ringColor: Color {
-        guard let fraction = stat.fraction else { return Theme.accent }
-        if stat.label.hasPrefix("Batt") || stat.label == "Charging" {
-            return fraction < 0.2 ? Theme.warn : Theme.accent
-        }
-        return fraction > 0.9 ? Theme.warn : Theme.accent
-    }
-
-    var body: some View {
-        VStack(spacing: 4) {
-            ZStack {
-                Circle().stroke(.quaternary.opacity(0.6), lineWidth: 3)
-                if let fraction = stat.fraction {
-                    Circle()
-                        .trim(from: 0, to: fraction)
-                        .stroke(ringColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .animation(.easeOut(duration: 0.6), value: fraction)
-                }
-                Image(systemName: stat.symbol)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(width: 30, height: 30)
-            Text(stat.value)
-                .font(Theme.rounded(12, .semibold))
-                .contentTransition(.numericText())
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text(stat.label)
-                .font(.system(size: 9, design: .rounded))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .padding(.horizontal, 4)
-        .glassCard(cornerRadius: 12)
-    }
-}
 
 // MARK: - Bottom bar
 

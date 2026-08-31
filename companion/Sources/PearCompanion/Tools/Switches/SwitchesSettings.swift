@@ -16,7 +16,6 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
     case lockScreen
     case hideDesktop
     case showHidden
-    case bigCursor
 
     var id: String { rawValue }
 
@@ -29,7 +28,7 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
 
     var kind: Kind {
         switch self {
-        case .keepAwake, .lidClosed, .hideDesktop, .showHidden, .bigCursor: .toggle
+        case .keepAwake, .lidClosed, .hideDesktop, .showHidden: .toggle
         case .screenSaver, .lockScreen: .momentary
         }
     }
@@ -42,7 +41,6 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
         case .lockScreen: "Lock Screen"
         case .hideDesktop: "Hide Desktop"
         case .showHidden: "Show Hidden"
-        case .bigCursor: "Big Cursor"
         }
     }
 
@@ -55,7 +53,6 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
         case .lockScreen: "lock.fill"
         case .hideDesktop: "square.grid.2x2.fill"
         case .showHidden: "eye.fill"
-        case .bigCursor: "cursorarrow"
         }
     }
 
@@ -69,12 +66,12 @@ enum SystemSwitch: String, CaseIterable, Identifiable {
     }
 
     /// Whether the tile appears in the grid on a fresh install. The switches
-    /// that write persistent, system-mutating state (Hide Desktop, Show Hidden,
-    /// Big Cursor via a `defaults` domain; Lid Closed via `pmset`) default
-    /// hidden; the transient ones default shown. Owner standing rule (Rule B).
+    /// that write persistent, system-mutating state (Hide Desktop and Show
+    /// Hidden via a `defaults` domain, Lid Closed via `pmset`) default hidden;
+    /// the transient ones default shown. Owner standing rule (Rule B).
     var defaultVisible: Bool {
         switch self {
-        case .lidClosed, .hideDesktop, .showHidden, .bigCursor: false
+        case .lidClosed, .hideDesktop, .showHidden: false
         default: true
         }
     }

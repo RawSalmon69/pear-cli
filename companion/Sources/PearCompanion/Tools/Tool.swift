@@ -103,6 +103,11 @@ extension Tool {
 @MainActor
 @Observable
 final class ToolRegistry {
+    /// Set once at construction so hotkey presses can be tallied. Weak and
+    /// optional: the registry works fine without it, and nothing about tool
+    /// behavior may depend on the tally existing.
+    weak var usage: UsageAnalytics?
+
     /// Display metadata for every offered tool, enabled or not — drives the
     /// settings toggles and the help sheet without holding the live tool.
     /// `hotkeyLabel` tracks the *effective* chord (override or default) so both
@@ -283,7 +288,13 @@ final class ToolRegistry {
         guard let chord = effectiveChord(for: tool) else { return }
         hotkeyTokens[tool.id] = HotKeyManager.shared.register(
             keyCode: chord.keyCode, modifiers: chord.modifiers
-        ) { [weak tool] in tool?.hotkeyFired() }
+        ) { [weak tool, weak usage] in
+            guard let tool else { return }
+            // Counted here rather than inside `hotkeyFired()`, which tools are
+            // free to override.
+            usage?.recordHotkey(tool.id)
+            tool.hotkeyFired()
+        }
     }
 
     private func unregisterHotkey(_ id: String) {

@@ -68,23 +68,26 @@ private final class RuleFlag: @unchecked Sendable {
 final class SwitchesTests: XCTestCase {
     // MARK: - SystemSwitch metadata
 
-    func testSevenOwnerLockedSwitches() {
-        // Two removals at the owner's order: Screen Test (hard-locked a machine
-        // with undismissable fullscreen overlays) and Mute. Lid Closed was added.
-        XCTAssertEqual(SystemSwitch.allCases.count, 7)
+    func testSixOwnerLockedSwitches() {
+        // Three removals at the owner's order: Screen Test (hard-locked a machine
+        // with undismissable fullscreen overlays), Mute, and Big Cursor (a
+        // TCC-gated write that could silently not apply). Lid Closed was added.
+        XCTAssertEqual(SystemSwitch.allCases.count, 6)
         XCTAssertEqual(
             SystemSwitch.allCases.map(\.rawValue),
             ["keepAwake", "lidClosed", "screenSaver", "lockScreen",
-             "hideDesktop", "showHidden", "bigCursor"]
+             "hideDesktop", "showHidden"]
         )
-        XCTAssertFalse(
-            SystemSwitch.allCases.contains { $0.rawValue == "mute" },
-            "Mute was removed entirely; do not reintroduce it")
+        for gone in ["mute", "bigCursor"] {
+            XCTAssertFalse(
+                SystemSwitch.allCases.contains { $0.rawValue == gone },
+                "\(gone) was removed entirely; do not reintroduce it")
+        }
     }
 
     func testSwitchKinds() {
         let toggles: Set<SystemSwitch> = [
-            .keepAwake, .lidClosed, .hideDesktop, .showHidden, .bigCursor,
+            .keepAwake, .lidClosed, .hideDesktop, .showHidden,
         ]
         for toggle in SystemSwitch.allCases {
             let expected: SystemSwitch.Kind = toggles.contains(toggle) ? .toggle : .momentary
@@ -96,7 +99,6 @@ final class SwitchesTests: XCTestCase {
         XCTAssertFalse(SystemSwitch.lidClosed.defaultVisible)
         XCTAssertFalse(SystemSwitch.hideDesktop.defaultVisible)
         XCTAssertFalse(SystemSwitch.showHidden.defaultVisible)
-        XCTAssertFalse(SystemSwitch.bigCursor.defaultVisible)
         for toggle in [SystemSwitch.keepAwake, .screenSaver, .lockScreen] {
             XCTAssertTrue(toggle.defaultVisible, "\(toggle.rawValue) should default shown")
         }
@@ -121,8 +123,8 @@ final class SwitchesTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        SwitchesSettings.setVisible(.bigCursor, true, defaults)
-        XCTAssertTrue(SwitchesSettings.isVisible(.bigCursor, defaults))
+        SwitchesSettings.setVisible(.hideDesktop, true, defaults)
+        XCTAssertTrue(SwitchesSettings.isVisible(.hideDesktop, defaults))
     }
 
     func testVisibleSwitchesFiltersAndKeepsOrder() {
@@ -147,7 +149,7 @@ final class SwitchesTests: XCTestCase {
 
     func testShowKeyFormat() {
         XCTAssertEqual(SwitchesSettings.showKey(.keepAwake), "switches.show.keepAwake")
-        XCTAssertEqual(SwitchesSettings.showKey(.bigCursor), "switches.show.bigCursor")
+        XCTAssertEqual(SwitchesSettings.showKey(.showHidden), "switches.show.showHidden")
     }
 
     // MARK: - SwitchCommands (pure builders + parsers)
@@ -193,22 +195,6 @@ final class SwitchesTests: XCTestCase {
         XCTAssertTrue(SwitchCommands.showHiddenIsOn(fromRead: "1\n"))
         XCTAssertTrue(SwitchCommands.showHiddenIsOn(fromRead: "true"))
         XCTAssertFalse(SwitchCommands.showHiddenIsOn(fromRead: "0"))
-    }
-
-    func testBigCursorCommands() {
-        XCTAssertEqual(SwitchCommands.bigCursor(true), [
-            ShellCommand(binary: "/usr/bin/defaults",
-                         arguments: ["write", "com.apple.universalaccess", "mouseDriverCursorSize", "-float", "3"]),
-        ])
-        XCTAssertEqual(SwitchCommands.bigCursor(false).first?.arguments.last, "1")
-    }
-
-    func testBigCursorParse() {
-        XCTAssertFalse(SwitchCommands.bigCursorIsOn(fromRead: nil))
-        XCTAssertFalse(SwitchCommands.bigCursorIsOn(fromRead: "1"))
-        XCTAssertTrue(SwitchCommands.bigCursorIsOn(fromRead: "3"))
-        XCTAssertTrue(SwitchCommands.bigCursorIsOn(fromRead: "2.5\n"))
-        XCTAssertFalse(SwitchCommands.bigCursorIsOn(fromRead: "garbage"))
     }
 
     func testLidClosedPromptedGoesThroughAdminAuthorization() {
@@ -319,14 +305,6 @@ final class SwitchesTests: XCTestCase {
         await model.setShowHidden(true)
         XCTAssertEqual(runner.recorded, SwitchCommands.showHidden(true))
         XCTAssertTrue(model.showHiddenOn)
-    }
-
-    func testSetBigCursorRunsExactCommand() async {
-        let runner = MockCommandRunner { _ in .success(Data()) }
-        let model = makeModel(runner: runner)
-        await model.setBigCursor(true)
-        XCTAssertEqual(runner.recorded, SwitchCommands.bigCursor(true))
-        XCTAssertTrue(model.bigCursorOn)
     }
 
     func testGrantedLidFlipNeverReachesTheAuthDialog() async {
@@ -570,7 +548,6 @@ final class SwitchesTests: XCTestCase {
             switch command {
             case SwitchCommands.hideDesktopRead: success("0")   // hidden
             case SwitchCommands.showHiddenRead: success("1")    // showing
-            case SwitchCommands.bigCursorRead: success("3")     // large
             case SwitchCommands.lidClosedRead:
                 success("System-wide power settings:\n SleepDisabled\t\t1\n")
             default: .failed
@@ -584,7 +561,6 @@ final class SwitchesTests: XCTestCase {
         XCTAssertTrue(model.keepAwakeOn)
         XCTAssertTrue(model.hideDesktopOn)
         XCTAssertTrue(model.showHiddenOn)
-        XCTAssertTrue(model.bigCursorOn)
         XCTAssertTrue(model.lidClosedOn)
     }
 
@@ -595,7 +571,6 @@ final class SwitchesTests: XCTestCase {
         XCTAssertFalse(model.keepAwakeOn)
         XCTAssertFalse(model.hideDesktopOn)
         XCTAssertFalse(model.showHiddenOn)
-        XCTAssertFalse(model.bigCursorOn)
         XCTAssertFalse(model.lidClosedOn)
     }
 

@@ -66,35 +66,6 @@ enum SwitchCommands {
         return (value as NSString).boolValue
     }
 
-    // MARK: Big Cursor (com.apple.universalaccess mouseDriverCursorSize)
-    // KNOWN RISK: com.apple.universalaccess is a TCC-gated domain and the
-    // pointer size is owned by universalaccessd, so a plain `defaults write`
-    // from a third-party app may be rejected or may not apply live (it can need
-    // a re-login or a nudge in System Settings › Accessibility › Pointer).
-    // `SwitchesView` shows a static hint line saying exactly that, so the UI is
-    // honest about it rather than pretending the write always applies live.
-    // 1.0 = normal, 3.0 = large.
-
-    static let bigCursorNormalSize = "1"
-    static let bigCursorLargeSize = "3"
-
-    static let bigCursorRead = ShellCommand(
-        binary: defaultsBinary, arguments: ["read", "com.apple.universalaccess", "mouseDriverCursorSize"]
-    )
-
-    static func bigCursor(_ on: Bool) -> [ShellCommand] {
-        [
-            ShellCommand(binary: defaultsBinary,
-                         arguments: ["write", "com.apple.universalaccess", "mouseDriverCursorSize",
-                                     "-float", on ? bigCursorLargeSize : bigCursorNormalSize]),
-        ]
-    }
-
-    static func bigCursorIsOn(fromRead output: String?) -> Bool {
-        guard let value = trimmed(output), let size = Double(value) else { return false }
-        return size > 1.5
-    }
-
     // MARK: Lid Closed (pmset disablesleep / SleepDisabled)
     // Prior art: https://github.com/pistachionet/awake (MIT) established that
     // `pmset -a disablesleep` is the only lever that survives a lid close (IOKit
@@ -214,7 +185,6 @@ final class SwitchesModel {
     var lidClosedOn = false
     var hideDesktopOn = false
     var showHiddenOn = false
-    var bigCursorOn = false
 
     /// When a timed Lid Closed session ends, so the grid can say it. Nil means
     /// the switch is either off or on indefinitely.
@@ -281,11 +251,9 @@ final class SwitchesModel {
         // rather than paying three sequential process round-trips on open.
         async let hideDesktop = read(SwitchCommands.hideDesktopRead)
         async let showHidden = read(SwitchCommands.showHiddenRead)
-        async let bigCursor = read(SwitchCommands.bigCursorRead)
         async let lidClosed = read(SwitchCommands.lidClosedRead)
         hideDesktopOn = SwitchCommands.hideDesktopIsOn(fromRead: await hideDesktop)
         showHiddenOn = SwitchCommands.showHiddenIsOn(fromRead: await showHidden)
-        bigCursorOn = SwitchCommands.bigCursorIsOn(fromRead: await bigCursor)
         lidClosedOn = SwitchCommands.lidClosedIsOn(fromRead: await lidClosed)
         lidRuleInstalled = ruleExists()
         // A session the user cannot see the effect of is just a stale label.
@@ -415,13 +383,6 @@ final class SwitchesModel {
         showHiddenOn = on
         if await run(SwitchCommands.showHidden(on)) == false {
             showHiddenOn = SwitchCommands.showHiddenIsOn(fromRead: await read(SwitchCommands.showHiddenRead))
-        }
-    }
-
-    func setBigCursor(_ on: Bool) async {
-        bigCursorOn = on
-        if await run(SwitchCommands.bigCursor(on)) == false {
-            bigCursorOn = SwitchCommands.bigCursorIsOn(fromRead: await read(SwitchCommands.bigCursorRead))
         }
     }
 

@@ -41,6 +41,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             let entitlement = environment.entitlement
             Task(priority: .background) { await entitlement.checkRevocationIfDue() }
         }
+        // Usage counts: reported on a background priority, off the launch path,
+        // at most every six hours. Every failure is silent — see UsageAnalytics.
+        let usage = environment.usage
+        Task(priority: .background) { await usage.uploadIfDue() }
         UNUserNotificationCenter.current().delegate = self
         panelController = PanelController(env: environment)
         // Best-effort: unsigned dev builds have no push entitlement and land in
