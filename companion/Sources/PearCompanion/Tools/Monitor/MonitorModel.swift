@@ -38,6 +38,22 @@ final class MonitorModel {
         }
     }
 
+    /// Which column the Top Processes table ranks by. Persisted, and a change
+    /// re-ranks on the next tick rather than re-sorting a stale snapshot, so the
+    /// rates shown always belong to the interval they were measured over.
+    var processMetric: ProcessMetric {
+        didSet {
+            guard processMetric != oldValue else { return }
+            defaults.set(processMetric.rawValue, forKey: Self.processMetricKey)
+            // Re-rank on a fresh tick: the sampler picks the top rows, so
+            // re-sorting the eight already on screen would just reorder the
+            // wrong eight.
+            if task != nil { restart() }
+        }
+    }
+
+    static let processMetricKey = "monitor.processMetric"
+
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let sampler = MonitorSampler()
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -47,6 +63,8 @@ final class MonitorModel {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.prefs = MonitorPrefs.load(from: defaults)
+        self.processMetric = defaults.string(forKey: Self.processMetricKey)
+            .flatMap(ProcessMetric.init(rawValue:)) ?? .cpu
     }
 
     /// Begins the tick. Idempotent — a second `start()` is a no-op, so a
@@ -59,10 +77,13 @@ final class MonitorModel {
             // almost immediately instead of a full interval later.
             // Memory/battery/sensors are absolute and appear on this first
             // shown sample too. Hidden sections are never sampled.
-            _ = await sampler.sample(sections: self?.prefs.visibleSections ?? [])
+            _ = await sampler.sample(
+                sections: self?.prefs.visibleSections ?? [], metric: self?.processMetric ?? .cpu)
             try? await Task.sleep(for: .milliseconds(600))
             while !Task.isCancelled {
-                let snap = await sampler.sample(sections: self?.prefs.visibleSections ?? [])
+                let snap = await sampler.sample(
+                    sections: self?.prefs.visibleSections ?? [],
+                    metric: self?.processMetric ?? .cpu)
                 guard let self, !Task.isCancelled else { return }
                 self.snapshot = snap
                 self.recordHistory(snap)
@@ -109,7 +130,7 @@ final class MonitorModel {
         case .network:
             netDownHistory.clear()
             netUpHistory.clear()
-        case .battery, .sensors:
+        case .processes, .battery, .sensors:
             break  // no trend chart — nothing buffered
         }
     }

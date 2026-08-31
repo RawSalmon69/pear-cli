@@ -8,8 +8,14 @@ import Foundation
 // is needed anywhere.
 actor MonitorSampler {
     private var prevCPUTicks: [UInt32]?
+    /// Previous process listing, keyed by pid, so per-process counters can be
+    /// differenced into rates. Cleared when the section is hidden so a re-show
+    /// does not difference across the gap.
+    private var prevProcesses: [Int32: RawProcess]?
+    private var prevProcessesAt: Date?
     private var prevNet: (rx: UInt64, tx: UInt64, at: Date)?
 
+    private let processes: ProcessLister
     private var smc: SMCConnection?
     private var sensorKeys: ResolvedSensorKeys?
     // How many times we've tried to resolve the sensor key set. The open or the
@@ -18,19 +24,58 @@ actor MonitorSampler {
     private var smcResolveAttempts = 0
     private static let maxSMCResolveAttempts = 3
 
+    /// How many rolled-up apps the card shows. The tail of a process table is
+    /// hundreds of idle daemons, and nobody scrolls it.
+    static let topGroupCount = 8
+
+    init(processes: ProcessLister = LibprocProcessLister()) {
+        self.processes = processes
+    }
+
     /// One pass over the requested sections. A hidden section's sampler is
     /// never called — the guard is the "zero cost when hidden" guarantee, not
     /// just a render filter — so an empty set does no hardware work at all.
     /// Each sampled section still fails independently: a nil from any sampler
     /// just leaves that field nil in the snapshot.
-    func sample(sections: Set<MonitorSection>) -> MonitorSnapshot {
+    func sample(sections: Set<MonitorSection>, metric: ProcessMetric = .cpu) -> MonitorSnapshot {
         var snapshot = MonitorSnapshot()
+        if sections.contains(.processes) {
+            snapshot.processes = sampleProcesses(metric: metric)
+        } else {
+            prevProcesses = nil
+            prevProcessesAt = nil
+        }
         if sections.contains(.cpu) { snapshot.cpu = sampleCPU() }
         if sections.contains(.memory) { snapshot.memory = MemorySampler.sample() }
         if sections.contains(.network) { snapshot.network = sampleNetwork() }
         if sections.contains(.battery) { snapshot.battery = BatterySampler.sample() }
         if sections.contains(.sensors) { snapshot.sensors = sampleSensors() }
         return snapshot
+    }
+
+    /// Two listings make a rate, so the first tick after the section appears
+    /// reports memory and thread counts with zero rates rather than nonsense
+    /// derived from lifetime totals.
+    private func sampleProcesses(metric: ProcessMetric) -> ProcessSample? {
+        let now = Date()
+        let current = processes.list()
+        guard !current.isEmpty else { return nil }
+        let interval = prevProcessesAt.map { now.timeIntervalSince($0) } ?? 0
+        let previous = prevProcesses ?? [:]
+        defer {
+            prevProcesses = Dictionary(
+                current.map { ($0.pid, $0) }, uniquingKeysWith: { first, _ in first })
+            prevProcessesAt = now
+        }
+        let groups = ProcessRollup.groups(
+            previous: previous,
+            current: current,
+            interval: interval > 0 ? interval : 1,
+            metric: metric)
+        return ProcessSample(
+            allGroups: groups,
+            showing: Self.topGroupCount,
+            coreCount: ProcessInfo.processInfo.activeProcessorCount)
     }
 
     private func sampleCPU() -> CPUSample? {

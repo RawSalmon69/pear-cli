@@ -80,6 +80,7 @@ struct SensorSample: Sendable {
 /// soft-fails independently ("every tool fails alone"), and the view renders
 /// only the sections that carry data.
 struct MonitorSnapshot: Sendable {
+    var processes: ProcessSample?
     var cpu: CPUSample?
     var memory: MemorySample?
     var network: NetworkSample?
@@ -89,7 +90,8 @@ struct MonitorSnapshot: Sendable {
     /// True until at least one section has data — used for the initial
     /// "Sampling…" placeholder.
     var isEmpty: Bool {
-        cpu == nil && memory == nil && network == nil && battery == nil && sensors == nil
+        processes == nil && cpu == nil && memory == nil && network == nil && battery == nil
+            && sensors == nil
     }
 }
 
@@ -99,12 +101,13 @@ struct MonitorSnapshot: Sendable {
 /// (`monitor.section.<raw>`) and the `Identifiable` id, so the toggle list and
 /// the sampler gate agree without a second lookup table.
 enum MonitorSection: String, CaseIterable, Identifiable, Sendable {
-    case cpu, memory, network, battery, sensors
+    case processes, cpu, memory, network, battery, sensors
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .processes: return "Top Processes"
         case .cpu: return "CPU"
         case .memory: return "Memory"
         case .network: return "Network"

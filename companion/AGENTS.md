@@ -101,8 +101,11 @@ never reaches the clipboard history that every stray highlight would bury. Each
 write raises the shared `CopyToast` at the pointer for ~1.5 s with an elided
 snippet: an X11-style silent copy is indistinguishable from the feature having
 done nothing, which is exactly how it read in use).
-System: **Disk** (sunburst/treemap + safe Trash delete), **Monitor** (CPU/mem/net/
-battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
+System: **Disk** (sunburst/treemap + safe Trash delete), **Monitor** (a **Top
+Processes** attribution table plus CPU/mem/net/battery/SMC gauges — the table
+answers "what is eating this machine", ranked by CPU, memory, disk or wakeups,
+with helper processes summed into the app that spawned them; see the process
+attribution gotchas below), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
 (7 toggles — Screen Test was removed after it hard-locked a machine, and **Mute**
 was removed entirely in 2.25.0 at the owner's order after it failed on his
 hardware; `kAudioDevicePropertyMute` turned out to be advisory on many outputs
@@ -296,6 +299,20 @@ maintainer before tagging.
   (fp16-level, ~1s load, ~1.6s inference). Same pattern the old RMBG model had —
   don't "optimize" it back to `.all`/ANE. Conversion recipe (torch.export +
   run_decompositions + a bitwise_not→logical_not op override) is in root memory.
+- **Process attribution has three landmines, all measured, all fixed in 2.26.0.**
+  (1) `proc_pid_rusage` takes the address *of the struct* cast to `rusage_info_t`,
+  not the address of a pointer holding it — getting that wrong makes the kernel
+  write hundreds of bytes into an 8-byte stack slot and **aborts the process**
+  (signal 6). (2) `proc_taskinfo`'s `pti_total_user`/`pti_total_system` are **mach
+  absolute-time units, not nanoseconds**: on Apple Silicon the timebase is 125/3,
+  so treating ticks as nanoseconds under-reports CPU by ~41.67× — a one-second
+  spin measured 0.024 s. Convert with `mach_timebase_info`. (3) Rollup groups on
+  **activation policy**, not on being a registered application: a Firefox fork's
+  46 content processes each register themselves, so registration alone gives every
+  renderer its own row, and walking to the *topmost* ancestor instead merged 73
+  unrelated dev processes into one row named after a session daemon. Regular +
+  accessory are roots; prohibited processes belong to the nearest such ancestor.
+  One listing of ~460 processes costs ~1 ms, so the section is cheap at any tick.
 - **Verify the shipped zip by directly launching it** (not just spctl/stapler) —
   toolchain/launch bugs pass every other check.
 - **Footprint metric**: `top -l1 -pid N -stats mem` (Activity Monitor number),

@@ -75,6 +75,9 @@ struct MonitorView: View {
             // Gate on the live visible set as well as the sampled value, so
             // toggling a section off hides it instantly rather than at the
             // next tick.
+            if visible.contains(.processes), let processes = snap.processes {
+                TopProcessesCard(sample: processes, metric: $model.processMetric)
+            }
             if visible.contains(.cpu), let cpu = snap.cpu {
                 CPUCard(sample: cpu, history: model.cpuHistory.values)
             }
@@ -211,6 +214,103 @@ private struct MetricRow: View {
                 .font(Theme.rounded(13, .medium))
                 .monospacedDigit()
                 .foregroundStyle(tint)
+        }
+    }
+}
+
+
+// MARK: - Top Processes
+
+/// The attribution table: which apps are actually spending the machine, ranked
+/// by one metric at a time, with helper processes summed into the app that
+/// spawned them. Deliberately the head of the list and nothing more — the tail
+/// of a process table is hundreds of idle daemons.
+private struct TopProcessesCard: View {
+    let sample: ProcessSample
+    @Binding var metric: ProcessMetric
+
+    var body: some View {
+        MonitorCard(title: "Top Processes") {
+            VStack(alignment: .leading, spacing: 8) {
+                Picker("", selection: $metric) {
+                    ForEach(ProcessMetric.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+
+                if sample.groups.isEmpty {
+                    Text("Nothing readable yet")
+                        .font(Theme.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(sample.groups) { group in
+                        ProcessRow(group: group, metric: metric, peak: peak)
+                    }
+                }
+
+                Divider()
+                Text(footer)
+                    .font(Theme.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// Bars are scaled to the top row, not to the machine: ranked by disk or
+    /// wakeups there is no natural ceiling, and against a machine-wide maximum
+    /// every bar would be a sliver.
+    private var peak: Double {
+        max(sample.groups.map { metric.value($0) }.max() ?? 0, .leastNonzeroMagnitude)
+    }
+
+    private var footer: String {
+        let busy = String(format: "%.0f%%", sample.busyFraction * 100)
+        var parts = [
+            "\(busy) of \(sample.coreCount) cores",
+            "\(sample.processCount) processes",
+            "\(sample.threadCount) threads",
+        ]
+        if sample.hiddenGroupCount > 0 {
+            parts.append("\(sample.hiddenGroupCount) more apps below")
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// One app: name, how many processes it is, its value, and a bar for scanning
+/// the ranking without reading the numbers.
+private struct ProcessRow: View {
+    let group: ProcessGroup
+    let metric: ProcessMetric
+    let peak: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Text(group.name)
+                    .font(Theme.body)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if group.processCount > 1 {
+                    Text("\(group.processCount)")
+                        .font(Theme.rounded(10, .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.secondary.opacity(0.15), in: Capsule())
+                        .help("\(group.processCount) processes rolled up")
+                }
+                Spacer(minLength: 6)
+                Text(metric.label(for: group))
+                    .font(Theme.rounded(12, .medium))
+                    .monospacedDigit()
+            }
+            MiniBar(fraction: min(1, metric.value(group) / peak), tint: Theme.accent)
         }
     }
 }
