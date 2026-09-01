@@ -32,13 +32,13 @@ final class ScreenshotTool: Tool {
             id = "screenshot"
             title = "Screenshot"
             icon = "camera.viewfinder"
-            summary = "Grab a region — copy it, mark it up, or save it."
+            summary = "Select a region. Copy it, mark it up, or save it."
             hotkey = HotKeyChord(keyCode: kVK_ANSI_S, modifiers: controlKey | shiftKey, label: "⌃⇧S")
         case .fullScreen:
             id = "screenshot-full"
             title = "Full-screen Shot"
             icon = "camera.on.rectangle"
-            summary = "Grab the whole screen instantly — no dragging."
+            summary = "Capture the whole screen at once."
             hotkey = HotKeyChord(keyCode: kVK_ANSI_F, modifiers: controlKey | shiftKey, label: "⌃⇧F")
         case .window:
             id = "screenshot-window"
@@ -83,7 +83,7 @@ final class OCRTool: Tool {
     let title = "Grab Text"
     let icon = "text.viewfinder"
     let category = ToolCategory.capture
-    let summary = "Pick text out of any region on screen and copy it."
+    let summary = "Copy text out of any region on screen."
     let hotkey: HotKeyChord? = HotKeyChord(
         keyCode: kVK_ANSI_T, modifiers: controlKey | shiftKey, label: "⌃⇧T")
 
@@ -107,7 +107,7 @@ final class ClipboardTool: Tool {
     let title = "Clipboard"
     let icon = "doc.on.clipboard"
     let category = ToolCategory.utilities
-    let summary = "Recent copies, searchable, with pins for keepers."
+    let summary = "Search everything you have copied. Pin what you want to keep."
     let hotkey: HotKeyChord? = HotKeyChord(
         keyCode: kVK_ANSI_C, modifiers: controlKey | shiftKey, label: "⌃⇧C")
 
@@ -142,7 +142,7 @@ final class DiskTool: Tool {
     let title = "Disk"
     let icon = "chart.pie"
     let category = ToolCategory.system
-    let summary = "See what's using space — treemap or sunburst (pinch to zoom). Deletes go to the Trash."
+    let summary = "See what is filling the disk. Anything you delete goes to the Trash."
     let hotkey: HotKeyChord? = nil
 
     private let window = DiskWindowController()

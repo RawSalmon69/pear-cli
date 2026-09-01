@@ -38,7 +38,7 @@ struct MenuBarSettingsView: View {
             if manager.alwaysHiddenEnabled {
                 step("4.", "Past the second divider stays hidden until ⌥-click.")
             }
-            Text("macOS doesn't let apps move each other's icons, so this drag is manual — you only do it once.")
+            Text("macOS does not let apps move each other's icons, so you drag this one yourself. Once is enough.")
                 .font(Theme.caption)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)

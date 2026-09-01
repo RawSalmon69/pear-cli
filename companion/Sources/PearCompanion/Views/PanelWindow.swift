@@ -162,7 +162,6 @@ final class PanelController: NSObject {
     }
 
     private func show() {
-        env.usage.recordPanelOpen()
         // Standalone the view needs its own glass, or it renders transparent
         // over the desktop — the window chrome that `MenuBarExtra` used to
         // supply. (Same fix the standalone clipboard picker makes.)

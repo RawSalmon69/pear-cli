@@ -9,7 +9,7 @@ final class QRTool: Tool {
     let title = "QR"
     let icon = "qrcode.viewfinder"
     let category = ToolCategory.capture
-    let summary = "Read a QR code off the screen, or turn your clipboard into one."
+    let summary = "Read a QR code on screen, or make one from the clipboard."
     let hotkey: HotKeyChord? = HotKeyChord(
         keyCode: kVK_ANSI_Q, modifiers: controlKey | shiftKey, label: "⌃⇧Q")
 

@@ -10,7 +10,7 @@ final class SwitchesTool: Tool {
     let title = "Switches"
     let icon = "switch.2"
     let category = ToolCategory.system
-    let summary = "Quick system toggles — keep awake, lock the screen, and more."
+    let summary = "System toggles: keep awake, lock the screen, hide the desktop."
     let hotkey: HotKeyChord? = nil
 
     private let model = SwitchesModel()

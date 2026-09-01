@@ -17,7 +17,7 @@ final class CleanModeTool: Tool {
     let title = "Clean Mode"
     let icon = "sparkles.tv"
     let category = ToolCategory.system
-    let summary = "Black out the screen and lock the keyboard to clean your Mac. Click Done to exit."
+    let summary = "Blank the screen and lock the keyboard so you can wipe it. Click Done to exit."
     // Opt-in: it locks keyboard input while active (a system-mutating tool).
     let defaultEnabled = false
     let hotkey: HotKeyChord? = nil

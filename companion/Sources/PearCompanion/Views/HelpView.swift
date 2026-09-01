@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// "What can this thing do?" — every tool, grouped by category, plus the
+/// Every tool, grouped by category, plus the
 /// always-on actions that aren't tiles. Rows come from the tool registry so
 /// this can't drift from what's actually installed; the extras are the
 /// handful of features that live outside the Tools grid.
@@ -19,20 +19,20 @@ struct HelpView: View {
     // Features that aren't registry tools (no tile of their own).
     private let extras: [Extra] = [
         Extra(icon: "hare", title: "Menu-bar runner", hotkey: nil,
-              summary: "25 RunCat runners that speed up with CPU load — cat, dogs, dino, and more. Pick one in Settings › Menu Bar.",
+              summary: "25 runners that speed up as the CPU gets busier. Pick one in Settings › Menu Bar.",
               category: .system),
         Extra(icon: "keyboard", title: "Custom shortcuts", hotkey: nil,
-              summary: "Every tool's hotkey is rebindable — Settings › Tools, click Record Shortcut. Toggles apply instantly, no relaunch.",
+              summary: "Every shortcut can be changed in Settings › Tools. Click Record Shortcut. Changes apply immediately.",
               category: .utilities),
         Extra(icon: "escape", title: "Esc closes anything", hotkey: "esc",
-              summary: "Every Pear panel and window dismisses with Esc.",
+              summary: "Esc closes any Pear panel or window.",
               category: .utilities),
     ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             HStack {
-                Text("Everything Pear can do")
+                Text("What Pear can do")
                     .font(Theme.title)
                 Spacer()
                 GlyphButton(symbol: "xmark", help: "Close", tint: .secondary, action: onClose)

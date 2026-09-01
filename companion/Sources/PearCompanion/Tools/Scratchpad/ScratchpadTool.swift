@@ -10,7 +10,7 @@ final class ScratchpadTool: Tool {
     let title = "Scratchpad"
     let icon = "note.text"
     let category = ToolCategory.utilities
-    let summary = "A floating quick note that autosaves as you type."
+    let summary = "A floating note that saves as you type."
     /// Holds the user's own writing, so it stays reachable with the app locked.
     /// The terms promise that in writing; see `Tool.survivesExpiry`.
     let survivesExpiry = true

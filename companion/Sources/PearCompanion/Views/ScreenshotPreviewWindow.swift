@@ -680,7 +680,7 @@ private struct ScreenshotPreviewView: View {
                 .background(Circle().fill(.black.opacity(0.55)))
         }
         .buttonStyle(.plain)
-        .help("QR code found — copy its contents")
+        .help("QR code found. Copy its contents.")
         .padding(6)
         .transition(.opacity)
     }

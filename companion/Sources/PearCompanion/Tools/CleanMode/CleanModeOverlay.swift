@@ -74,7 +74,7 @@ final class CleanModeScreenBlanker: CleanModeScreenBlanking {
         let centerY = frame.size.height / 2
 
         let hint = Self.makeLabel(
-            string: "Clean Mode — click Done when you're finished",
+            string: "Clean Mode. Click Done when you are finished.",
             size: 15,
             color: NSColor(white: 0.42, alpha: 1)
         )

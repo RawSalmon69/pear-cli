@@ -161,11 +161,11 @@ final class LockedCopyTests: XCTestCase {
             "This license covers Pear 3.x. Pear 4 is a paid upgrade.")
     }
 
-    func testAnAcceptedLicenceThanksTheBuyerAndSaysWhatHappensNext() {
+    func testAnAcceptedLicenceSaysWhatHappensNext() {
         let message = LicenceSettingsView.status(after: .valid(LicenceFixture.sample()))
         XCTAssertEqual(message, LicenceSettingsView.activatedMessage)
         XCTAssertEqual(
-            message, "License verified — thank you. Every tool is back on.")
+            message, "License verified. Every tool is back on.")
     }
 
     // MARK: - End to end through the real store

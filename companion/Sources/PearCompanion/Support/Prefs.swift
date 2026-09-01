@@ -11,21 +11,6 @@ enum Prefs {
     static let panelClosesOnFocusLossKey = "panelClosesOnFocusLoss"
     static let hdBackgroundRemovalKey = "hdBackgroundRemoval"
 
-    // MARK: - Usage sharing
-
-    static let usageSharingKey = "usageSharingEnabled"
-    static let usageCountsKey = "usageCounts"
-    static let usageInstallIDKey = "usageInstallID"
-    static let usageLastUploadKey = "usageLastUpload"
-
-    /// Whether per-tool usage counts are tallied and reported. Default on, and
-    /// stated plainly in Settings with the exact payload listed beside it, so it
-    /// is visible rather than buried. Off stops the counting as well as the
-    /// upload.
-    static var usageSharingEnabled: Bool {
-        UserDefaults.standard.object(forKey: usageSharingKey) as? Bool ?? true
-    }
-
     /// Default on for both — opt-out, not opt-in.
     static var soundsEnabled: Bool {
         UserDefaults.standard.object(forKey: soundsKey) as? Bool ?? true

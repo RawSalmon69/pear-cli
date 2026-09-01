@@ -24,7 +24,7 @@ struct LicenceSettingsView: View {
     /// the honest thing, and it is what the couple key in this same popover
     /// already does.
     static let activatedMessage =
-        "License verified — thank you. Every tool is back on."
+        "License verified. Every tool is back on."
 
     /// The line under the field after an attempt. Pure, so the mapping is
     /// testable: a rejected licence must surface the rejecting check's *own*
@@ -66,7 +66,7 @@ struct LicenceSettingsView: View {
                     .foregroundStyle(Theme.accent)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Every Pear 3.x update is included. Nothing expires and nothing checks in — "
+                Text("Every Pear 3.x update is included. Nothing expires and nothing checks in. "
                     + "Pear keeps working offline.")
                     .font(Theme.caption)
                     .foregroundStyle(.secondary)
@@ -204,7 +204,7 @@ struct LicenceSettingsView: View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             SectionLabel(text: "Remove")
             Text("Deletes the license file from this Mac. Pear goes back to the trial, or locks if "
-                + "the trial has already ended. Your key itself keeps working — you can paste it "
+                + "the trial has already ended. Your key keeps working: you can paste it "
                 + "back any time, here or on another Mac.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)

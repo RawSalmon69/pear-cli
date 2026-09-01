@@ -57,20 +57,6 @@ push/PR.
   Clipboard history, CloudKit messaging (flagged off), Stats (native samplers),
   HotKeyManager (`.shared`, Carbon hotkeys → tokens), Updater (Sparkle),
   CommandRunner/ScreenCapture seams.
-- **`UsageAnalytics`** (`Services/UsageAnalytics.swift`): per-tool tally of tile
-  taps and hotkey presses, uploaded to the **public** CloudKit database (one
-  record per install, overwritten) at most every six hours, so features nobody
-  uses can be found and removed on evidence. Counted at two chokepoints only —
-  the panel tile action in `PanelView.tile(for:)` and the registry's hotkey
-  handler in `ToolRegistry.registerHotkey` (not `hotkeyFired()`, which tools
-  override). **The payload is tool names and integers, nothing else**, and
-  Settings › General prints it verbatim beside the switch that stops it; adding
-  anything resembling content to that payload breaks the promise in
-  `site/privacy.html` §2, which lists it as the third network connection.
-  Switching it off stops the counting, not just the upload. **Requires a
-  `UsageReport` record type in the CloudKit dashboard** (development environment
-  auto-creates it on first save; deploy to production before it works for
-  friends-and-family installs).
 - **`Prefs`** (`Support/Prefs.swift`): all UserDefaults keys in one place.
   `Support/ResourceBundle.swift` → **always `Bundle.pearResources`, never
   `Bundle.module`** (see gotchas).

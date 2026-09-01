@@ -96,7 +96,7 @@ struct ConnectionBanner: View {
                 Label("Two Macs, one key", systemImage: "key.horizontal.fill")
                     .font(Theme.emphasis)
                     .foregroundStyle(Theme.accent)
-                Text("Notes are end-to-end encrypted with a key only you two hold. Set it up once and this panel comes alive.")
+                Text("Notes are end-to-end encrypted with a key only the two of you hold. Set it up once.")
                     .font(Theme.body)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -149,7 +149,7 @@ struct NotesSection: View {
             }
 
             if thread.isEmpty {
-                Text("Nothing here yet — say hi 🍐")
+                Text("No notes yet.")
                     .font(Theme.body)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 48)
@@ -397,13 +397,9 @@ struct ToolsSection: View {
         let hint = env.tools.hotkeyLabel(for: tool.id)
         switch tool.entry {
         case .action(let run):
-            ToolTile(symbol: tool.icon, label: tool.title, hint: hint) {
-                env.usage.recordTileTap(tool.id)
-                run()
-            }
+ToolTile(symbol: tool.icon, label: tool.title, hint: hint, action: run)
         case .popover(let content):
             ToolTile(symbol: tool.icon, label: tool.title, hint: hint) {
-                env.usage.recordTileTap(tool.id)
                 if popovers.request(tool.id) {
                     Task { @MainActor in popovers.present(tool.id) }
                 }

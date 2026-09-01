@@ -13,7 +13,7 @@ final class MenuBarTool: Tool {
     let title = "Menu Bar"
     let icon = "menubar.rectangle"
     let category = ToolCategory.system
-    let summary = "Hide menu-bar clutter behind a click."
+    let summary = "Hide menu-bar icons behind a click."
     // Off by default: it mutates the bar on launch (collapses, hiding icons to
     // the separator's left). Opt in when you want it.
     let defaultEnabled = false

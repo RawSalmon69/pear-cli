@@ -208,7 +208,7 @@ struct BackgroundRemoverView: View {
 
     @ViewBuilder private var qualityFootnote: some View {
         if !Prefs.hdBackgroundRemoval {
-            Text("Using the fast built-in cutout. Turn on High-quality mode in Settings for sharper edges (hair, fine detail).")
+            Text("Using the built-in cutout. High-quality mode in Settings handles hair and fine edges better.")
                 .font(Theme.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)

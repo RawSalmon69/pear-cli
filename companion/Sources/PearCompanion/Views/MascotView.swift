@@ -57,8 +57,8 @@ struct MascotView: View {
     private var moodLabel: String {
         switch mood {
         case .idle: return "relaxed"
-        case .excited: return "excited — new note"
-        case .worried: return "worried — disk almost full"
+        case .excited: return "New note"
+        case .worried: return "Disk almost full"
         }
     }
 }

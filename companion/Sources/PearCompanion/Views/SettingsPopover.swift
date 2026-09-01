@@ -82,7 +82,7 @@ struct SettingsPopover: View {
                 .onChange(of: hdEnabled) { _, _ in hd.prepare() }
             Text(hdEnabled
                 ? "On-device AI model for remove.bg-class cutouts (hair, fine edges). One-time \(HDBackgroundModelManager.downloadSizeText) download; fully offline after."
-                : "Uses Apple's built-in cutout — instant, no download. Turn on for much sharper edges via a one-time \(HDBackgroundModelManager.downloadSizeText) model download.")
+                : "Apple's built-in cutout is instant and needs no download. Turn this on for sharper edges, after a one-time \(HDBackgroundModelManager.downloadSizeText) download.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -113,7 +113,7 @@ struct SettingsPopover: View {
                 Spacer()
                 Button("Remove") { hd.remove() }
                     .font(Theme.caption)
-                    .help("Delete the model and the compiled copy beside it, freeing the disk they use")
+                    .help("Delete the model and its compiled copy")
             }
         case .failed(let message):
             VStack(alignment: .leading, spacing: 4) {
@@ -171,15 +171,13 @@ struct SettingsPopover: View {
             }
         }
 
-        UsageSharingSection()
-
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             SectionLabel(text: "Panel")
             Toggle("Close when it loses focus", isOn: $panelClosesOnFocusLoss)
                 .font(Theme.body)
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
-            Text("Off keeps the panel open until you click the menu-bar icon or press Esc. Drag it anywhere by an empty area.")
+            Text("When off, the panel stays open until you click the menu-bar icon or press Esc. Drag it by any empty area.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -256,7 +254,7 @@ struct SettingsPopover: View {
 
     private var toolsTab: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
-            Text("Turn off any tool you don't use — it won't load at all. Changes apply right away.")
+            Text("A tool you turn off does not load at all. Changes apply immediately.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
             ForEach(env.tools.known, id: \.id) { tool in
@@ -289,7 +287,7 @@ struct SettingsPopover: View {
     private var coupleKeySection: some View {
             VStack(alignment: .leading, spacing: Theme.itemGap) {
                 SectionLabel(text: "Couple key")
-                Text("Generate on one Mac, paste on the other. Relaunch after saving.")
+                Text("Generate on one Mac, paste it on the other, then relaunch.")
                     .font(Theme.caption)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 6) {
@@ -298,7 +296,7 @@ struct SettingsPopover: View {
                         .font(Theme.body)
                     Button("Save") {
                         if CoupleKey.store(base64Key: keyField.trimmingCharacters(in: .whitespacesAndNewlines)) {
-                            keyStatus = "Saved — relaunch Pear to connect"
+                            keyStatus = "Saved. Relaunch Pear to connect."
                             keyField = ""
                         } else {
                             keyStatus = "That doesn't look like a valid key"
@@ -396,68 +394,6 @@ struct SettingsPopover: View {
         if panel.runModal() == .OK, let url = panel.url {
             UserDefaults.standard.set(url.path, forKey: "screenshotFolder")
             folder = url.path
-        }
-    }
-}
-
-
-/// The usage-sharing control, with the exact payload listed beside it. Stating
-/// what leaves the Mac in the same place as the switch that stops it is the
-/// point: a reader can check the claim instead of taking it.
-private struct UsageSharingSection: View {
-    @Environment(AppEnvironment.self) private var env
-    @AppStorage(Prefs.usageSharingKey) private var sharing = true
-    @State private var showingPayload = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
-            SectionLabel(text: "Usage")
-            Toggle("Share which tools you use", isOn: $sharing)
-                .font(Theme.body)
-                .toggleStyle(.switch)
-                .tint(Theme.accent)
-            Text("Sends a count of how often each tool is opened, plus the app and macOS version and a random install id, so unused features can be found and removed. No file names, no clipboard or screenshot contents, no timestamps. Off stops the counting too.")
-                .font(Theme.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 10) {
-                Button(showingPayload ? "Hide what's sent" : "Show what's sent") {
-                    showingPayload.toggle()
-                }
-                .font(Theme.caption)
-                .buttonStyle(.link)
-                if !env.usage.counts.isEmpty {
-                    Button("Forget counts on this Mac") { env.usage.forget() }
-                        .font(Theme.caption)
-                        .buttonStyle(.link)
-                }
-            }
-
-            if showingPayload {
-                if env.usage.report.isEmpty {
-                    Text("Nothing counted yet.")
-                        .font(Theme.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(env.usage.report.prefix(12), id: \.key) { row in
-                            HStack {
-                                Text(row.key)
-                                    .font(Theme.rounded(11, .regular))
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Text("\(row.count)")
-                                    .font(Theme.rounded(11, .medium))
-                                    .monospacedDigit()
-                            }
-                        }
-                    }
-                    .padding(8)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                }
-            }
         }
     }
 }

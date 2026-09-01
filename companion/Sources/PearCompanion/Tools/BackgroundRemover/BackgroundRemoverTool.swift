@@ -11,7 +11,7 @@ final class BackgroundRemoverTool: Tool {
     let title = "Remove Background"
     let icon = "person.and.background.dotted"
     let category = ToolCategory.capture
-    let summary = "Drop or choose an image and cut out its background on-device. Enable High-quality mode in Settings for remove.bg-class edges."
+    let summary = "Cut the background out of an image, on your Mac. High-quality mode handles hair and fine edges."
     let hotkey: HotKeyChord? = nil
 
     private let window = BackgroundRemoverWindowController()

@@ -14,7 +14,7 @@ struct CleanModeSettingsView: View {
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
 
-            Text("The mouse always stays live — click Done to exit.")
+            Text("The mouse stays live. Click Done to exit.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

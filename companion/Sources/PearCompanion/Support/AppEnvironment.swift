@@ -17,9 +17,6 @@ final class AppEnvironment {
     /// Feeds the panel greeting's health line and mascot mood. What is left of
     /// the native samplers after the Monitor tool was removed in 2.26.1.
     let stats: PearStatsService
-    /// Per-tool usage tally; see `UsageAnalytics` for what it does and does not
-    /// record.
-    let usage: UsageAnalytics
     let updater: UpdaterService?
     let tools: ToolRegistry
     /// Trial / licence state. Read by the settings pane and the locked state, and
@@ -29,18 +26,13 @@ final class AppEnvironment {
     /// `runner.currentFrame` directly; off by default, 0% cost when off.
     let runner = RunnerModel()
 
-    init(
-        messaging: MessagingService, stats: PearStatsService, usage: UsageAnalytics,
-        updater: UpdaterService?
-    ) {
+    init(messaging: MessagingService, stats: PearStatsService, updater: UpdaterService?) {
         self.messaging = messaging
         self.stats = stats
-        self.usage = usage
         self.updater = updater
 
         // Adding a tool to the app is one registration here.
         let tools = ToolRegistry()
-        tools.usage = usage
         // The paywall, in one line: a locked app registers no paid tool, so no
         // hotkey is claimed and no engine starts. Set before the first `offer`,
         // because `offer` is what consults it.
@@ -92,19 +84,18 @@ final class AppEnvironment {
         // Sparkle only works from a bundled .app (not `swift run`); guard so
         // dev runs don't crash trying to start it.
         let stats = PearStatsService()
-        let usage = UsageAnalytics.live()
         let updater = Bundle.main.bundleIdentifier != nil ? UpdaterService() : nil
         // Couple-note hidden: inert mock, CloudKit never constructed.
         guard FeatureFlags.coupleNote else {
             let mock = MockMessagingService(connectionState: .online)
-            return AppEnvironment(messaging: mock, stats: stats, usage: usage, updater: updater)
+            return AppEnvironment(messaging: mock, stats: stats, updater: updater)
         }
         if let key = CoupleKey.load() {
             let service = CloudKitMessagingService(key: key, deviceRole: CoupleKey.deviceRole)
-            return AppEnvironment(messaging: service, stats: stats, usage: usage, updater: updater)
+            return AppEnvironment(messaging: service, stats: stats, updater: updater)
         }
         // No key yet: mock backend, setup card in the panel.
         let mock = MockMessagingService(connectionState: .needsSetup)
-        return AppEnvironment(messaging: mock, stats: stats, usage: usage, updater: updater)
+        return AppEnvironment(messaging: mock, stats: stats, updater: updater)
     }
 }
