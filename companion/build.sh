@@ -55,40 +55,62 @@ if [[ -f Resources/PearCompanion.icns ]]; then
 fi
 
 # App Intents metadata (Shortcuts/Spotlight actions), written into Resources
-# before codesign seals it. The const-values file sits inside the bin path under
-# the native backend and in the sibling Intermediates tree under SwiftBuild.
-CONST_VALUES="$(find "$BIN" -name 'PearCompanion*.swiftconstvalues')"
-if [[ -z "$CONST_VALUES" ]]; then
-    CONST_VALUES="$(find "$BIN/../.." -path '*/Release/*' -name 'PearCompanion*.swiftconstvalues')"
-fi
-if [[ -z "$CONST_VALUES" ]]; then
-    echo "ERROR: no PearCompanion .swiftconstvalues under $BIN; App Intents metadata cannot be built."
-    exit 1
-fi
+# before codesign seals it, once per module that declares intents: the app, and
+# the Control Center control (its toggle intent). Each module has one const-values
+# file: `<M>.swiftconstvalues` inside the bin path under the native backend,
+# `<M>-primary.swiftconstvalues` in the sibling Intermediates tree under SwiftBuild.
+# Usage: intents_metadata <module> <binary> <resources dir> <bundle id> <deployment target>
 INTENTS_TMP="build/appintents"
-mkdir -p "$INTENTS_TMP"
-echo "$CONST_VALUES" > "$INTENTS_TMP/constvalues.txt"
-find "$PWD/Sources/PearCompanion" -name '*.swift' > "$INTENTS_TMP/sources.txt"
 # Derived at build time, so CI's Xcode and a local one each describe themselves.
 XCODE_BUILD="$(xcodebuild -version | awk '/Build version/ { print $3 }')"
-xcrun appintentsmetadataprocessor \
-    --output "$APP/Contents/Resources" \
-    --toolchain-dir "$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain" \
-    --module-name PearCompanion \
-    --sdk-root "$(xcrun --sdk macosx --show-sdk-path)" \
-    --xcode-version "$XCODE_BUILD" \
-    --platform-family macOS \
-    --deployment-target 14.0 \
-    --target-triple "$(uname -m)-apple-macos14.0" \
-    --bundle-identifier "$(plutil -extract CFBundleIdentifier raw Resources/Info.plist)" \
-    --binary-file "$APP/Contents/MacOS/Pear" \
-    --source-file-list "$INTENTS_TMP/sources.txt" \
-    --swift-const-vals-list "$INTENTS_TMP/constvalues.txt" \
-    --compile-time-extraction \
-    --deployment-aware-processing \
-    --no-app-shortcuts-localization \
-    --force
-rm -rf "$INTENTS_TMP"
+intents_metadata() {
+    local module="$1" binary="$2" output="$3" bundle_id="$4" deployment="$5"
+    local const_values
+    const_values="$(find "$BIN" -name "$module.swiftconstvalues")"
+    if [[ -z "$const_values" ]]; then
+        const_values="$(find "$BIN/../.." -path '*/Release/*' -name "$module-primary.swiftconstvalues")"
+    fi
+    if [[ -z "$const_values" ]]; then
+        echo "ERROR: no $module .swiftconstvalues under $BIN; App Intents metadata cannot be built."
+        exit 1
+    fi
+    mkdir -p "$INTENTS_TMP"
+    echo "$const_values" > "$INTENTS_TMP/constvalues.txt"
+    find "$PWD/Sources/$module" -name '*.swift' > "$INTENTS_TMP/sources.txt"
+    xcrun appintentsmetadataprocessor \
+        --output "$output" \
+        --toolchain-dir "$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain" \
+        --module-name "$module" \
+        --sdk-root "$(xcrun --sdk macosx --show-sdk-path)" \
+        --xcode-version "$XCODE_BUILD" \
+        --platform-family macOS \
+        --deployment-target "$deployment" \
+        --target-triple "$(uname -m)-apple-macos$deployment" \
+        --bundle-identifier "$bundle_id" \
+        --binary-file "$binary" \
+        --source-file-list "$INTENTS_TMP/sources.txt" \
+        --swift-const-vals-list "$INTENTS_TMP/constvalues.txt" \
+        --compile-time-extraction \
+        --deployment-aware-processing \
+        --no-app-shortcuts-localization \
+        --force
+    rm -rf "$INTENTS_TMP"
+}
+intents_metadata PearCompanion "$APP/Contents/MacOS/Pear" "$APP/Contents/Resources" \
+    "$(plutil -extract CFBundleIdentifier raw Resources/Info.plist)" 14.0
+
+# The Control Center control (macOS 26+), a WidgetKit extension. Its
+# LSMinimumSystemVersion 26.0 keeps 14–15 from loading it. Its versions are the
+# app's, so the pair never disagree.
+APPEX="$APP/Contents/PlugIns/PearControl.appex"
+mkdir -p "$APPEX/Contents/MacOS" "$APPEX/Contents/Resources"
+cp "$BIN/PearControl" "$APPEX/Contents/MacOS/PearControl"
+cp Resources/PearControl-Info.plist "$APPEX/Contents/Info.plist"
+plutil -replace CFBundleShortVersionString -string "$VERSION" "$APPEX/Contents/Info.plist"
+plutil -replace CFBundleVersion -string "$(plutil -extract CFBundleVersion raw Resources/Info.plist)" \
+    "$APPEX/Contents/Info.plist"
+intents_metadata PearControl "$APPEX/Contents/MacOS/PearControl" "$APPEX/Contents/Resources" \
+    "$(plutil -extract CFBundleIdentifier raw Resources/PearControl-Info.plist)" 14.0
 
 # Embed the Developer ID provisioning profile that authorizes the CloudKit and
 # push entitlements. Without it a hardened, entitled build will not launch.
@@ -121,6 +143,9 @@ if [[ -n "${IDENTITY:-}" ]]; then
         )
         sign "$FW"
     fi
+
+    # The control extension: sandboxed, as WidgetKit requires; no profile needed.
+    sign --entitlements Resources/PearControl.entitlements "$APPEX"
 
     # Main app last, over the already-signed nested code.
     codesign --force --options runtime --timestamp \

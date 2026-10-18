@@ -12,7 +12,8 @@ change. It is the first thing a fresh session reads to understand the app.
 ## What it is
 
 Pear.app is a private, native macOS **menu-bar utility** (SwiftUI + AppKit, one
-Swift Package, `PearCompanion` target, min **macOS 14**, Swift 6 strict
+Swift Package, `PearCompanion` target plus the macOS 26 `PearControl` Control
+Center extension, min **macOS 14**, Swift 6 strict
 concurrency). Think CleanShot/Loop/Bartender-class power-user toolkit for one
 couple, distributed friends-and-family. It is **on-device and privacy-first**:
 no third-party runtime deps except Sparkle (auto-update) and an optional,
@@ -52,7 +53,8 @@ backend (`.build/<triple>/release/PearCompanion.build/`) or under
 none found fails the build. `--xcode-version` comes from `xcodebuild -version` at
 build time, so CI's Xcode and a local one each describe themselves. Both workflows
 only call `build.sh`. To check a build, the `actions` key of `extract.actionsdata`
-(plain JSON) must list all eight intents. Product paths come from `swift build
+(plain JSON) must list all eight intents, and the appex's must list
+`SetKeepAwakeIntent`. Product paths come from `swift build
 --show-bin-path`: the old `find -path '*release*'` missed SwiftBuild's
 `.build/out/Products/Release` and shipped a local app with no Sparkle and no
 resource bundle. Spike evidence (2026-10-18): a Developer ID-signed Pear copy under
@@ -259,6 +261,29 @@ constructs intents itself, so the app delegate sets `ToolRegistry.live` at launc
 an action arriving before that fails with "Pear is still starting". No intent sets
 `openAppWhenRun`: Pear is an accessory app with no window to bring forward and
 every one of these tools already runs from the background, as a hotkey does.
+**Control Center control** (macOS 26+ only; 14–15 never load it): a Keep Awake
+`ControlWidgetToggle` in its own WidgetKit extension, target `PearControl`,
+embedded by `build.sh` as `Contents/PlugIns/PearControl.appex` (bundle ID
+`com.rawsalmon69.pear.companion.control`). The sandboxed extension owns no state
+and cannot hold a power assertion, so it talks to Pear over a **Darwin-notification
+channel** (`PearControlChannel` target, `KeepAwakeChannel`, tested in
+`KeepAwakeChannelTests`): a tap posts `…keepawake.request.on/off`, and Pear publishes
+Keep Awake as the notify state of `…keepawake.state`. No app-group container, so
+non-sandboxed Pear never risks the macOS 15+ container prompt. `SwitchesTool.start()`
+(26+, not under tests) opens Pear's end; a request goes through the same
+`setKeepAwake` a grid tap does, and every change from any surface (grid, the
+Toggle Keep Awake action, the control, teardown) is published and followed by
+`ControlCenter.reloadControls(ofKind:)`, so the control and the Switches grid stay
+in step both ways. notifyd drops a name's state with its last token, so **Pear not
+running, or the Switches tool turned off** (`stop()` publishes off and closes the
+channel) reads as off, and a tap then has nobody to hear it and snaps back: the
+control can never turn Keep Awake on without Pear holding the assertion. The
+control does not launch Pear. Hiding Keep Awake from the grid does not remove the
+control; adding or removing it is done in Control Center itself. Its intent sets `isDiscoverable =
+false`, since Pear's Toggle Keep Awake already covers Shortcuts. Proven on this
+machine: a sandboxed probe read the published state and its request reached an
+unsandboxed host. Known ceiling: after a crash Control Center may show the last
+state until it next asks; `currentValue()` is then already off.
 
 ## Key decisions & invariants
 
@@ -423,53 +448,45 @@ Channels: companion GitHub release + appcast only. The CLI (nightly/Homebrew) is
 untouched by companion changes. Restate channel scope and confirm with the
 maintainer before tagging.
 
-**Control Center control (spike, 2026-10-18): YES.** SwiftPM + `build.sh` can
-build, embed and Developer ID-sign a WidgetKit control extension, with no Xcode
-project. Proven with a throwaway probe (one `ControlWidgetToggle`, a
-`SetValueIntent`, `@main WidgetBundle`, all `@available(macOS 26, *)`), built both
-as a second `executableTarget` inside this package (platforms stay `.v14`;
-`swift build -c release --product <X>`) and standalone. Steps: (1) the target takes
-`swiftSettings: .unsafeFlags(["-application-extension"])` and
-`linkerSettings: .unsafeFlags(["-Xlinker", "-application_extension"])`. The
-WidgetBundle's `@main` supplies `main`, so you do not need `-e _NSExtensionMain`.
-(2) SwiftPM never runs Xcode's ExtractAppIntentsMetadata step, so `build.sh` does
-it itself: run
-`xcrun swiftc -typecheck -wmo -parse-as-library -module-name <X> -target arm64-apple-macos14.0 -sdk "$(xcrun --show-sdk-path)" -emit-const-values-path <X>.swiftconstvalues -Xfrontend -const-gather-protocols-file -Xfrontend <json list: AppIntent, AppEntity, AppEnum, EntityQuery, …> Sources/<X>/*.swift`,
-then `xcrun appintentsmetadataprocessor --output <appex>/Contents/Resources`
-(module, sdk-root, xcode-version, platform-family macOS, deployment-target,
-target-triple, source-file-list, swift-const-vals-list). That writes
-`Metadata.appintents`, byte-identical to the metadata built from the default
-swift-build backend's own const values. Do this pass yourself, because the `native` backend emits no const
-values. (3) Assemble `Contents/PlugIns/<Name>.appex/Contents/{MacOS,Resources,Info.plist}`
-with `CFBundlePackageType XPC!`,
-`NSExtension.NSExtensionPointIdentifier = com.apple.widgetkit-extension` and
-`LSMinimumSystemVersion 26.0`, which is meant to keep 14–15 from loading it. (4) Sign
-the appex before the app, using the same `sign()` as Sparkle's nested code
-(`--options runtime --timestamp`) plus its own `--entitlements`:
-`com.apple.security.app-sandbox`, plus a `UNWK3RC4T7.`-prefixed app group if you
-use one. Then sign the app as today. Evidence, signed with the real Developer ID
-and no keychain prompt: `codesign --verify --deep --strict -vvv` reported
-"valid on disk / satisfies its Designated Requirement". `spctl -a -vv` reported
-"rejected, source=Unnotarized Developer ID", which is expected before
-notarization. After `lsregister -f`, `pluginkit -mAvvv -i <appex id>` listed it
-with `SDK = com.apple.widgetkit-extension` and `Parent Bundle` = the host, and
-chronod logged `Added extensions: [<WidgetExtension - identifier: <host id>::<appex id> … isApple: false>]`,
-the same record a shipping third-party widget gets. Provisioning (reasoned, not
-notarized): the appex needs no profile. App-sandbox and team-prefixed app groups
-are unrestricted on macOS under Developer ID; only `group.`-style IDs need profile
-authorisation. The release workflow needs nothing new, because `build.sh` does all
-the signing with the existing cert, identity and notary secrets, and
-`PearCompanion.provisionprofile` stays app-only. **Not proven here** (owner checks
-for ticket 16): (a) the control showing in Control Center's gallery and toggling;
-chronod fetches descriptors lazily, so this needs the GUI. (b) Whether
-non-sandboxed Pear touching an app-group container prompts on macOS 15+. Prefer a
-Darwin-notification channel (`notify_post` / `notify_get_state`), which needs no
-group container. (c) A real 14/15 install ignoring the appex. (d) The notary
+**Control Center control extension: `build.sh` does all of it**, no Xcode project.
+`PearControl` is a second `executableTarget` in this package (platforms stay
+`.v14`) with `swiftSettings: .unsafeFlags(["-application-extension"])` and
+`linkerSettings: .unsafeFlags(["-Xlinker", "-application_extension"])`; its
+`@main WidgetBundle` supplies `main`, so no `-e _NSExtensionMain`. The test target
+links only `PearCompanion` and `PearControlChannel`, never the extension. `build.sh`
+runs the same App Intents metadata step for the `PearControl` module as for the
+app (`intents_metadata`, one const-values file per module, a missing one fails the
+build), so the appex carries its own `Metadata.appintents` with
+`SetKeepAwakeIntent`. It assembles `Contents/PlugIns/PearControl.appex/Contents/{MacOS,Resources,Info.plist}`
+from `Resources/PearControl-Info.plist` (`CFBundlePackageType XPC!`,
+`NSExtension.NSExtensionPointIdentifier = com.apple.widgetkit-extension`,
+`LSMinimumSystemVersion 26.0`; both version fields copied from the app's, so a
+release still bumps only `Resources/Info.plist`), and signs the appex before the
+app with the shared `sign()` (`--options runtime --timestamp`) plus
+`Resources/PearControl.entitlements` (`com.apple.security.app-sandbox` only).
+The release workflow needed no change: it only calls `build.sh` to sign, and it
+notarizes the zipped app, which covers the nested appex. Spike evidence
+(2026-10-18), signed with the real Developer ID and no keychain prompt:
+`codesign --verify --deep --strict -vvv` reported "valid on disk / satisfies its
+Designated Requirement"; `spctl -a -vv` reported "rejected, source=Unnotarized
+Developer ID", expected before notarization. After `lsregister -f` (the ticket-16
+build also needed `pluginkit -a <appex>`), `pluginkit -mAvvv -i <appex id>` listed
+it with `SDK = com.apple.widgetkit-extension` and `Parent Bundle` = the host, and
+in the spike chronod logged `Added extensions: [<WidgetExtension - identifier: <host id>::<appex id> … isApple: false>]`,
+the same record a shipping third-party widget gets. Both checks used throwaway
+bundle IDs, unregistered afterwards. Provisioning (reasoned, not notarized): the
+appex needs no profile. App-sandbox and team-prefixed app groups are unrestricted
+on macOS under Developer ID; only `group.`-style IDs need profile authorisation,
+and the control uses no group at all. `PearCompanion.provisionprofile` stays
+app-only. **Owner checks:** (a) the control shows in Control Center's gallery and
+toggles in step with the Switches grid (chronod fetches descriptors lazily, so
+this needs the GUI). (b) A real 14/15 install ignores the appex. (c) The notary
 verdict on the first tagged build. Side finding: Xcode 27's default SwiftPM
 backend stamps `LC_BUILD_VERSION sdk 14.0` (the deployment target), while CI's
 Xcode 26 and `--build-system native` stamp the real SDK. Check
 `xcrun vtool -show-build` when SDK-gated behaviour differs between a local build
-and CI.
+and CI; a local Xcode 27 build of the appex carries `sdk 14.0`, the release one
+does not.
 
 ## Gotchas (each cost real time)
 

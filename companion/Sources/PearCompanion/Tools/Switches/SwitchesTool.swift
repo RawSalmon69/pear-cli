@@ -1,4 +1,6 @@
+import PearControlChannel
 import SwiftUI
+import WidgetKit
 
 /// Quick system toggles in a grid: Keep Awake, Lid Closed, Screen Saver, Lock Screen,
 /// Hide Desktop, Show Hidden, Big Cursor. The tile only opens the grid;
@@ -37,7 +39,26 @@ final class SwitchesTool: Tool {
         return model.keepAwakeOn
     }
 
+    /// macOS 26+: serves the Control Center Keep Awake control. Its taps arrive
+    /// as requests and go through `setKeepAwake`, like a grid tap, and every
+    /// change (from any surface) is published back and the control reloaded.
+    /// While the tool is off nothing listens and the state reads off, so the
+    /// control cannot turn Keep Awake on.
+    func start() {
+        guard #available(macOS 26, *), !SwitchTestGuard.isRunningTests else { return }
+        let host = KeepAwakeChannelHost(channel: .live) { [weak self] on in
+            MainActor.assumeIsolated { self?.model.setKeepAwake(on) }
+        }
+        // The hook owns the host: clearing it in `stop()` cancels every token.
+        model.onKeepAwakeChange = { on in
+            host.publish(on)
+            ControlCenter.shared.reloadControls(ofKind: KeepAwakeChannel.live.kind)
+        }
+        model.onKeepAwakeChange?(model.keepAwakeOn)
+    }
+
     func stop() {
         model.teardown()
+        model.onKeepAwakeChange = nil
     }
 }

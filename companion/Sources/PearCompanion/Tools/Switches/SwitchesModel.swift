@@ -206,6 +206,10 @@ final class SwitchesModel {
     /// without a dialog nobody would be there to answer.
     var shouldRestoreLidOnQuit: Bool { lidClosedOn && lidClosedIsOurs && lidRuleInstalled }
 
+    /// Told whenever Keep Awake is set or torn down, so the tool can keep the
+    /// Control Center control in step. Nil in tests and on macOS 14–15.
+    @ObservationIgnored var onKeepAwakeChange: ((Bool) -> Void)?
+
     @ObservationIgnored private let commandRunner: CommandRunner
     @ObservationIgnored private let power: PowerAssertioning
     @ObservationIgnored private let locker: ScreenLocking
@@ -268,6 +272,7 @@ final class SwitchesModel {
     func setKeepAwake(_ on: Bool) {
         if on { power.acquire() } else { power.release() }
         keepAwakeOn = power.isActive
+        onKeepAwakeChange?(keepAwakeOn)
     }
 
     /// Flips the system-wide sleep lock: silent when the grant is installed, one
@@ -403,6 +408,7 @@ final class SwitchesModel {
     func teardown() {
         power.release()
         keepAwakeOn = false
+        onKeepAwakeChange?(false)
         clearLidSession()
     }
 
