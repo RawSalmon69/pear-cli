@@ -80,7 +80,7 @@ final class PanelController: NSObject {
         if let button = statusItem.button {
             button.target = self
             button.action = #selector(statusItemClicked)
-            button.sendAction(on: [.leftMouseUp])
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
         NotificationCenter.default.addObserver(
@@ -143,7 +143,42 @@ final class PanelController: NSObject {
     // MARK: - Panel
 
     @objc private func statusItemClicked() {
-        toggle()
+        let event = NSApp.currentEvent
+        if event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true {
+            showMenu()
+        } else {
+            toggle()
+        }
+    }
+
+    /// Right-click (or control-click) menu. Set on the item only for this one
+    /// click: a permanently set `statusItem.menu` would hijack left click too.
+    /// `performClick` lets AppKit place and highlight it like any status menu.
+    private func showMenu() {
+        let menu = NSMenu()
+        let update = NSMenuItem(title: "Check for Updates…", action: nil, keyEquivalent: "")
+        if env.updater != nil {
+            update.target = self
+            update.action = #selector(checkForUpdates)
+        }
+        menu.addItem(update)
+        menu.addItem(.separator())
+        let quit = NSMenuItem(title: "Quit Pear", action: #selector(quit), keyEquivalent: "q")
+        quit.target = self
+        menu.addItem(quit)
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    @objc private func checkForUpdates() {
+        env.updater?.checkForUpdates()
+    }
+
+    /// `terminate`, never `exit()`: `willTerminate` observers (Lid Closed
+    /// restore, Clean Mode) must run.
+    @objc private func quit() {
+        NSApp.terminate(nil)
     }
 
     func toggle() {

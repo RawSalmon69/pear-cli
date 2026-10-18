@@ -51,7 +51,9 @@ push/PR.
 - **`PanelController`** (`Views/PanelWindow.swift`): owns the menu-bar status
   item + the companion panel (a non-activating `NSPanel`, replaced the old
   `MenuBarExtra`). Closes on focus loss by default (`Prefs.panelClosesOnFocusLoss`),
-  draggable, recreate-per-open so idle cost ~0.
+  draggable, recreate-per-open so idle cost ~0. Left click toggles the panel;
+  right/control-click pops a native menu (Check for Updates…, Quit Pear) by
+  setting `statusItem.menu` only for that click — never leave it set.
 - **Services** (`Services/`): Screenshot, OCR (Vision), BackgroundRemoval
   (Vision + optional HD model), HDBackgroundModel (BEN2 download/manage),
   Clipboard history, CloudKit messaging (flagged off), Stats (native samplers),
