@@ -303,7 +303,12 @@ final class MenuBarManager {
     // MARK: - Auto-rehide
 
     private func scheduleRehideIfNeeded() {
-        guard Self.shouldScheduleRehide(collapsed: isCollapsed, autoRehideSeconds: autoRehideSeconds) else { return }
+        // No surface (the tool is off, its options edited in Settings): nothing
+        // to hide, and a timer firing `collapse()` would persist a collapse the
+        // user never made. Callers have already cancelled any pending one.
+        guard surface != nil,
+              Self.shouldScheduleRehide(collapsed: isCollapsed, autoRehideSeconds: autoRehideSeconds)
+        else { return }
         let delay = autoRehideSeconds
         rehideGeneration &+= 1
         let generation = rehideGeneration

@@ -56,7 +56,7 @@ final class SettingsPageTests: XCTestCase {
              .tool("screenshot"), .tool("menubar"), .tool("cleanmode"), .about])
     }
 
-    func testAToolPageRoundTripsWhileItsToolIsOffered() {
+    func testAStoredToolPageReadsBackWhileThatToolIsOffered() {
         withSuite { defaults in
             Prefs.setSettingsPage(.tool("menubar"), defaults: defaults)
             XCTAssertEqual(

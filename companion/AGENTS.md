@@ -109,7 +109,7 @@ check: the actions show in the Shortcuts app.
   (`ToolRegistry.offeredTool`), so it starts with what was chosen. The **pins
   picker** is four slot menus over the enabled tools with a tile; `PanelModel`
   decides each slot and what a pick stores (`pins(placing:inSlot:)`, in
-  `SettingsView.swift`: the row as shown with the pick swapped in, plus the
+  `PanelModel.swift`: the row as shown with the pick swapped in, plus the
   stored pins of tools that are off), saved with `Prefs.setPinnedTools`. "Live"
   means the next panel open: the panel closes when Settings opens and reads pins
   on every open.

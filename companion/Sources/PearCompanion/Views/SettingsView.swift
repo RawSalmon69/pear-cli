@@ -89,6 +89,7 @@ enum SettingsPage: Hashable, Identifiable {
 
     /// The first tool page. "Open Settings" under "No tools match" lands here,
     /// where the tool pages (and their on/off switches) begin.
+    // TODO(ticket 21): remove; PanelView should open a real page
     @MainActor static var tools: SettingsPage {
         .tool(ToolRegistry.live?.known.first?.id ?? "")
     }
@@ -696,18 +697,5 @@ struct ToolSettingsLink: View {
             .focusable(false)
             .help("Open \(title) in Settings")
             .accessibilityLabel("\(title) settings")
-    }
-}
-
-extension PanelModel {
-    /// The pins after the Settings picker puts `id` in `slot` of the pinned
-    /// row: the row as the panel shows it (so fill-in tiles become real pins),
-    /// with `id` swapped in from its old slot when it had one, then the stored
-    /// pins of tools that are off, kept so they are not lost.
-    func pins(placing id: String, inSlot slot: Int) -> [String] {
-        var row = pinned.map(\.id)
-        guard row.indices.contains(slot) else { return pins }
-        if let old = row.firstIndex(of: id) { row.swapAt(old, slot) } else { row[slot] = id }
-        return row + pins.filter { pin in !entries.contains { $0.id == pin } }
     }
 }

@@ -359,6 +359,29 @@ final class MenuBarManagerTests: XCTestCase {
         XCTAssertEqual(reloaded.autoRehideSeconds, 30)
     }
 
+    /// The tool's Settings page edits a manager whose surface is uninstalled
+    /// (the tool turned off). A rehide armed there would fire `collapse()` and
+    /// persist a collapse the user never made, so the next enable hides icons.
+    func testChangingAutoRehideWhileUninstalledArmsNoTimer() async throws {
+        let suite = "MenuBarTests-rehide-uninstalled"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let manager = MenuBarManager(defaults: defaults, keyPrefix: "mb")
+        manager.attach(FakeSurface())
+        manager.setAutoRehide(0)
+        manager.expand()
+        manager.uninstallSurface()
+
+        manager.setAutoRehide(1)
+        try await Task.sleep(for: .milliseconds(1300))
+
+        XCTAssertFalse(manager.isCollapsed, "no timer fired a collapse")
+        XCTAssertEqual(defaults.object(forKey: "mb.isCollapsed") as? Bool, false,
+                       "the user's expanded state is not overwritten")
+    }
+
     func testCollapsedStatePersistsAcrossReload() throws {
         let suite = "MenuBarTests-collapsed-persist"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

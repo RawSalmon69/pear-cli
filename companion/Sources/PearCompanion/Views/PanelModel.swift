@@ -104,6 +104,17 @@ struct PanelModel {
         return Array(tiles.prefix(Self.pinSlots))
     }
 
+    /// The pins after the Settings picker puts `id` in `slot` of the pinned
+    /// row: the row as the panel shows it (so fill-in tiles become real pins),
+    /// with `id` swapped in from its old slot when it had one, then the stored
+    /// pins of tools that are off, kept so they are not lost.
+    func pins(placing id: String, inSlot slot: Int) -> [String] {
+        var row = filledPins.map(\.id)
+        guard row.indices.contains(slot) else { return pins }
+        if let old = row.firstIndex(of: id) { row.swapAt(old, slot) } else { row[slot] = id }
+        return row + pins.filter { pin in !entries.contains { $0.id == pin } }
+    }
+
     /// The pinned row. Hidden while searching: results then span every tool.
     var pinned: [Entry] { trimmedQuery.isEmpty ? filledPins : [] }
 
