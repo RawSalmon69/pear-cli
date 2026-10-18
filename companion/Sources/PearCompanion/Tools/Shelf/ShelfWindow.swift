@@ -1,4 +1,6 @@
 import AppKit
+import Carbon.HIToolbox
+import QuickLookUI
 import SwiftUI
 
 /// Owns the shelf's floating panel. Unlike the clipboard picker this panel
@@ -28,14 +30,43 @@ final class ShelfWindowController {
     }
 
     func hide() {
+        if QLPreviewPanel.sharedPreviewPanelExists(), let ql = QLPreviewPanel.shared(),
+           ql.isVisible, (ql.currentController as AnyObject?) === panel {
+            ql.orderOut(nil)
+        }
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
         panel?.orderOut(nil)
         panel = nil
     }
 
+    /// Toggles the system Quick Look panel for `entry`, or for the hovered row
+    /// (falling back to the top item, like ⌘C) when nil — the Space path.
+    /// Showing a different item while the panel is open switches to it.
+    func toggleQuickLook(_ entry: ShelfEntry? = nil) {
+        guard let panel = panel as? ShelfPanel, let ql = QLPreviewPanel.shared() else { return }
+        if ql.isVisible, (ql.currentController as AnyObject?) === panel,
+           entry == nil || entry?.url == panel.previewURL {
+            ql.orderOut(nil)
+            return
+        }
+        guard let target = entry
+            ?? store.items.first(where: { $0.id == store.hoveredID }) ?? store.items.first
+        else { return }
+        panel.previewURL = target.url
+        // Quick Look finds its controller up the key window's responder chain,
+        // which ends at `ShelfPanel` (see `acceptsPreviewPanelControl`).
+        panel.makeKey()
+        ql.updateController()
+        ql.reloadData()
+        ql.makeKeyAndOrderFront(nil)
+    }
+
     private func show() {
-        let view = ShelfView(store: store, onClose: { [weak self] in self?.hide() })
+        let view = ShelfView(
+            store: store,
+            onClose: { [weak self] in self?.hide() },
+            onPreview: { [weak self] entry in self?.toggleQuickLook(entry) })
 
         let panel = ShelfPanel(
             contentRect: NSRect(origin: .zero, size: Self.panelSize),
@@ -75,14 +106,20 @@ final class ShelfWindowController {
         installKeyMonitor(for: panel)
     }
 
-    /// ⌘V pastes the clipboard into the shelf; ⌘C copies the hovered row out.
+    /// ⌘V pastes the clipboard into the shelf; ⌘C copies the hovered row out;
+    /// Space toggles Quick Look.
     /// A local key monitor scoped to the panel's visibility — installed on
     /// show, torn down in `hide()`. The non-activating panel means a SwiftUI
     /// `.onPasteCommand` would not fire reliably, so the shortcuts live here.
     private func installKeyMonitor(for panel: NSPanel) {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak panel] event in
-            guard let self, let panel, event.window === panel,
-                  event.modifierFlags.contains(.command) else { return event }
+            guard let self, let panel, event.window === panel else { return event }
+            if event.keyCode == UInt16(kVK_Space),
+               event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty {
+                self.toggleQuickLook()
+                return nil
+            }
+            guard event.modifierFlags.contains(.command) else { return event }
             switch event.charactersIgnoringModifiers?.lowercased() {
             case "v":
                 Task { @MainActor in await self.store.ingest(from: .general) }
@@ -98,8 +135,15 @@ final class ShelfWindowController {
 
 /// Borderless panel that can take key focus (so buttons and Quick Look work)
 /// but — deliberately unlike `KeyablePanel` — does not close on `resignKey`.
-private final class ShelfPanel: NSPanel {
+/// It is also the Quick Look controller: the shared `QLPreviewPanel` asks the
+/// key window's responder chain, and the window is the end of that chain.
+/// QuickLookUI predates Swift concurrency, so its callbacks arrive nonisolated;
+/// AppKit only ever makes them on the main thread, which `assumeIsolated`
+/// asserts rather than trusts.
+private final class ShelfPanel: NSPanel, @preconcurrency QLPreviewPanelDataSource {
     var onCancel: (() -> Void)?
+    /// The one file Quick Look shows.
+    var previewURL: URL?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -107,6 +151,31 @@ private final class ShelfPanel: NSPanel {
     // One dismissal grammar across every floating surface: Esc closes.
     override func cancelOperation(_ sender: Any?) {
         onCancel?()
+    }
+
+    override nonisolated func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
+
+    override nonisolated func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated {
+            panel?.dataSource = self
+            // Float with the shelf (else it opens behind it), and stay up while
+            // Pear is not the active app — clicking a non-activating panel never
+            // activates it.
+            panel?.level = level
+            panel?.hidesOnDeactivate = false
+        }
+    }
+
+    override nonisolated func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated { panel?.dataSource = nil }
+    }
+
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        previewURL == nil ? 0 : 1
+    }
+
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
+        previewURL as NSURL?
     }
 }
 

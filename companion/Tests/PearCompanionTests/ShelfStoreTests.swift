@@ -158,6 +158,33 @@ final class ShelfStoreTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: item.url, encoding: .utf8), "hello from clipboard")
     }
 
+    // MARK: - Convert
+
+    func testConvertAddsNewEntryAndLeavesOriginal() async throws {
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let source = dir.appendingPathComponent("shot.png")
+        try makePNGData().write(to: source)
+
+        let store = ShelfStore(root: root)
+        await store.add(source)
+        let original = try XCTUnwrap(store.items.first)
+        let before = try Data(contentsOf: original.url)
+
+        await store.convert(original, to: .jpeg)
+
+        XCTAssertEqual(store.items.count, 2)
+        let converted = try XCTUnwrap(store.items.first)
+        XCTAssertEqual(converted.originalName, "shot.jpg")
+        XCTAssertNotEqual(converted.storedPath, original.storedPath)
+        XCTAssertEqual(store.items.last?.id, original.id)
+        XCTAssertEqual(try Data(contentsOf: original.url), before, "the original is byte-identical")
+    }
+
     // MARK: - Copy-out
 
     func testCopyPutsFileURLOnPasteboard() async throws {

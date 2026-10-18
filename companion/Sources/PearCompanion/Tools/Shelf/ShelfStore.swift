@@ -128,6 +128,31 @@ final class ShelfStore {
         }
     }
 
+    /// Converts an image entry (PNG, JPEG or half size) off the main actor and
+    /// adds the result as a NEW entry; the original's file is only read, never
+    /// written. No-op (with a sound) when ImageIO can't convert it.
+    func convert(_ entry: ShelfEntry, to kind: ShelfConversion) async {
+        guard entry.isImage else { return }
+        let source = entry.url
+        let stem = (entry.originalName as NSString).deletingPathExtension
+        let temp = await Task.detached(priority: .userInitiated) { () -> URL? in
+            let dir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("ShelfConvert-\(UUID().uuidString)", isDirectory: true)
+            do {
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                return try ShelfConverter.convert(source, to: kind, in: dir, stem: stem)
+            } catch {
+                try? FileManager.default.removeItem(at: dir)
+                Self.log.error("shelf convert failed: \(String(describing: error), privacy: .public)")
+                return nil
+            }
+        }.value
+        guard let temp else { SoundEffects.play(.discard); return }
+        await add(temp)
+        try? FileManager.default.removeItem(at: temp.deletingLastPathComponent())
+        SoundEffects.play(.copy)
+    }
+
     /// Removes an item and moves its stored copy to the Trash (recoverable —
     /// never a bare `removeItem` on user-visible data).
     func remove(_ entry: ShelfEntry) {
@@ -309,7 +334,8 @@ final class ShelfStore {
 
     /// Finder-style "name (1)", "name (2)" suffix resolver.
     /// Adapted from Dropshit (MIT), `Conversion/UniqueDestination.swift`.
-    private nonisolated static func uniqueDestination(for preferred: URL) -> URL {
+    /// Also used by `ShelfConverter` so a conversion never overwrites a file.
+    nonisolated static func uniqueDestination(for preferred: URL) -> URL {
         let fm = FileManager.default
         guard fm.fileExists(atPath: preferred.path) else { return preferred }
         let dir = preferred.deletingLastPathComponent()

@@ -1,18 +1,19 @@
 import AppKit
-import QuickLook
 import SwiftUI
 import UniformTypeIdentifiers
 
 /// The shelf's contents: a drop zone that holds files until you drag them
 /// out. Files dropped anywhere on the card are copied into the shelf; rows
 /// drag out as the real stored file, click to reveal in Finder, Quick Look
-/// via the eye button (or space over a hovered row), and remove with ✕.
+/// via the eye button (or Space, handled by the window controller), convert
+/// images, and remove with ✕.
 struct ShelfView: View {
     let store: ShelfStore
     let onClose: () -> Void
+    /// Toggles the system Quick Look panel for an entry.
+    let onPreview: (ShelfEntry) -> Void
 
     @State private var isTargeted = false
-    @State private var previewURL: URL?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
@@ -37,7 +38,6 @@ struct ShelfView: View {
                 .animation(.easeOut(duration: 0.12), value: isTargeted)
         }
         .onDrop(of: [.fileURL], isTargeted: $isTargeted, perform: handleDrop)
-        .quickLookPreview($previewURL)
     }
 
     private var header: some View {
@@ -80,9 +80,10 @@ struct ShelfView: View {
                         entry: entry,
                         hovering: store.hoveredID == entry.id,
                         onReveal: { reveal(entry) },
-                        onPreview: { previewURL = entry.url },
+                        onPreview: { onPreview(entry) },
                         onCopy: { store.copy(entry) },
                         onRemoveBackground: { store.removeBackground(entry) },
+                        onConvert: { kind in Task { await store.convert(entry, to: kind) } },
                         onRemove: {
                             SoundEffects.play(.discard)
                             withAnimation { store.remove(entry) }
@@ -93,16 +94,6 @@ struct ShelfView: View {
             }
         }
         .frame(maxHeight: .infinity)
-        // Best-effort space-to-preview over the hovered row; the eye button is
-        // the guaranteed path (space needs the panel to hold key focus).
-        .focusable()
-        .focusEffectDisabled()
-        .onKeyPress(.space) {
-            let target = store.items.first { $0.id == store.hoveredID } ?? store.items.first
-            guard let target else { return .ignored }
-            previewURL = target.url
-            return .handled
-        }
     }
 
     private func reveal(_ entry: ShelfEntry) {
@@ -132,6 +123,7 @@ private struct ShelfRow: View {
     let onPreview: () -> Void
     let onCopy: () -> Void
     let onRemoveBackground: () -> Void
+    let onConvert: (ShelfConversion) -> Void
     let onRemove: () -> Void
 
     var body: some View {
@@ -153,6 +145,10 @@ private struct ShelfRow: View {
                     GlyphButton(
                         symbol: "person.and.background.dotted",
                         help: "Remove background", action: onRemoveBackground)
+                    GlyphButton(symbol: "arrow.triangle.2.circlepath", help: "Convert") {
+                        ConvertMenu.pop(for: entry.url, convert: onConvert)
+                    }
+                    .accessibilityLabel("Convert")
                 }
                 GlyphButton(symbol: "eye", help: "Quick Look", action: onPreview)
                 GlyphButton(symbol: "xmark", help: "Remove", action: onRemove)
@@ -176,5 +172,35 @@ private struct ShelfRow: View {
         }
         .frame(width: 32, height: 32)
         .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+/// The Convert choices as a native menu at the pointer. `popUp` blocks until
+/// the menu closes, so the row hiding its hover buttons meanwhile can't drop
+/// the pick (a SwiftUI `Menu` would vanish with them).
+@MainActor
+private final class ConvertMenu: NSObject {
+    private let kinds: [ShelfConversion]
+    private let convert: (ShelfConversion) -> Void
+
+    private init(kinds: [ShelfConversion], convert: @escaping (ShelfConversion) -> Void) {
+        self.kinds = kinds
+        self.convert = convert
+    }
+
+    static func pop(for url: URL, convert: @escaping (ShelfConversion) -> Void) {
+        let target = ConvertMenu(kinds: ShelfConversion.available(for: url), convert: convert)
+        let menu = NSMenu()
+        for (index, kind) in target.kinds.enumerated() {
+            let item = NSMenuItem(title: kind.title, action: #selector(fire(_:)), keyEquivalent: "")
+            item.target = target
+            item.tag = index
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    @objc private func fire(_ sender: NSMenuItem) {
+        convert(kinds[sender.tag])
     }
 }

@@ -162,7 +162,11 @@ Title-bar **trackpad gestures** (a `CGEventTap` + `WindowGesture*` +
 in 2.22.0**: driven on real hardware they were unusable, and the owner uses Swish
 for that job. An event tap that sees every scroll on the machine is the largest
 risk surface in the app, so do not rebuild them without an explicit ask.
-Utilities: **Color Picker** (NSColorSampler + WCAG), **Shelf** (⌃⇧V drop-hold-drag),
+Utilities: **Color Picker** (NSColorSampler + WCAG), **Shelf** (⌃⇧V drop-hold-drag;
+Space or the eye button toggles the system `QLPreviewPanel`, with `ShelfPanel` as
+its responder-chain controller and data source; image rows get **Convert** → PNG,
+JPEG or Resize to 50%, done by ImageIO in `ShelfConverter` (tested), each result
+added as a new item while the original is only read),
 **Scratchpad** (⌃⇧N notes, header-drag + text canvas, spawn-position toggle),
 **Clipboard history** (pins + search), **KeyClu** (⌃⇧K shortcut cheat-sheet, read-only AX),
 **Highlight to Copy** (default OFF; selecting text with the mouse puts it on the
