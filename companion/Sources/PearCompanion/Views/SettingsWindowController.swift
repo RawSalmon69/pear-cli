@@ -33,7 +33,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             host.sizingOptions = [.minSize]
             let window = SettingsWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 680, height: 520),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                // Not miniaturizable: a minimised window never fires
+                // `windowWillClose`, which would leave Pear regular.
+                styleMask: [.titled, .closable, .resizable],
                 backing: .buffered,
                 defer: false
             )
@@ -48,15 +50,27 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         }
         NSApp.setActivationPolicy(.regular)
         window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        // Activating in the same turn as the policy change can leave the window
+        // unfocused on the first open; one turn later the app is regular.
+        Task { @MainActor [weak self] in
+            NSApp.activate(ignoringOtherApps: true)
+            self?.window?.makeKeyAndOrderFront(nil)
+        }
     }
 
     private func root() -> AnyView {
         AnyView(SettingsView().environment(env).id(UUID()))
     }
 
+    /// Back to menu-bar only, unless another standard window (Disk, a
+    /// screenshot's detail, Markup) is still up: dropping to accessory under it
+    /// would take away its Dock icon and ⌘-Tab.
     func windowWillClose(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        let closing = notification.object as? NSWindow
+        let othersOpen = NSApp.windows.contains {
+            $0 !== closing && $0.isVisible && $0.styleMask.contains(.titled)
+        }
+        if !othersOpen { NSApp.setActivationPolicy(.accessory) }
     }
 }
 

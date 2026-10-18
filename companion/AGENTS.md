@@ -99,7 +99,10 @@ check: the actions show in the Shortcuts app.
   (lands on Tools). The last page is `Prefs.settingsPage` (`settingsLastPage`),
   read through `@AppStorage`, so `open(.licence)` switches a window already up.
   While it is open Pear is `.regular` (Dock icon, ⌘-Tab, menu bar), back to
-  `.accessory` on `windowWillClose`; the panel stays non-activating and the
+  `.accessory` on `windowWillClose` unless another visible titled window (Disk,
+  detail, Markup) remains; it is not miniaturizable, since a minimised window
+  never fires `windowWillClose`. Activation runs one turn after the policy change
+  so the first open gets focus. The panel stays non-activating and the
   capture-hides-panel observer is untouched. Each open from closed rebuilds the
   root view (`.id(UUID())`), standing in for the popover's per-open rebuild.
 - **Panel structure** (`Views/PanelView.swift`, `Views/PanelModel.swift`): the
