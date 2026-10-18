@@ -100,7 +100,16 @@ check: the actions show in the Shortcuts app.
   then its options view — `MenuBarOptionsView` (auto-hide, zones),
   `SwitchesVisibilityView` (which switches show), `ScratchpadSettingsView`,
   `ColorFormatPicker`, `CleanModeSettingsView` — chosen by tool id in
-  `SettingsView.toolOptions`. Ticket 12's status block slots in between the two.
+  `SettingsView.toolOptions`. Between the two sits the **status block**
+  (`SettingsView.toolStatus`): Permission (from `PanelProblem.permission(neededBy:)`,
+  the panel's one tool→permission mapping, read through `Permissions.status(of:)`,
+  never a prompt; Screen Recording reads "granted" when preflight says so,
+  "missing" only once a capture failed for it, otherwise "checked at the first
+  capture", because preflight can stay false after a grant until relaunch),
+  Shortcut (`ToolRegistry.shortcutStatus(for:)`: "registered" means a live
+  Carbon token, `HotKeyManager.isRegistered`, not just a chord; a tool that takes
+  no shortcut says so, Windows points at the Shortcuts page), and Last error,
+  shown only when there is one.
   No option lives in a popover or an in-window gear: the Menu Bar, Switches and
   Color Picker popovers keep their working controls plus a `ToolSettingsLink`
   ("Settings…" → `SettingsPage.open(.tool(id))`, at the right of their
@@ -153,6 +162,17 @@ check: the actions show in the Shortcuts app.
   `Prefs.removeHotkey`. Under XCTest the registry registers no Carbon hotkeys
   (`CleanModeRuntime.isRunningTests`), like `WindowTrigger`. Tests:
   `ShortcutRegistryTests` (Windows chords in an injected suite).
+- **Last-error hook** (`ToolRegistry.reportError(_:for:)` / `lastError(for:)`):
+  a tool reports one line on failure; it is held in memory only, replaced by the
+  next report, cleared when the tool is turned off or on (`setEnabled`), and a
+  later success does not clear it. Observed, so the tool page redraws live.
+  Callers outside the registry use `ToolRegistry.live?` (nil in tests). Reports
+  today: every capture through `ScreenCapture.run` (screencapture failed to
+  start; Screen Recording denied; Esc reports nothing), `ScreenshotService.fileCapture`
+  (screenshot folder failed so the store took it; nothing filed, temp copy only),
+  `WindowsTool.apply` (no Accessibility), `AXWindowMover.commit` (no movable
+  front window) and `apply` (the app refused the frame after both passes).
+  Tests: `ToolStatusTests`, `WindowsSnapPermissionTests`.
 - **Panel structure** (`Views/PanelView.swift`, `Views/PanelModel.swift`): the
   cat + a search field (focused on open) on top, the cat's line under it, the
   one-time "Pick your four" card, four big pinned tiles (icon, name, shortcut in

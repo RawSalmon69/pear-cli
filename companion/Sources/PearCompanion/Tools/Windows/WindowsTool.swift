@@ -127,6 +127,7 @@ final class WindowsTool: Tool, WindowTriggerDelegate {
 
     private func apply(_ action: WindowAction) {
         guard accessibilityTrusted() else {
+            ToolRegistry.live?.reportError("Windows needs Accessibility", for: id)
             refuseUntrusted()
             return
         }

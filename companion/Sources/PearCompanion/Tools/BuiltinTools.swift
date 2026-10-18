@@ -59,9 +59,9 @@ final class ScreenshotTool: Tool {
     private func capture() async {
         let service = resolveService()
         switch mode {
-        case .region: await service.capture()
-        case .fullScreen: await service.captureFullScreen()
-        case .window: await service.captureWindow()
+        case .region: await service.capture(tool: id)
+        case .fullScreen: await service.captureFullScreen(tool: id)
+        case .window: await service.captureWindow(tool: id)
         }
     }
 

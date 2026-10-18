@@ -274,7 +274,10 @@ final class AXWindowMover: WindowMover {
             return
         }
 
-        guard let target = resolveTarget(window) else { return }
+        guard let target = resolveTarget(window) else {
+            ToolRegistry.live?.reportError("No window in front that can be moved", for: WindowsTool.toolID)
+            return
+        }
 
         // The three that change a window's existence rather than its frame.
         // They have no goal frame, so they are handled before the geometry path
@@ -447,6 +450,9 @@ final class AXWindowMover: WindowMover {
         write(goal, to: window, steps: [.position, .size, .position])
         guard let landed = frame(of: window), !Self.matches(landed, goal) else { return }
         write(goal, to: window, steps: [.size, .position])
+        if let landed = frame(of: window), !Self.matches(landed, goal) {
+            ToolRegistry.live?.reportError("The app wouldn't take that exact size or position", for: WindowsTool.toolID)
+        }
     }
 
     private func write(_ goal: CGRect, to window: AXUIElement, steps: [Step]) {

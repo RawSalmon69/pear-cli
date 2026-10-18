@@ -47,7 +47,7 @@ final class OCRService {
     func grab() async {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("pear-ocr-\(UUID().uuidString).png")
-        guard await ScreenCapture.region(to: tempURL) else { return }
+        guard await ScreenCapture.region(to: tempURL, tool: "ocr") else { return }
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         guard let image = NSImage(contentsOf: tempURL),

@@ -151,6 +151,9 @@ final class ToolRegistry {
     @ObservationIgnored private var hotkeyTokens: [String: HotKeyManager.Token] = [:]
     /// Ids currently live, so activation is idempotent.
     @ObservationIgnored private var activated: Set<String> = []
+    /// Each tool's last reported failure, one line, in memory only. Observed, so
+    /// the tool's Settings page shows a new report the moment it lands.
+    private var lastErrors: [String: String] = [:]
 
     /// Whether the paid tools are locked. Injected by `AppEnvironment` from the
     /// `EntitlementStore`; a registry built without it is unlocked, which keeps
@@ -227,6 +230,7 @@ final class ToolRegistry {
     /// Rebuilds `all` from catalog order so panel tile order never shifts.
     func setEnabled(_ id: String, _ enabled: Bool) {
         Prefs.setToolEnabled(id, enabled)
+        lastErrors[id] = nil
         refreshKnownEnabled(id, enabled)
         guard let entry = catalog.first(where: { $0.id == id }) else { return }
         if shouldRun(entry.tool) { activate(entry.tool) } else { deactivate(entry.tool) }
@@ -243,6 +247,44 @@ final class ToolRegistry {
         guard Prefs.isToolEnabled(id, default: entry.tool.defaultEnabled) else { return }
         unregisterHotkey(id)
         registerHotkey(entry.tool)
+    }
+
+    // MARK: - Tool status
+
+    /// A tool says, in one line, why something it was asked to do failed. The
+    /// next report replaces it; turning the tool off or on clears it. Never
+    /// persisted: it explains the current session only.
+    func reportError(_ message: String, for toolID: String) {
+        lastErrors[toolID] = message
+    }
+
+    func lastError(for toolID: String) -> String? {
+        lastErrors[toolID]
+    }
+
+    /// What the tool page says about the shortcut. "Registered" means the system
+    /// took the chord (a live Carbon hotkey), not just that one is set.
+    enum ShortcutStatus: Equatable {
+        /// The tool takes no shortcut (`acceptsHotkey` false).
+        case notOffered
+        /// Removed, or the tool has no default.
+        case none
+        case toolOff(String)
+        case registered(String)
+        /// Set and the tool is on, but the system refused it (another app owns it).
+        case notRegistered(String)
+    }
+
+    /// Read alongside `known` (observed), which every registration change also
+    /// rewrites, so the page redraws when this changes.
+    func shortcutStatus(for id: String) -> ShortcutStatus {
+        guard let entry = catalog.first(where: { $0.id == id }), entry.tool.acceptsHotkey
+        else { return .notOffered }
+        guard let label = effectiveChord(for: entry.tool)?.label else { return .none }
+        guard activated.contains(id) else { return .toolOff(label) }
+        guard let token = hotkeyTokens[id], HotKeyManager.shared.isRegistered(token)
+        else { return .notRegistered(label) }
+        return .registered(label)
     }
 
     // MARK: - Settings UI support

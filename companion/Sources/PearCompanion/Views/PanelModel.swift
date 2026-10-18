@@ -17,6 +17,14 @@ enum PanelProblem: Comparable {
     /// Shortcuts (KeyClu), Windows, Highlight Copy.
     static let accessibilityTools: Set<String> = ["keyclu", "windows", "highlightcopy"]
 
+    /// The permission a tool needs, from the two sets above (a tool page's
+    /// status row), or nil for one that needs none.
+    static func permission(neededBy toolID: String) -> Permission? {
+        if screenRecordingTools.contains(toolID) { return .screenRecording }
+        if accessibilityTools.contains(toolID) { return .accessibility }
+        return nil
+    }
+
     var message: String {
         switch self {
         case .screenRecordingMissing: "Screenshots need Screen Recording"

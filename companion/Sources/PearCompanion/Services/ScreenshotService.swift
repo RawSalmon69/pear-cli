@@ -156,43 +156,44 @@ final class ScreenshotService {
         self.messaging = messaging
     }
 
-    func capture() async {
+    /// `tool` is the mode's tool id, which a failure is reported under.
+    func capture(tool: String) async {
         guard !isCapturing else { return }
         isCapturing = true
         defer { isCapturing = false }
         let tempURL = Self.captureTempURL()
         // Unmuted capture = macOS's own camera shutter (the CleanShot feel);
         // the sounds toggle mutes it.
-        guard await ScreenCapture.region(to: tempURL, muted: !Prefs.soundsEnabled) else {
+        guard await ScreenCapture.region(to: tempURL, muted: !Prefs.soundsEnabled, tool: tool) else {
             return // cancelled or failed
         }
-        deliver(tempURL: tempURL, capturedOn: Self.screenUnderPointer())
+        deliver(tempURL: tempURL, capturedOn: Self.screenUnderPointer(), tool: tool)
     }
 
     /// Whole main display, no region drag — same downstream flow as `capture()`.
-    func captureFullScreen() async {
+    func captureFullScreen(tool: String) async {
         guard !isCapturing else { return }
         isCapturing = true
         defer { isCapturing = false }
         let tempURL = Self.captureTempURL()
-        guard await ScreenCapture.fullScreen(to: tempURL, muted: !Prefs.soundsEnabled) else {
+        guard await ScreenCapture.fullScreen(to: tempURL, muted: !Prefs.soundsEnabled, tool: tool) else {
             return // failed
         }
         // `screencapture` with no `-i` grabs the display carrying the menu bar,
         // whatever the pointer is doing, so that is the screen this shot is of.
-        deliver(tempURL: tempURL, capturedOn: NSScreen.screens.first)
+        deliver(tempURL: tempURL, capturedOn: NSScreen.screens.first, tool: tool)
     }
 
     /// Click-a-window shot — same downstream flow as `capture()`.
-    func captureWindow() async {
+    func captureWindow(tool: String) async {
         guard !isCapturing else { return }
         isCapturing = true
         defer { isCapturing = false }
         let tempURL = Self.captureTempURL()
-        guard await ScreenCapture.window(to: tempURL, muted: !Prefs.soundsEnabled) else {
+        guard await ScreenCapture.window(to: tempURL, muted: !Prefs.soundsEnabled, tool: tool) else {
             return // cancelled or failed
         }
-        deliver(tempURL: tempURL, capturedOn: Self.screenUnderPointer())
+        deliver(tempURL: tempURL, capturedOn: Self.screenUnderPointer(), tool: tool)
     }
 
     private static func captureTempURL() -> URL {
@@ -241,8 +242,8 @@ final class ScreenshotService {
     /// Post-capture half, shared by every capture mode: file the shot, put it on
     /// the clipboard, show the card. The bytes are never held past this call —
     /// the card is backed by the file from here on.
-    private func deliver(tempURL: URL, capturedOn screen: NSScreen?) {
-        let url = fileCapture(tempURL)
+    private func deliver(tempURL: URL, capturedOn screen: NSScreen?, tool: String) {
+        let url = fileCapture(tempURL, tool: tool)
         Prefs.recordCapture(url) // the panel's recent-captures strip
         copyToPasteboard(at: url)
         present(at: url, capturedOn: screen)
@@ -271,11 +272,19 @@ final class ScreenshotService {
     /// fallbacks earn their keep: an unmounted external screenshot folder must
     /// not lose the shot, and a card backed by the temp file (today's behaviour)
     /// still beats no card at all.
-    private func fileCapture(_ tempURL: URL) -> URL {
-        for folder in CaptureStore.destinations(autoSave: Prefs.screenshotAutoSave) {
-            if let url = try? Self.file(tempURL, into: folder, moving: true) { return url }
+    private func fileCapture(_ tempURL: URL, tool: String) -> URL {
+        let folders = CaptureStore.destinations(autoSave: Prefs.screenshotAutoSave)
+        for (index, folder) in folders.enumerated() {
+            guard let url = try? Self.file(tempURL, into: folder, moving: true) else { continue }
+            if index > 0 {
+                ToolRegistry.live?.reportError(
+                    "Couldn't save to the screenshot folder, so the shot went to Pear's own folder",
+                    for: tool)
+            }
+            return url
         }
         logger.error("capture could not be filed; keeping the temp copy")
+        ToolRegistry.live?.reportError("Couldn't save the capture; it is only in a temporary folder", for: tool)
         return tempURL
     }
 

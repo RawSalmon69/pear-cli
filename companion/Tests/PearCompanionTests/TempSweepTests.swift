@@ -286,8 +286,10 @@ final class CaptureCurtainTests: XCTestCase {
         let wrote = await ScreenCapture.run(
             ["-x", "/dev/null"],
             writing: URL(fileURLWithPath: "/nonexistent/pear-capture-test.png"),
-            launch: { _ in recorder.add("launch") },
-            wroteNothing: {})
+            tool: "screenshot",
+            launch: { _ in recorder.add("launch"); return true },
+            wroteNothing: { false },
+            report: { _, _ in })
 
         XCTAssertFalse(wrote, "no file was written, so the capture must report failure")
         // The ordering is the whole fix. A `queue: .main` observer would land

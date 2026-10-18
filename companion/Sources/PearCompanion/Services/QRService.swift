@@ -26,7 +26,7 @@ final class QRService {
     func scanFromScreen() async {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("pear-qr-scan-\(UUID().uuidString).png")
-        guard await ScreenCapture.region(to: tempURL) else { return }
+        guard await ScreenCapture.region(to: tempURL, tool: "qr") else { return }
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         guard let image = NSImage(contentsOf: tempURL),

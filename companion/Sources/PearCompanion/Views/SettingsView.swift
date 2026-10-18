@@ -395,10 +395,60 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
         }
 
-        // Ticket 12: the tool's status block (permission, shortcut registered,
-        // last error) goes here, between the switch and the options.
+        toolStatus(tool)
 
         toolOptions(tool.id)
+    }
+
+    /// Why a tool might not be working: its permission, whether the system took
+    /// its shortcut, and the last failure it reported (no row when there is
+    /// none). The error redraws live; the permission is read on each render and
+    /// so is current every time the window opens.
+    @ViewBuilder private func toolStatus(_ tool: ToolRegistry.KnownTool) -> some View {
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Status")
+            statusRow("Permission", permissionStatus(tool.id))
+            statusRow("Shortcut", shortcutStatus(tool.id))
+            if let error = env.tools.lastError(for: tool.id) {
+                statusRow("Last error", (error, true))
+            }
+        }
+    }
+
+    private func statusRow(_ label: String, _ value: (text: String, problem: Bool)) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.small) {
+            Text(label)
+                .font(Theme.body)
+                .frame(width: 120, alignment: .leading)
+            Text(value.text)
+                .font(Theme.body)
+                .foregroundStyle(value.problem ? Theme.warn : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value.text)")
+    }
+
+    private func permissionStatus(_ id: String) -> (text: String, problem: Bool) {
+        guard let permission = PanelProblem.permission(neededBy: id) else { return ("None needed", false) }
+        let name = permission.paneName
+        return switch Permissions.status(of: permission) {
+        case .granted: ("\(name) granted", false)
+        case .missing: ("\(name) missing", true)
+        case .unconfirmed: ("\(name) is checked at the first capture", false)
+        }
+    }
+
+    private func shortcutStatus(_ id: String) -> (text: String, problem: Bool) {
+        switch env.tools.shortcutStatus(for: id) {
+        case .notOffered:
+            id == WindowsTool.toolID ? ("Snap shortcuts are on the Shortcuts page", false) : ("None for this tool", false)
+        case .none: ("None set", false)
+        case .toolOff(let chord): ("\(chord), not registered while the tool is off", false)
+        case .registered(let chord): ("\(chord) registered", false)
+        case .notRegistered(let chord): ("\(chord) not registered; another app may be using it", true)
+        }
     }
 
     /// The options of the tools that have any; every other page is just the switch.

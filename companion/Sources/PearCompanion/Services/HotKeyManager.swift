@@ -50,6 +50,9 @@ final class HotKeyManager {
         return Token(id: id)
     }
 
+    /// Whether the system took this token's chord.
+    func isRegistered(_ token: Token) -> Bool { refs[token.id] != nil }
+
     func unregister(_ token: Token) {
         if let ref = refs.removeValue(forKey: token.id) {
             UnregisterEventHotKey(ref)

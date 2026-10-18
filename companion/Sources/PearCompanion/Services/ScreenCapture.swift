@@ -11,32 +11,35 @@ import Foundation
 /// same: the panel is not sitting over the region you are trying to grab, and
 /// not in the shot.
 enum ScreenCapture {
-    /// Interactive region drag (`-i`).
-    static func region(to url: URL, muted: Bool = true) async -> Bool {
-        await run(muted ? ["-i", "-x", url.path] : ["-i", url.path], writing: url)
+    /// Interactive region drag (`-i`). `tool` is the id a failure is reported
+    /// under (`ToolRegistry.reportError`).
+    static func region(to url: URL, muted: Bool = true, tool: String) async -> Bool {
+        await run(muted ? ["-i", "-x", url.path] : ["-i", url.path], writing: url, tool: tool)
     }
 
     /// The whole main display, instantly — no `-i`, so no selection UI.
     /// ponytail: main display only; per-display capture needs one path each.
-    static func fullScreen(to url: URL, muted: Bool = true) async -> Bool {
+    static func fullScreen(to url: URL, muted: Bool = true, tool: String) async -> Bool {
         // The only mode that captures without waiting for the user, so it is the
         // only one that has to wait for the window server to actually take Pear's
         // panels off the screen. The interactive modes get that for free: the
         // crosshair is up long before anyone finishes a drag.
-        await run(muted ? ["-x", url.path] : [url.path], writing: url,
+        await run(muted ? ["-x", url.path] : [url.path], writing: url, tool: tool,
                   settleForRemovedWindows: .milliseconds(160))
     }
 
     /// Click a window (`-w` locks interaction to window mode, no drag): the
     /// window is captured cropped, with its shadow. Escape writes nothing.
-    static func window(to url: URL, muted: Bool = true) async -> Bool {
-        await run(muted ? ["-i", "-w", "-x", url.path] : ["-i", "-w", url.path], writing: url)
+    static func window(to url: URL, muted: Bool = true, tool: String) async -> Bool {
+        await run(muted ? ["-i", "-w", "-x", url.path] : ["-i", "-w", url.path], writing: url,
+                  tool: tool)
     }
 
     /// Runs the real `/usr/sbin/screencapture` and blocks until it exits. Split
     /// out so the ordering test can substitute a launcher that grabs nothing —
     /// calling the real one from a test would screenshot the developer's display.
-    typealias Launcher = @Sendable ([String]) -> Void
+    /// Returns false when the process could not be started at all.
+    typealias Launcher = @Sendable ([String]) -> Bool
 
     static let screencapture: Launcher = { arguments in
         let process = Process()
@@ -45,17 +48,26 @@ enum ScreenCapture {
         do {
             try process.run()
             process.waitUntilExit()
+            return true
         } catch {
             NSLog("Pear: screencapture failed: \(error.localizedDescription)")
+            return false
         }
     }
 
+    /// The failures a capture reports under its tool; Esc is not one.
+    static let launchFailedMessage = "The system screenshot tool couldn't start"
+    static let deniedMessage = "Screen Recording is off, so the capture produced nothing"
+
     /// Internal, not private, for the ordering test: "the panel is off the screen
     /// before the capture starts" is the whole point and is easy to regress.
-    static func run(_ arguments: [String], writing url: URL,
+    static func run(_ arguments: [String], writing url: URL, tool: String,
                     settleForRemovedWindows settle: Duration = .zero,
                     launch: @escaping Launcher = ScreenCapture.screencapture,
-                    wroteNothing: @escaping @MainActor @Sendable () -> Void = Permissions.captureWroteNothing)
+                    wroteNothing: @escaping @MainActor @Sendable () -> Bool = Permissions.captureWroteNothing,
+                    report: @escaping @MainActor @Sendable (String, String) -> Void = {
+                        ToolRegistry.live?.reportError($0, for: $1)
+                    })
         async -> Bool {
         // Synchronous and on the main thread, so the panels are gone before
         // `screencapture` is launched below.
@@ -68,15 +80,25 @@ enum ScreenCapture {
                 NotificationCenter.default.post(name: .pearRestoreAfterCapture, object: nil)
             }
         }
-        let wrote = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+        let (launched, wrote) = await withCheckedContinuation {
+            (continuation: CheckedContinuation<(Bool, Bool), Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
-                launch(arguments)
-                continuation.resume(returning: FileManager.default.fileExists(atPath: url.path))
+                let launched = launch(arguments)
+                continuation.resume(returning: (launched, FileManager.default.fileExists(atPath: url.path)))
             }
         }
         // Only a capture that wrote nothing asks about permission, so a good
-        // capture reaches its preview without the extra hop.
-        if !wrote { await MainActor.run { wroteNothing() } }
+        // capture reaches its preview without the extra hop. A plain Esc is not
+        // an error and reports nothing.
+        if !wrote {
+            await MainActor.run {
+                if !launched {
+                    report(launchFailedMessage, tool)
+                } else if wroteNothing() {
+                    report(deniedMessage, tool)
+                }
+            }
+        }
         return wrote
     }
 

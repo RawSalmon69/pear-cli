@@ -23,6 +23,18 @@ final class WindowsSnapPermissionTests: XCTestCase {
         XCTAssertEqual(mover.commits, [])
     }
 
+    /// The refusal also lands on the Windows Settings page as its last error.
+    func testSnapWithoutAccessibilityReportsTheError() {
+        let registry = ToolRegistry()
+        let previous = ToolRegistry.live
+        ToolRegistry.live = registry
+        defer { ToolRegistry.live = previous }
+        let tool = WindowsTool(mover: RecordingMover(), accessibilityTrusted: { false },
+                               refuseUntrusted: {})
+        tool.snapRequested(.center)
+        XCTAssertEqual(registry.lastError(for: WindowsTool.toolID), "Windows needs Accessibility")
+    }
+
     func testSnapWithAccessibilityMovesTheWindow() {
         let mover = RecordingMover()
         var refusals = 0

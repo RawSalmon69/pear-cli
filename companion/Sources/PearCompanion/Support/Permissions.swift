@@ -27,6 +27,12 @@ enum Permission {
     }
 }
 
+enum PermissionStatus {
+    case granted, missing
+    /// Screen Recording before any capture has shown whether it works.
+    case unconfirmed
+}
+
 /// The one place Pear makes the permission system calls: Screen Recording
 /// preflight and request, the Accessibility trust check and prompt, and the two
 /// settings panes. System calls only, so untested; every decision about what to
@@ -49,12 +55,14 @@ enum Permissions {
     /// preflight; this only records the failure afterwards.
     private static var captureDenied = false
 
-    /// `ScreenCapture.run` calls this when a capture wrote no file.
-    static func captureWroteNothing() {
-        if ScreenCapture.deniedByPermission(
-            wroteFile: false, granted: CGPreflightScreenCaptureAccess()) {
-            captureDenied = true
-        }
+    /// `ScreenCapture.run` calls this when a capture wrote no file; true when
+    /// that was the missing grant rather than a cancel.
+    @discardableResult
+    static func captureWroteNothing() -> Bool {
+        let denied = ScreenCapture.deniedByPermission(
+            wroteFile: false, granted: CGPreflightScreenCaptureAccess())
+        if denied { captureDenied = true }
+        return denied
     }
 
     /// Read once per panel open: a recorded failure clears as soon as preflight
@@ -62,6 +70,19 @@ enum Permissions {
     static func screenRecordingMissing() -> Bool {
         if captureDenied, CGPreflightScreenCaptureAccess() { captureDenied = false }
         return captureDenied
+    }
+
+    /// A tool page's permission row. Read-only, never a prompt. Screen Recording
+    /// is "granted" only when preflight says so; a no is shown as "missing" only
+    /// once a capture failed for it, since preflight can stay false after a grant
+    /// until Pear relaunches (captures are attempted first, never gated on it).
+    static func status(of permission: Permission) -> PermissionStatus {
+        switch permission {
+        case .accessibility:
+            accessibilityTrusted ? .granted : .missing
+        case .screenRecording:
+            CGPreflightScreenCaptureAccess() ? .granted : captureDenied ? .missing : .unconfirmed
+        }
     }
 
     /// The Fix action: the system request first, which puts Pear in the pane's
