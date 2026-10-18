@@ -54,10 +54,10 @@ none found fails the build. `--xcode-version` comes from `xcodebuild -version` a
 build time, so CI's Xcode and a local one each describe themselves. Both workflows
 only call `build.sh`. To check a build, the `actions` key of `extract.actionsdata`
 (plain JSON) must list all eight intents, and the appex's must list
-`SetKeepAwakeIntent`. Product paths come from `swift build
---show-bin-path`: the old `find -path '*release*'` missed SwiftBuild's
-`.build/out/Products/Release` and shipped a local app with no Sparkle and no
-resource bundle. Spike evidence (2026-10-18): a Developer ID-signed Pear copy under
+`SetKeepAwakeIntent`. Product paths come from `swift build --show-bin-path`, which
+covers SwiftBuild's `.build/out/Products/Release` (a path search that missed it
+once shipped a local app with no Sparkle and no resource bundle). Spike evidence
+(2026-10-18): a Developer ID-signed Pear copy under
 a throwaway bundle ID got LaunchServices `base flags: link-enabled` (real Pear had
 none); a tiny SwiftPM app built the same way appeared in Shortcuts' action index
 after one launch (`~/Library/Shortcuts/ToolKit` `Tools` row
@@ -72,8 +72,10 @@ check: the actions show in the Shortcuts app.
 - **`Tool` protocol + `ToolRegistry`** (`Tools/Tool.swift`): every feature is a
   Tool — `id/title/icon/category/summary`, an optional rebindable `hotkey`, an
   `entry` (tile action or popover), and `start()`/`stop()` for always-on engines.
-  Disabled tools are never registered (their hotkeys/engines never load). Some
-  tools default OFF (see invariants). `Tools/BuiltinTools.swift` holds the launch
+  Optional: `aliases` (extra search words), `status` (live row text),
+  `acceptsHotkey` (false when a chord would fire into nothing: Switches, Windows,
+  Highlight Copy), `showsTile` (false only for the `panel` pseudo-tool). Disabled
+  tools are never registered (their hotkeys/engines never load). Some tools default OFF (see invariants). `Tools/BuiltinTools.swift` holds the launch
   tools (Screenshot, OCR, Clipboard, Disk, Panel); the rest live in their own
   `Tools/<Name>/` dirs.
 - **`AppEnvironment`** (`Support/AppEnvironment.swift`): inert DI container of
@@ -89,8 +91,8 @@ check: the actions show in the Shortcuts app.
   `Views/SettingsView.swift`), not a popover: one standard titled window, reused,
   frame autosaved (`PearSettingsWindow`), a `NavigationSplitView` sidebar of
   `SettingsPage`s — General (panel, **pins picker**, startup, sounds, screenshots,
-  preview stack, HD background removal), Appearance (accent + the runner, so
-  "Menu Bar" now means only the hider tool), **Shortcuts** (below), then **one
+  preview stack, HD background removal), Appearance (accent + the runner;
+  "Menu Bar" is only the hider tool's page), **Shortcuts** (below), then **one
   page per offered tool** in offer order, enabled or not (`SettingsPage.tool(id)`,
   stored as `tool.<id>`; `SettingsPage.visible(toolIDs:)` builds the sidebar and
   `resolved(_:toolIDs:)` turns an unknown or removed tool's page into General),
@@ -142,10 +144,10 @@ check: the actions show in the Shortcuts app.
   and count as open while minimised. Activation runs one turn after the policy
   change so the first open gets focus. The panel stays non-activating and the
   capture-hides-panel observer is untouched. Each open from closed rebuilds the
-  root view (`.id(UUID())`), standing in for the popover's per-open rebuild.
+  root view (`.id(UUID())`), so every open starts fresh.
 - **Shortcuts page** (`SettingsView.shortcutsPage`, `Views/HotkeyRecorder.swift`):
   every key combination in Pear — a `HotkeyRecorderRow` per tool with
-  `acceptsHotkey` (Switches, Windows and Highlight Copy get none), then one per
+  `acceptsHotkey`, then one per
   Windows snap chord by action name — each recordable, removable and resettable,
   plus "Reset All Shortcuts…" (`ToolRegistry.resetAllShortcuts`, both sets). The
   recorder: click, press keys with a modifier; Esc cancels; a bare Delete removes
@@ -216,8 +218,8 @@ check: the actions show in the Shortcuts app.
   Keys arrive through the AppKit search field's `doCommandBy` delegate and are
   swallowed there, so Esc never also hits `PearPanel.cancelOperation`. Popover
   tools open from their tile or row through the same `TilePopoverState`; Return
-  and a click share one `activate` path. Extend the model (recents, permission
-  problems) rather than adding decisions to the view.
+  and a click share one `activate` path. Extend the model rather than adding
+  decisions to the view.
 - **Panel problems** are `PanelProblem` cases declared in priority order, highest
   first, so `problems.min()` is the line the cat says; any problem makes it
   worried, none leaves the line empty and the cat idle. Order: Screen Recording
@@ -232,9 +234,8 @@ check: the actions show in the Shortcuts app.
   sampler and needs no grant. `PanelModel` takes plain values only
   (`screenRecordingMissing`, `accessibilityTrusted`, the enabled ids), read once
   per open in `PanelView`, so a problem clears on the next open once granted.
-  The greeting is gone. The excited
-  (unseen note) mood is behind `FeatureFlags.coupleNote`. The disk read is one
-  synchronous volume query in `PanelController.show()`; nothing waits on open.
+  The excited (unseen note) mood is behind `FeatureFlags.coupleNote`. The disk
+  read is one synchronous volume query in `PanelController.show()`; nothing waits on open.
 - **Permissions** (`Support/Permissions.swift`) is the one thin adapter for the
   permission system calls — `AXIsProcessTrusted` / `AXIsProcessTrustedWithOptions`,
   `CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess`, and the two
@@ -609,8 +610,8 @@ notarizes the zipped app, which covers the nested appex. Spike evidence
 (2026-10-18), signed with the real Developer ID and no keychain prompt:
 `codesign --verify --deep --strict -vvv` reported "valid on disk / satisfies its
 Designated Requirement"; `spctl -a -vv` reported "rejected, source=Unnotarized
-Developer ID", expected before notarization. After `lsregister -f` (the ticket-16
-build also needed `pluginkit -a <appex>`), `pluginkit -mAvvv -i <appex id>` listed
+Developer ID", expected before notarization. After `lsregister -f` (a
+full Pear build also needed `pluginkit -a <appex>`), `pluginkit -mAvvv -i <appex id>` listed
 it with `SDK = com.apple.widgetkit-extension` and `Parent Bundle` = the host, and
 in the spike chronod logged `Added extensions: [<WidgetExtension - identifier: <host id>::<appex id> … isApple: false>]`,
 the same record a shipping third-party widget gets. Both checks used throwaway

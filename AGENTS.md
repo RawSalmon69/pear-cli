@@ -4,7 +4,7 @@ This file is the shared source of truth for any AI agent working on this repo (C
 
 ## Companion app (Pear.app)
 
-`companion/` holds **Pear.app** — a separate native macOS menu-bar utility (SwiftUI/AppKit Swift package): screenshots, OCR, background removal, window management, dock preview, clipboard, scratchpad, and more. It is a distinct product from the CLI documented below, with its own architecture, decisions, and tag-driven (`companion-v*`) release flow. **If your task touches `companion/`, read `companion/AGENTS.md` first** — it is the source of truth for the app (`companion/CLAUDE.md` symlinks to it). The rest of this file is about the `pear` CLI.
+`companion/` holds **Pear.app** — a separate native macOS menu-bar utility (SwiftUI/AppKit Swift package): screenshots, OCR, background removal, window management, clipboard, scratchpad, and more. It is a distinct product from the CLI documented below, with its own architecture, decisions, and tag-driven (`companion-v*`) release flow. **If your task touches `companion/`, read `companion/AGENTS.md` first** — it is the source of truth for the app (`companion/CLAUDE.md` symlinks to it). The rest of this file is about the `pear` CLI.
 
 ## Project
 
