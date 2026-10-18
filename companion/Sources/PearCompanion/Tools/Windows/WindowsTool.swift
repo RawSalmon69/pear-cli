@@ -40,11 +40,22 @@ final class WindowsTool: Tool, WindowTriggerDelegate {
     private var ring: RingOverlayWindow?
     private var trigger: WindowTrigger?
 
+    /// Without Accessibility every move is a silent no-op, so a snap says why
+    /// instead. Both injected: the real ones read TCC and raise its prompt.
+    private let accessibilityTrusted: @MainActor () -> Bool
+    private let refuseUntrusted: @MainActor () -> Void
+
     /// A test hands in a recording mover so the ring and the chords can be
     /// driven with no Accessibility client and no real window — the real one is
     /// still built in `start()`, and the init stays as cheap as the `Tool`
     /// contract requires.
-    init(mover: (any WindowMover)? = nil) { self.mover = mover }
+    init(mover: (any WindowMover)? = nil,
+         accessibilityTrusted: @escaping @MainActor () -> Bool = { Permissions.accessibilityTrusted },
+         refuseUntrusted: @escaping @MainActor () -> Void = WindowsTool.showNeedsAccessibility) {
+        self.mover = mover
+        self.accessibilityTrusted = accessibilityTrusted
+        self.refuseUntrusted = refuseUntrusted
+    }
 
     /// The action the ring is currently pointing at, so `ringClosed(commit:)`
     /// knows what to apply without asking the ring again.
@@ -107,11 +118,26 @@ final class WindowsTool: Tool, WindowTriggerDelegate {
             mover?.preview(nil, on: nil)
             return
         }
-        mover?.commit(action, on: nil)
+        apply(action)
     }
 
     func snapRequested(_ action: WindowAction) {
+        apply(action)
+    }
+
+    private func apply(_ action: WindowAction) {
+        guard accessibilityTrusted() else {
+            refuseUntrusted()
+            return
+        }
         mover?.commit(action, on: nil)
+    }
+
+    /// The HUD at the pointer, then the system prompt: the user just asked for
+    /// a move, which is the moment to ask.
+    static func showNeedsAccessibility() {
+        CopyToast.show(message: "Windows needs Accessibility")
+        Permissions.requestAccessibility()
     }
 }
 
@@ -120,7 +146,7 @@ final class WindowsTool: Tool, WindowTriggerDelegate {
 /// permission, and the prompt lives here rather than at launch so the app never
 /// asks for it before the user has touched the feature.
 private struct WindowsPopover: View {
-    @State private var trusted = AXIsProcessTrusted()
+    @State private var trusted = Permissions.accessibilityTrusted
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
@@ -145,17 +171,12 @@ private struct WindowsPopover: View {
                 Text("Needs Accessibility to move windows.")
                     .font(Theme.caption)
                     .foregroundStyle(Theme.warn)
-                Button("Grant Accessibility") {
-                    // String key: the constant is not exported to Swift. Same
-                    // call KeyCluTool makes for the same reason.
-                    _ = AXIsProcessTrustedWithOptions(
-                        ["AXTrustedCheckOptionPrompt": true] as CFDictionary)
-                }
+                Button("Grant Accessibility") { Permissions.requestAccessibility() }
                 .controlSize(.small)
             }
         }
         .padding(Theme.cardPadding)
         .frame(width: 260)
-        .onAppear { trusted = AXIsProcessTrusted() }
+        .onAppear { trusted = Permissions.accessibilityTrusted }
     }
 }

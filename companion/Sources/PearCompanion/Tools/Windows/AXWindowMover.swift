@@ -160,13 +160,13 @@ struct RestoreMemory {
 ///
 /// Accessibility permission is never requested from here. Without it every read
 /// below returns nil, so an untrusted process is a silent no-op rather than a
-/// wrong move; prompting belongs to the tool that owns the user-facing entry
-/// point (see `KeyCluTool`), because `preview` is driven continuously and would
-/// otherwise ask once per ring highlight.
+/// wrong move; `WindowsTool` checks trust through `Permissions` before a commit
+/// and shows the "Windows needs Accessibility" HUD instead, because `preview` is
+/// driven continuously and would otherwise ask once per ring highlight.
 @MainActor
 final class AXWindowMover: WindowMover {
     /// `kAXFullScreenAttribute` is not exported to Swift, so the attribute name
-    /// is spelled out — the same workaround `KeyCluTool` uses for the trust
+    /// is spelled out — the same workaround `Permissions` uses for the trust
     /// prompt key.
     private static let fullScreenAttribute = "AXFullScreen"
 

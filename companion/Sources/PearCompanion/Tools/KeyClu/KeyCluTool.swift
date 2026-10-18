@@ -1,4 +1,3 @@
-import ApplicationServices
 import Carbon.HIToolbox
 import SwiftUI
 
@@ -32,10 +31,8 @@ final class KeyCluTool: Tool {
             overlay.hide()
             return
         }
-        guard AXIsProcessTrusted() else {
-            // Same prompt the Windows tool uses; the string key avoids the
-            // Swift 6 non-Sendable global `kAXTrustedCheckOptionPrompt`.
-            _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+        guard Permissions.accessibilityTrusted else {
+            Permissions.requestAccessibility()
             return
         }
         guard let app = NSWorkspace.shared.frontmostApplication else { return }

@@ -54,7 +54,9 @@ enum ScreenCapture {
     /// before the capture starts" is the whole point and is easy to regress.
     static func run(_ arguments: [String], writing url: URL,
                     settleForRemovedWindows settle: Duration = .zero,
-                    launch: @escaping Launcher = ScreenCapture.screencapture) async -> Bool {
+                    launch: @escaping Launcher = ScreenCapture.screencapture,
+                    wroteNothing: @escaping @MainActor @Sendable () -> Void = Permissions.captureWroteNothing)
+        async -> Bool {
         // Synchronous and on the main thread, so the panels are gone before
         // `screencapture` is launched below.
         await MainActor.run {
@@ -66,11 +68,23 @@ enum ScreenCapture {
                 NotificationCenter.default.post(name: .pearRestoreAfterCapture, object: nil)
             }
         }
-        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+        let wrote = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 launch(arguments)
                 continuation.resume(returning: FileManager.default.fileExists(atPath: url.path))
             }
         }
+        // Only a capture that wrote nothing asks about permission, so a good
+        // capture reaches its preview without the extra hop.
+        if !wrote { await MainActor.run { wroteNothing() } }
+        return wrote
+    }
+
+    /// Captures never wait on a preflight: Pear attempts the capture, and only
+    /// a capture that wrote nothing while preflight says no is a permission
+    /// problem. Esc with the permission granted writes nothing too, and stays
+    /// silent. `granted` is read only when no file was written.
+    static func deniedByPermission(wroteFile: Bool, granted: @autoclosure () -> Bool) -> Bool {
+        !wroteFile && !granted()
     }
 }

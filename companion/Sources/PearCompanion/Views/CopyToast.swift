@@ -7,7 +7,8 @@ import AppKit
 /// open — the eyedropper closes the popover the instant it opens, so an
 /// in-popover confirmation would never be seen. Highlight-to-Copy uses the same
 /// toast, swatchless: a clipboard write nobody asked for out loud is otherwise
-/// indistinguishable from nothing happening at all.
+/// indistinguishable from nothing happening at all. A window snap pressed
+/// without Accessibility raises it too, as a one-line message (`show(message:)`).
 ///
 /// Built in plain AppKit, NOT SwiftUI. An `NSHostingView` as a small panel's
 /// content view enters a constraint-update runaway on macOS 26 (its
@@ -28,9 +29,18 @@ enum CopyToast {
     }
 
     static func show(text: String, swatch: NSColor? = nil) {
+        present(makeToast(swatch: swatch, caption: "Copied", text: text,
+                          font: .monospacedSystemFont(ofSize: 12, weight: .regular)))
+    }
+
+    /// A plain one-line notice, no "Copied" caption.
+    static func show(message: String) {
+        present(makeToast(swatch: nil, caption: nil, text: message, font: .systemFont(ofSize: 12)))
+    }
+
+    private static func present(_ content: NSView) {
         hide() // one toast at a time
 
-        let content = makeToast(swatch: swatch, text: text)
         let size = content.frame.size
 
         let panel = NSPanel(
@@ -77,23 +87,26 @@ enum CopyToast {
     /// Auto Layout, no SwiftUI) so it cannot trigger the hosting-view constraint
     /// loop. With no swatch the chip and its gap collapse to zero width, so the
     /// text sits against the same left padding.
-    private static func makeToast(swatch: NSColor?, text: String) -> NSView {
+    private static func makeToast(swatch: NSColor?, caption: String?, text: String,
+                                  font: NSFont) -> NSView {
         let hPad: CGFloat = 12, vPad: CGFloat = 8
         let gap: CGFloat = swatch == nil ? 0 : 8
         let chip: CGFloat = swatch == nil ? 0 : 22
 
-        let copied = NSTextField(labelWithString: "Copied")
+        let copied = NSTextField(labelWithString: caption ?? "")
         copied.font = .systemFont(ofSize: 10)
         copied.textColor = .secondaryLabelColor
         copied.sizeToFit()
+        // No caption: it and its 1 pt gap collapse, centring the one line.
+        let captionH = caption == nil ? 0 : copied.frame.height + 1
 
         let value = NSTextField(labelWithString: text)
-        value.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        value.font = font
         value.textColor = .labelColor
         value.sizeToFit()
 
-        let textW = max(copied.frame.width, value.frame.width)
-        let textH = copied.frame.height + 1 + value.frame.height
+        let textW = max(caption == nil ? 0 : copied.frame.width, value.frame.width)
+        let textH = captionH + value.frame.height
         let contentH = max(chip, textH)
         let width = (hPad + chip + gap + textW + hPad).rounded()
         let height = (vPad + contentH + vPad).rounded()
@@ -125,7 +138,7 @@ enum CopyToast {
 
         if let chipView { card.addSubview(chipView) }
         card.addSubview(value)
-        card.addSubview(copied)
+        if caption != nil { card.addSubview(copied) }
         return card
     }
 

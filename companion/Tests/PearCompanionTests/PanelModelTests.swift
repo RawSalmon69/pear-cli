@@ -402,6 +402,83 @@ final class PanelModelTests: XCTestCase {
         XCTAssertEqual(PanelProblem.current(diskUsedFraction: nil), [])
     }
 
+    // MARK: - Permission problems
+
+    func testProblemsComeInPriorityOrderScreenRecordingFirst() {
+        let problems = PanelProblem.current(
+            diskUsedFraction: 0.95, screenRecordingMissing: true,
+            accessibilityTrusted: false, enabledTools: ["keyclu"])
+        XCTAssertEqual(problems, [.screenRecordingMissing, .accessibilityMissing, .diskNearlyFull])
+        let model = model(problems: problems.reversed())
+        XCTAssertEqual(model.catLine, "Screenshots need Screen Recording")
+        XCTAssertEqual(model.fix, .screenRecording)
+        XCTAssertEqual(model.mood, .worried)
+    }
+
+    func testAccessibilityOutranksTheDiskAndOffersItsPane() {
+        let model = model(problems: [.diskNearlyFull, .accessibilityMissing])
+        XCTAssertEqual(model.catLine, "Some tools need Accessibility")
+        XCTAssertEqual(model.fix, .accessibility)
+    }
+
+    func testDiskProblemHasNoFix() {
+        XCTAssertNil(model(problems: [.diskNearlyFull]).fix)
+        XCTAssertNil(model().fix)
+    }
+
+    func testAccessibilityIsAProblemOnlyForAnEnabledToolThatNeedsIt() {
+        XCTAssertEqual(PanelProblem.current(
+            diskUsedFraction: nil, accessibilityTrusted: false,
+            enabledTools: ["screenshot", "clipboard", "colorPicker"]), [])
+        for id in ["keyclu", "windows", "highlightcopy"] {
+            XCTAssertEqual(PanelProblem.current(
+                diskUsedFraction: nil, accessibilityTrusted: false, enabledTools: ["clipboard", id]),
+                [.accessibilityMissing], id)
+        }
+    }
+
+    func testAffectedToolsSayNeedsPermission() {
+        let screen = model(problems: [.screenRecordingMissing])
+        XCTAssertTrue(screen.needsPermission("screenshot"))
+        XCTAssertTrue(screen.needsPermission("ocr"))
+        for id in ["screenshot-full", "screenshot-window", "qr"] {
+            XCTAssertTrue(screen.needsPermission(id), id)
+        }
+        XCTAssertFalse(screen.needsPermission("colorPicker"), "the system color sampler needs no grant")
+        XCTAssertFalse(screen.needsPermission("keyclu"))
+        XCTAssertFalse(screen.needsPermission("clipboard"))
+
+        let access = model(problems: [.accessibilityMissing])
+        XCTAssertTrue(access.needsPermission("keyclu"))
+        XCTAssertFalse(access.needsPermission("screenshot"))
+
+        XCTAssertFalse(model(problems: [.diskNearlyFull]).needsPermission("screenshot"))
+    }
+
+    func testProblemsClearWhenTheInputsSayGranted() {
+        let problems = PanelProblem.current(
+            diskUsedFraction: 0.4, screenRecordingMissing: false,
+            accessibilityTrusted: true, enabledTools: Set(tools.map(\.id) + ["windows"]))
+        XCTAssertEqual(problems, [])
+        let model = model(problems: problems)
+        XCTAssertEqual(model.catLine, "")
+        XCTAssertEqual(model.mood, .idle)
+        XCTAssertFalse(model.needsPermission("screenshot"))
+        XCTAssertFalse(model.needsPermission("keyclu"))
+    }
+
+    /// The capture rule: attempt first, and only "no file while preflight says
+    /// no" is a problem. A file always wins, and then preflight is not even read.
+    func testCaptureIsAPermissionProblemOnlyWhenNothingWasWrittenAndPreflightSaysNo() {
+        XCTAssertTrue(ScreenCapture.deniedByPermission(wroteFile: false, granted: false))
+        XCTAssertFalse(ScreenCapture.deniedByPermission(wroteFile: false, granted: true),
+                       "Esc with the permission granted is a plain cancel")
+        var asked = false
+        XCTAssertFalse(ScreenCapture.deniedByPermission(
+            wroteFile: true, granted: { asked = true; return false }()))
+        XCTAssertFalse(asked, "a written file never consults preflight")
+    }
+
     func testUnseenNoteExcitesTheCatOnlyWithoutAProblem() {
         var calm = model()
         calm.hasUnseenNote = true

@@ -18,6 +18,10 @@ struct PanelView: View {
     /// Read and checked against the disk once per open; the view is rebuilt
     /// for every open.
     @State private var recentCaptures = Prefs.recentCaptures()
+    /// Read once per open too, with no prompt; a recorded capture failure clears
+    /// here once preflight passes.
+    @State private var screenRecordingMissing = Permissions.screenRecordingMissing()
+    @State private var accessibilityTrusted = Permissions.accessibilityTrusted
 
     /// Tools with a row, in offer order. `all` already applies the enabled and
     /// paywall gates.
@@ -36,7 +40,11 @@ struct PanelView: View {
                     id: $0.id, title: $0.title, icon: $0.icon, summary: $0.summary,
                     aliases: $0.aliases, shortcut: env.tools.hotkeyLabel(for: $0.id))
             },
-            problems: PanelProblem.current(diskUsedFraction: env.stats.diskUsedFraction),
+            problems: PanelProblem.current(
+                diskUsedFraction: env.stats.diskUsedFraction,
+                screenRecordingMissing: screenRecordingMissing,
+                accessibilityTrusted: accessibilityTrusted,
+                enabledTools: Set(tools.map(\.id))),
             pins: pins,
             pickYourFourDismissed: pickYourFourDismissed,
             recentCaptures: captureTool == nil ? [] : recentCaptures,
@@ -48,7 +56,7 @@ struct PanelView: View {
     var body: some View {
         let model = model
         VStack(alignment: .leading, spacing: Theme.Space.large) {
-            PanelHeader(model: model, onKey: send)
+            PanelHeader(model: model, onKey: send, onFix: fix)
             if FeatureFlags.coupleNote {
                 ConnectionBanner()
                 NotesSection()
@@ -116,6 +124,12 @@ struct PanelView: View {
         }
     }
 
+    /// Closes the panel first: it floats above System Settings.
+    private func fix(_ permission: Permission) {
+        close()
+        Permissions.fix(permission)
+    }
+
     // MARK: Pins
 
     private func togglePin(_ id: String) {
@@ -139,7 +153,8 @@ struct PanelView: View {
                 ForEach(model.pinned, id: \.id) { entry in
                     if let tool = tools.first(where: { $0.id == entry.id }) {
                         anchored(tool, pinned: model.isPinned(tool.id)) {
-                            PinnedTile(entry: entry, selected: entry.id == model.selectedID) {
+                            PinnedTile(entry: entry, selected: entry.id == model.selectedID,
+                                       needsPermission: model.needsPermission(entry.id)) {
                                 activate(tool)
                             }
                         }
@@ -196,7 +211,8 @@ struct PanelView: View {
                     if let tool = tools.first(where: { $0.id == entry.id }) {
                         anchored(tool, pinned: model.isPinned(tool.id)) {
                             ToolRow(entry: entry, status: tool.status,
-                                    selected: entry.id == model.selectedID) {
+                                    selected: entry.id == model.selectedID,
+                                    needsPermission: model.needsPermission(entry.id)) {
                                 activate(tool)
                             }
                         }
@@ -244,10 +260,11 @@ struct PanelView: View {
 // MARK: - Header
 
 /// The cat beside the search field, with the cat's line under the field: the
-/// top current problem, or nothing at all.
+/// top current problem, or nothing at all, and Fix beside a permission problem.
 struct PanelHeader: View {
     let model: PanelModel
     let onKey: (PanelModel.Key) -> Void
+    let onFix: (Permission) -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: Theme.Space.medium) {
@@ -268,10 +285,19 @@ struct PanelHeader: View {
                         .fill(.quaternary.opacity(0.5))
                 )
                 if !model.catLine.isEmpty {
-                    Text(model.catLine)
-                        .font(Theme.Typography.small(.semibold))
-                        .foregroundStyle(Theme.warn)
-                        .lineLimit(1)
+                    HStack(spacing: Theme.Space.small) {
+                        Text(model.catLine)
+                            .font(Theme.Typography.small(.semibold))
+                            .foregroundStyle(Theme.warn)
+                            .lineLimit(1)
+                        if let permission = model.fix {
+                            Button("Fix") { onFix(permission) }
+                                .font(Theme.Typography.small(.semibold))
+                                .controlSize(.small)
+                                .focusable(false)
+                                .accessibilityLabel("Fix: open \(permission.paneName) settings")
+                        }
+                    }
                 }
             }
         }
@@ -631,6 +657,7 @@ struct ToolRow: View {
     let entry: PanelModel.Entry
     let status: String?
     let selected: Bool
+    var needsPermission = false
     let action: () -> Void
     @State private var hovering = false
 
@@ -649,9 +676,15 @@ struct ToolRow: View {
                         .font(Theme.Typography.small(.medium))
                         .foregroundStyle(Theme.accent)
                 }
-                Text(entry.shortcutText)
-                    .font(Theme.Typography.small())
-                    .foregroundStyle(.tertiary)
+                if needsPermission {
+                    Text("needs permission")
+                        .font(Theme.Typography.small(.medium))
+                        .foregroundStyle(Theme.warn)
+                } else {
+                    Text(entry.shortcutText)
+                        .font(Theme.Typography.small())
+                        .foregroundStyle(.tertiary)
+                }
             }
             .padding(.horizontal, Theme.Space.small)
             .padding(.vertical, Theme.Space.xSmall)
@@ -673,6 +706,7 @@ struct ToolRow: View {
 struct PinnedTile: View {
     let entry: PanelModel.Entry
     let selected: Bool
+    var needsPermission = false
     let action: () -> Void
     @State private var hovering = false
 
@@ -686,7 +720,12 @@ struct PinnedTile: View {
                 Text(entry.title)
                     .font(Theme.Typography.small(.medium))
                     .lineLimit(1)
-                if let shortcut = entry.shortcut {
+                if needsPermission {
+                    Text("needs permission")
+                        .font(Theme.Typography.tiny(.semibold))
+                        .foregroundStyle(Theme.warn)
+                        .lineLimit(1)
+                } else if let shortcut = entry.shortcut {
                     Text(shortcut)
                         .font(Theme.Typography.tiny(.semibold))
                         .foregroundStyle(.secondary)

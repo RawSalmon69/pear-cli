@@ -1,22 +1,61 @@
 import Foundation
 
 /// Something wrong right now that the cat should say. Cases are declared in
-/// priority order, highest first, so `min()` is the one to show: Screen
-/// Recording and Accessibility problems go above `diskNearlyFull` when they
-/// arrive.
+/// priority order, highest first, so `min()` is the one to show. Built from
+/// plain values the caller reads (`Permissions`, the disk query); no system
+/// call happens here.
 enum PanelProblem: Comparable {
+    case screenRecordingMissing
+    case accessibilityMissing
     case diskNearlyFull
+
+    /// Every capture into a file goes through `ScreenCapture`. Color Picker is
+    /// not here: the system color sampler needs no grant.
+    static let screenRecordingTools: Set<String> = [
+        "screenshot", "screenshot-full", "screenshot-window", "ocr", "qr",
+    ]
+    /// Shortcuts (KeyClu), Windows, Highlight Copy.
+    static let accessibilityTools: Set<String> = ["keyclu", "windows", "highlightcopy"]
 
     var message: String {
         switch self {
+        case .screenRecordingMissing: "Screenshots need Screen Recording"
+        case .accessibilityMissing: "Some tools need Accessibility"
         case .diskNearlyFull: "Your disk is nearly full"
         }
     }
 
-    /// The problems the panel can currently detect.
-    static func current(diskUsedFraction: Double?) -> [PanelProblem] {
-        guard let diskUsedFraction, diskUsedFraction > 0.9 else { return [] }
-        return [.diskNearlyFull]
+    /// The tools this problem stops, marked "needs permission".
+    var affectedTools: Set<String> {
+        switch self {
+        case .screenRecordingMissing: Self.screenRecordingTools
+        case .accessibilityMissing: Self.accessibilityTools
+        case .diskNearlyFull: []
+        }
+    }
+
+    /// The permission whose settings pane the Fix action opens.
+    var fix: Permission? {
+        switch self {
+        case .screenRecordingMissing: .screenRecording
+        case .accessibilityMissing: .accessibility
+        case .diskNearlyFull: nil
+        }
+    }
+
+    /// The problems the panel can currently detect. `screenRecordingMissing` is
+    /// true only after a capture wrote nothing while preflight said no;
+    /// Accessibility counts only for an enabled tool that needs it.
+    static func current(diskUsedFraction: Double?, screenRecordingMissing: Bool = false,
+                        accessibilityTrusted: Bool = true,
+                        enabledTools: Set<String> = []) -> [PanelProblem] {
+        var problems: [PanelProblem] = []
+        if screenRecordingMissing { problems.append(.screenRecordingMissing) }
+        if !accessibilityTrusted, !enabledTools.isDisjoint(with: accessibilityTools) {
+            problems.append(.accessibilityMissing)
+        }
+        if let diskUsedFraction, diskUsedFraction > 0.9 { problems.append(.diskNearlyFull) }
+        return problems
     }
 }
 
@@ -189,6 +228,14 @@ struct PanelModel {
     var selectedID: String? { selectedIndex.map { selectable[$0].id } }
 
     var catLine: String { problems.min()?.message ?? "" }
+
+    /// The pane the Fix action beside the cat's line opens; nil hides it.
+    var fix: Permission? { problems.min()?.fix }
+
+    /// Whether a tile or row says "needs permission".
+    func needsPermission(_ id: String) -> Bool {
+        problems.contains { $0.affectedTools.contains(id) }
+    }
 
     var mood: MascotMood {
         if !problems.isEmpty { return .worried }

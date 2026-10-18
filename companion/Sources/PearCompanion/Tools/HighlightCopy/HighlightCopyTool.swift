@@ -1,5 +1,4 @@
 import AppKit
-import ApplicationServices
 import SwiftUI
 
 /// Installing and removing the read-only global mouse monitors, behind a seam so
@@ -85,7 +84,7 @@ final class HighlightCopyTool: Tool {
 /// launch so the app never asks before the user has touched the feature — the
 /// same shape `KeyCluTool` and the Windows popover use.
 private struct HighlightCopyPopover: View {
-    @State private var trusted = AXIsProcessTrusted()
+    @State private var trusted = Permissions.accessibilityTrusted
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
@@ -115,17 +114,12 @@ private struct HighlightCopyPopover: View {
                 Text("Needs Accessibility to read the selection.")
                     .font(Theme.caption)
                     .foregroundStyle(Theme.warn)
-                Button("Grant Accessibility") {
-                    // String key: the constant is not exported to Swift. Same
-                    // call KeyCluTool and the Windows popover make.
-                    _ = AXIsProcessTrustedWithOptions(
-                        ["AXTrustedCheckOptionPrompt": true] as CFDictionary)
-                }
+                Button("Grant Accessibility") { Permissions.requestAccessibility() }
                 .controlSize(.small)
             }
         }
         .padding(Theme.cardPadding)
         .frame(width: 260)
-        .onAppear { trusted = AXIsProcessTrusted() }
+        .onAppear { trusted = Permissions.accessibilityTrusted }
     }
 }
