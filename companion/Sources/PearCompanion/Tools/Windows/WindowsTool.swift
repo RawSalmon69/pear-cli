@@ -150,6 +150,7 @@ private struct WindowsPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
+            PopoverHeader(title: "Windows")
             SectionLabel(text: "Snap the front window")
             ForEach(WindowSettings.chords()) { binding in
                 HStack(spacing: Theme.itemGap) {
@@ -175,7 +176,7 @@ private struct WindowsPopover: View {
                 .controlSize(.small)
             }
         }
-        .padding(Theme.cardPadding)
+        .padding(Theme.edgePadding)
         .frame(width: 260)
         .onAppear { trusted = Permissions.accessibilityTrusted }
     }

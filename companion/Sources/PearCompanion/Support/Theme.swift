@@ -168,6 +168,33 @@ struct SectionLabel: View {
     }
 }
 
+/// The one header every tool popover opens with: the tool's name, then any
+/// popover-specific controls, then its "Settings…" link when the tool has a
+/// Settings page of options.
+struct PopoverHeader<Trailing: View>: View {
+    let title: String
+    var settingsToolID: String? = nil
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: Theme.Space.small) {
+            Text(title)
+                .font(Theme.Typography.large(.semibold))
+            Spacer(minLength: 0)
+            trailing
+            if let settingsToolID {
+                ToolSettingsLink(toolID: settingsToolID, title: title)
+            }
+        }
+    }
+}
+
+extension PopoverHeader where Trailing == EmptyView {
+    init(title: String, settingsToolID: String? = nil) {
+        self.init(title: title, settingsToolID: settingsToolID) { EmptyView() }
+    }
+}
+
 /// Soft hover-reactive icon button used across the composer and cards.
 struct GlyphButton: View {
     let symbol: String

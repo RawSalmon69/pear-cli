@@ -21,29 +21,21 @@ struct SwitchesView: View {
     @AppStorage(SwitchesSettings.showKey(.showHidden))
     private var showShowHidden = SystemSwitch.showHidden.defaultVisible
 
-    private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+    private let columns = [GridItem(.flexible(), spacing: Theme.Space.medium),
+                           GridItem(.flexible(), spacing: Theme.Space.medium)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
-            header
+            PopoverHeader(title: "Switches", settingsToolID: SwitchesTool.toolID)
             grid
         }
-        .padding(14)
+        .padding(Theme.edgePadding)
         .frame(width: 300)
         // The popover otherwise hands first-responder to the first control,
         // drawing a focus ring on its toggle ("preselected") — same fix as the
         // Mac-row focus box.
         .focusEffectDisabled()
         .task { await model.refresh() }
-    }
-
-    private var header: some View {
-        HStack {
-            Text("Switches")
-                .font(Theme.emphasis)
-            Spacer()
-            ToolSettingsLink(toolID: SwitchesTool.toolID, title: "Switches")
-        }
     }
 
     // MARK: - Grid
@@ -55,9 +47,9 @@ struct SwitchesView: View {
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 12)
+                .padding(.vertical, Theme.Space.medium)
         } else {
-            LazyVGrid(columns: columns, spacing: 10) {
+            LazyVGrid(columns: columns, spacing: Theme.Space.medium) {
                 ForEach(shown) { toggle in
                     SwitchTile(toggle: toggle, model: model)
                 }
@@ -121,14 +113,14 @@ private struct LidClosedPanel: View {
     @Bindable var model: SwitchesModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             Text(warning)
                 .font(Theme.caption)
                 .foregroundStyle(Theme.warn)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let end = model.lidSessionEnd {
-                HStack(spacing: 8) {
+                HStack(spacing: Theme.Space.small) {
                     Text("Sleeps at \(end.formatted(date: .omitted, time: .shortened))")
                         .font(Theme.caption)
                     Spacer()
@@ -137,7 +129,7 @@ private struct LidClosedPanel: View {
                         .buttonStyle(.link)
                 }
             } else {
-                HStack(spacing: 8) {
+                HStack(spacing: Theme.Space.small) {
                     Text("Sleep after")
                         .font(Theme.caption)
                         .foregroundStyle(.secondary)
@@ -163,7 +155,7 @@ private struct LidClosedPanel: View {
                 .buttonStyle(.link)
             }
         }
-        .padding(.top, 2)
+        .padding(.top, Theme.Space.xSmall)
     }
 
     /// Says less once the two escape hatches are in place, because with a
@@ -187,9 +179,9 @@ private struct SwitchTile: View {
     @Bindable var model: SwitchesModel
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: Theme.Space.small) {
             Image(systemName: toggle.icon)
-                .font(.system(size: 20))
+                .font(Theme.Typography.title())
                 .foregroundStyle(isOn ? Theme.accent : .secondary)
                 .frame(height: 24)
             Text(toggle.title)
@@ -199,8 +191,12 @@ private struct SwitchTile: View {
             control
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .glassCard(cornerRadius: 12)
+        .padding(.vertical, Theme.Space.medium)
+        // A flat fill, not glass: the tile sits on the popover's own glass.
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.medium)
+                .fill(.quaternary.opacity(0.5))
+        )
     }
 
     @ViewBuilder private var control: some View {

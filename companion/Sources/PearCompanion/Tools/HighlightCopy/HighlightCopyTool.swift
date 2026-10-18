@@ -88,7 +88,7 @@ private struct HighlightCopyPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
-            SectionLabel(text: "Highlight to copy")
+            PopoverHeader(title: "Highlight to Copy")
             Text("Select text with the mouse and it goes on the clipboard. Paste it with ⌘V, no ⌘C first.")
                 .font(Theme.body)
                 .fixedSize(horizontal: false, vertical: true)
@@ -118,7 +118,7 @@ private struct HighlightCopyPopover: View {
                 .controlSize(.small)
             }
         }
-        .padding(Theme.cardPadding)
+        .padding(Theme.edgePadding)
         .frame(width: 260)
         .onAppear { trusted = Permissions.accessibilityTrusted }
     }

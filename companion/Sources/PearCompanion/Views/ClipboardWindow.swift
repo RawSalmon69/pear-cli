@@ -20,7 +20,7 @@ final class ClipboardWindowController {
         // needs its own glass, or it renders transparent over the desktop.
         let view = ClipboardHistoryView(clipboard: clipboard)
             .frame(width: 300)
-            .glassCard(cornerRadius: 16)
+            .glassCard()
 
         let panel = KeyablePanel(
             contentRect: NSRect(x: 0, y: 0, width: 300, height: 380),

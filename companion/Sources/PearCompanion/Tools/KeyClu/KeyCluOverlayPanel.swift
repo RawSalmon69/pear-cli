@@ -27,7 +27,7 @@ struct KeyCluOverlayView: View {
     private static let destructiveTint = Theme.danger
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: Theme.Space.large) {
             header
             if groups.isEmpty {
                 Text("No shortcuts found")
@@ -39,25 +39,25 @@ struct KeyCluOverlayView: View {
                 grid
             }
         }
-        .padding(22)
-        .glassCard(cornerRadius: 18)
+        .padding(Theme.edgePadding)
+        .glassCard()
         .fixedSize(horizontal: true, vertical: !scrollable)
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Theme.Space.medium) {
             if let appIcon {
                 Image(nsImage: appIcon).resizable().frame(width: 24, height: 24)
             }
             Text(appName).font(Theme.title)
-            Spacer(minLength: 32)
-            Text("esc to close").font(Theme.rounded(12)).foregroundStyle(.tertiary)
+            Spacer(minLength: Theme.Space.xLarge)
+            Text("esc to close").font(Theme.Typography.small()).foregroundStyle(.tertiary)
         }
     }
 
     private var grid: some View {
         let cols = columns()
-        return HStack(alignment: .top, spacing: 20) {
+        return HStack(alignment: .top, spacing: Theme.Space.xLarge) {
             ForEach(Array(cols.enumerated()), id: \.offset) { index, column in
                 columnStack(column)
                     .overlay(alignment: .trailing) {
@@ -68,7 +68,7 @@ struct KeyCluOverlayView: View {
                             Rectangle()
                                 .fill(Color.primary.opacity(0.10))
                                 .frame(width: 1)
-                                .offset(x: 10)
+                                .offset(x: Theme.Space.xLarge / 2)
                         }
                     }
             }
@@ -76,7 +76,7 @@ struct KeyCluOverlayView: View {
     }
 
     private func columnStack(_ groups: [MenuGroup]) -> some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: Theme.Space.xLarge) {
             ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
                 section(group)
             }
@@ -85,14 +85,14 @@ struct KeyCluOverlayView: View {
     }
 
     private func section(_ group: MenuGroup) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             Text(group.title)
-                .font(Theme.rounded(13, .semibold))
+                .font(Theme.Typography.body(.semibold))
                 .foregroundStyle(Theme.accent)
-                .padding(.bottom, 4)
+                .padding(.bottom, Theme.Space.xSmall)
             ForEach(Array(group.shortcuts.enumerated()), id: \.offset) { _, shortcut in
                 let destructive = shortcut.title.lowercased().hasPrefix("quit")
-                HStack(spacing: 16) {
+                HStack(spacing: Theme.Space.large) {
                     Text(shortcut.title)
                         .font(Theme.body)
                         .lineLimit(1)
@@ -187,7 +187,7 @@ final class KeyCluOverlayController {
         host.frame = NSRect(origin: .zero, size: size)
         // Round the hosting view's backing to the card radius so no hairline
         // "ghost border" leaks past the rounded glass (the shared panel idiom).
-        host.clipToCard(radius: 18)
+        host.clipToCard()
 
         let panel = KeyCluPanel(
             contentRect: NSRect(origin: .zero, size: size),

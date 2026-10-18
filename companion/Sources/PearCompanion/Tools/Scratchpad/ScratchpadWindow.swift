@@ -162,9 +162,7 @@ final class ScratchpadWindowController {
         )
         // Clip the rectangular backing to the card's corner radius so no
         // hairline edge shows past the rounded glass.
-        host.wantsLayer = true
-        host.layer?.cornerRadius = 16
-        host.layer?.masksToBounds = true
+        host.clipToCard()
         panel.contentView = host
         // Position is applied by `show()` via `applySpawnPosition` (bottom-right,
         // or the last-closed spot when the remember-position setting is on).

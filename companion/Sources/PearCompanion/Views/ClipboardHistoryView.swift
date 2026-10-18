@@ -12,9 +12,7 @@ struct ClipboardHistoryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
-            HStack {
-                SectionLabel(text: "Clipboard")
-                Spacer()
+            PopoverHeader(title: "Clipboard") {
                 if !clipboard.items.isEmpty {
                     Button("Clear") { clipboard.clear() }
                         .buttonStyle(.plain)
@@ -25,16 +23,16 @@ struct ClipboardHistoryView: View {
             }
 
             if !clipboard.items.isEmpty {
-                HStack(spacing: 6) {
+                HStack(spacing: Theme.Space.small) {
                     Image(systemName: "magnifyingglass")
-                        .font(.system(size: 11))
+                        .font(Theme.Typography.small())
                         .foregroundStyle(.tertiary)
                     TextField("Search…", text: $query)
                         .textFieldStyle(.plain)
                         .font(Theme.body)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.horizontal, Theme.Space.medium)
+                .padding(.vertical, Theme.Space.xSmall)
                 .background(Capsule().fill(.quaternary.opacity(0.5)))
             }
 
@@ -50,7 +48,7 @@ struct ClipboardHistoryView: View {
                     .frame(maxWidth: .infinity, minHeight: 40)
             } else {
                 ScrollView {
-                    VStack(spacing: 4) {
+                    VStack(spacing: Theme.Space.xSmall) {
                         ForEach(shown) { item in
                             ClipRow(
                                 item: item,
@@ -73,7 +71,7 @@ struct ClipboardHistoryView: View {
                 .frame(maxHeight: 320)
             }
         }
-        .padding(14)
+        .padding(Theme.edgePadding)
         .frame(width: 300)
     }
 }
@@ -96,23 +94,23 @@ private struct ClipRow: View {
             HStack {
                 Spacer()
                 Image(systemName: "trash")
-                    .font(.system(size: 11))
+                    .font(Theme.Typography.small())
                     .foregroundStyle(Theme.warn)
-                    .padding(.trailing, 12)
+                    .padding(.trailing, Theme.Space.medium)
                     .opacity(min(dragX / discardThreshold, 1))
             }
 
             Button(action: onCopy) {
-                HStack(spacing: 8) {
+                HStack(spacing: Theme.Space.small) {
                     if item.isImage, let image = item.thumbnail {
                         Image(nsImage: image)
                             .resizable().scaledToFill()
                             .frame(width: 30, height: 30)
-                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small))
                         Text("Image").font(Theme.body).foregroundStyle(.secondary)
                     } else {
                         Image(systemName: "text.alignleft")
-                            .font(.system(size: 11))
+                            .font(Theme.Typography.small())
                             .foregroundStyle(.tertiary)
                             .frame(width: 30)
                         Text(item.text ?? "")
@@ -123,13 +121,13 @@ private struct ClipRow: View {
                     Spacer(minLength: 0)
                     if copied {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 10)).foregroundStyle(Theme.accent)
+                            .font(Theme.Typography.tiny()).foregroundStyle(Theme.accent)
                     } else if hovering {
                         Button {
                             onPin()
                         } label: {
                             Image(systemName: item.pinned ? "pin.slash" : "pin")
-                                .font(.system(size: 9))
+                                .font(Theme.Typography.tiny())
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
@@ -137,20 +135,20 @@ private struct ClipRow: View {
                         Button {
                             onDiscard()
                         } label: {
-                            Image(systemName: "xmark").font(.system(size: 9))
+                            Image(systemName: "xmark").font(Theme.Typography.tiny())
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
                     } else if item.pinned {
                         Image(systemName: "pin.fill")
-                            .font(.system(size: 8))
+                            .font(Theme.Typography.tiny())
                             .foregroundStyle(.tertiary)
                     }
                 }
-                .padding(8)
+                .padding(Theme.Space.small)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: Theme.Radius.small)
                         .fill(hovering ? Theme.accentSoft : .clear)
                 )
             }

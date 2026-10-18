@@ -11,7 +11,7 @@ struct ColorPickerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.sectionGap) {
-            SectionLabel(text: "Color Picker")
+            PopoverHeader(title: "Color Picker", settingsToolID: ColorPickerTool.toolID)
             pickButton
 
             if let current = store.current {
@@ -27,10 +27,8 @@ struct ColorPickerView: View {
             if !store.history.isEmpty {
                 historySection
             }
-
-            ToolSettingsLink(toolID: ColorPickerTool.toolID, title: "Color Picker")
         }
-        .padding(Theme.heroPadding)
+        .padding(Theme.edgePadding)
         .frame(width: 300)
     }
 
@@ -47,40 +45,48 @@ struct ColorPickerView: View {
     }
 
     private func swatch(for color: PickedColor) -> some View {
-        RoundedRectangle(cornerRadius: 10)
+        RoundedRectangle(cornerRadius: Theme.Radius.medium)
             .fill(color.swiftUIColor)
             .frame(height: 64)
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: Theme.Radius.medium)
                     .strokeBorder(.black.opacity(0.08), lineWidth: 1)
             )
     }
 
     private func formatCard(for color: PickedColor) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             FormatRow(label: "HEX", value: color.hexString, onCopy: { copy(color.hexString) })
             FormatRow(label: "RGB", value: color.rgbString, onCopy: { copy(color.rgbString) })
             FormatRow(label: "HSL", value: color.hslString, onCopy: { copy(color.hslString) })
             FormatRow(label: "SwiftUI", value: color.swiftUIString, onCopy: { copy(color.swiftUIString) })
         }
-        .padding(Theme.cardPadding)
-        .glassCard()
+        .padding(Theme.Space.medium)
+        // A flat fill, not glass: the card sits on the popover's own glass.
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.medium)
+                .fill(.quaternary.opacity(0.5))
+        )
     }
 
     private func contrastCard(for color: PickedColor) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Contrast")
             ContrastRow(label: "On White", result: color.contrast(against: .white))
             ContrastRow(label: "On Black", result: color.contrast(against: .black))
         }
-        .padding(Theme.cardPadding)
-        .glassCard()
+        .padding(Theme.Space.medium)
+        // A flat fill, not glass: the card sits on the popover's own glass.
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.medium)
+                .fill(.quaternary.opacity(0.5))
+        )
     }
 
     private var historySection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "History")
-            HStack(spacing: 6) {
+            HStack(spacing: Theme.Space.small) {
                 ForEach(store.history) { color in
                     HistorySwatch(
                         color: color,
@@ -107,7 +113,7 @@ struct ColorFormatPicker: View {
     @AppStorage(Prefs.colorFormatKey) private var copyFormat = ColorFormat.hex.rawValue
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Pick copies")
             Picker("", selection: $copyFormat) {
                 ForEach(ColorFormat.allCases) { Text($0.label).tag($0.rawValue) }
@@ -127,7 +133,7 @@ private struct FormatRow: View {
 
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 1) {  // 1 pt: the label sits on its value, below the 4 pt step
                 Text(label)
                     .font(Theme.caption)
                     .foregroundStyle(.secondary)
@@ -135,7 +141,7 @@ private struct FormatRow: View {
                     .font(Theme.body)
                     .monospaced()
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: Theme.Space.small)
             GlyphButton(symbol: "doc.on.doc", help: "Copy \(label)", action: onCopy)
         }
     }
@@ -147,7 +153,7 @@ private struct ContrastRow: View {
     let result: ContrastResult
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Theme.Space.small) {
             Text(label)
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
@@ -163,8 +169,8 @@ private struct ContrastRow: View {
     private func badge(_ text: String, pass: Bool) -> some View {
         Text(text)
             .font(Theme.caption)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
+            .padding(.horizontal, Theme.Space.small)
+            .padding(.vertical, 2)  // 2 pt: the badge hugs its text, below the 4 pt step
             .background(
                 Capsule().fill(pass ? Theme.accentSoft : Color.secondary.opacity(0.12))
             )
@@ -184,11 +190,11 @@ private struct HistorySwatch: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: Theme.Radius.small)
                 .fill(color.swiftUIColor)
                 .frame(width: 28, height: 28)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: Theme.Radius.small)
                         .strokeBorder(isSelected ? Theme.accent : .clear, lineWidth: 2)
                 )
                 .onTapGesture(perform: onSelect)
@@ -196,12 +202,12 @@ private struct HistorySwatch: View {
             if hovering {
                 Button(action: onRemove) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
+                        .font(Theme.Typography.small())
                         .symbolRenderingMode(.palette)
                         .foregroundStyle(.white, .black.opacity(0.6))
                 }
                 .buttonStyle(.plain)
-                .offset(x: 6, y: -6)
+                .offset(x: 6, y: -6)  // 6 pt: centres the remove badge on the swatch corner
             }
         }
         .onHover { hovering = $0 }

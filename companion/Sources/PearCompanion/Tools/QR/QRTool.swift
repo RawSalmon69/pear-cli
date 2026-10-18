@@ -45,7 +45,7 @@ final class QRTool: Tool {
 }
 
 /// Matches the shared popover style used by `ColorPickerView` / `MenuBarSettingsView`
-/// (`Theme` tokens, a `SectionLabel` header, 300pt width) rather than the ad hoc
+/// (`Theme` tokens, a `PopoverHeader`, 300pt width) rather than the ad hoc
 /// bordered-buttons layout: a prominent CTA for the hotkey-bound primary action
 /// (scan), a plain bordered button for the secondary one (generate).
 private struct QRPopoverView: View {
@@ -54,11 +54,11 @@ private struct QRPopoverView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
-            SectionLabel(text: "QR Code")
+            PopoverHeader(title: "QR Code")
             scanButton
             generateButton
         }
-        .padding(Theme.heroPadding)
+        .padding(Theme.edgePadding)
         .frame(width: 300)
     }
 

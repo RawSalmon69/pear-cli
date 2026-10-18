@@ -18,13 +18,13 @@ struct ScratchpadView: View {
             header
             editor
         }
-        .padding(Theme.cardPadding)
+        .padding(Theme.edgePadding)
         .frame(width: 320, height: 300)
-        .glassCard(cornerRadius: 16)
+        .glassCard()
     }
 
     private var header: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Theme.Space.small) {
             GlyphButton(symbol: "chevron.left", help: "Previous note (⌘[)") {
                 confirmingDelete = false
                 store.previous()

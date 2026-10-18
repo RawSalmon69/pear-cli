@@ -16,12 +16,11 @@ struct MenuBarSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.sectionGap) {
-            SectionLabel(text: "Menu Bar")
+            PopoverHeader(title: "Menu Bar", settingsToolID: MenuBarTool.toolID)
             toggleButton
             howToCard
-            ToolSettingsLink(toolID: MenuBarTool.toolID, title: "Menu Bar")
         }
-        .padding(Theme.heroPadding)
+        .padding(Theme.edgePadding)
         .frame(width: 300)
     }
 
@@ -29,7 +28,7 @@ struct MenuBarSettingsView: View {
     /// choosing what hides is a ⌘-drag the user does themselves. Spell it out
     /// — this is the step people miss.
     private var howToCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Choosing what hides")
             step("1.", "The chevron is the boundary; it always stays visible.")
             step("2.", "Hold ⌘ and drag any menu-bar icon across it.")
@@ -41,17 +40,21 @@ struct MenuBarSettingsView: View {
                 .font(Theme.caption)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 2)
+                .padding(.top, Theme.Space.xSmall)
             Label("Can't see the Pear icon? Press ⌃⇧P to open this panel anytime.", systemImage: "keyboard")
                 .font(Theme.caption)
                 .foregroundStyle(Theme.accent)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 2)
+                .padding(.top, Theme.Space.xSmall)
             if hasNotch { notchTip }
         }
-        .padding(Theme.cardPadding)
+        .padding(Theme.Space.medium)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard()
+        // A flat fill, not glass: the card sits on the popover's own glass.
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.medium)
+                .fill(.quaternary.opacity(0.5))
+        )
     }
 
     /// An icon overflowing behind the notch can't be grabbed to drag it across
@@ -59,7 +62,7 @@ struct MenuBarSettingsView: View {
     /// status item — but macOS reflows the bar when the frontmost app's menu
     /// titles shrink, which frees the icon. Spell out that manual reflow.
     private var notchTip: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
             Label("Stuck under the notch?", systemImage: "lightbulb")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
@@ -68,11 +71,11 @@ struct MenuBarSettingsView: View {
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.top, 4)
+        .padding(.top, Theme.Space.xSmall)
     }
 
     private func step(_ n: String, _ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.small) {
             Text(n).font(Theme.caption).foregroundStyle(Theme.accent).monospacedDigit()
             Text(text).font(Theme.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -108,7 +111,7 @@ struct MenuBarOptionsView: View {
     }
 
     private var rehideSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Auto-hide after")
             Picker("", selection: rehideBinding) {
                 ForEach(MenuBarManager.autoRehideOptions, id: \.self) { seconds in
@@ -122,7 +125,7 @@ struct MenuBarOptionsView: View {
     }
 
     private var zonesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Zones")
             switchRow("Always-hidden zone", alwaysHiddenBinding)
             switchRow("Reveal all with ⌥-click", optionRevealBinding)

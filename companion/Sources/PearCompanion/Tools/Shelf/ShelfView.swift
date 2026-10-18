@@ -24,15 +24,15 @@ struct ShelfView: View {
                 list
             }
         }
-        .padding(14)
+        .padding(Theme.edgePadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // Behind the content, in front of the glass: presses that no row or
         // button claims fall through to here and drag the whole panel.
         .background { ShelfWindowMoveOverlay() }
-        .glassCard(cornerRadius: 16)
+        .glassCard()
         .overlay {
             // Accent ring while a drag hovers the card.
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: Theme.Radius.large)
                 .strokeBorder(Theme.accent, lineWidth: 2)
                 .opacity(isTargeted ? 1 : 0)
                 .animation(.easeOut(duration: 0.12), value: isTargeted)
@@ -41,7 +41,7 @@ struct ShelfView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Theme.Space.small) {
             SectionLabel(text: "Shelf")
             if !store.items.isEmpty {
                 Text("\(store.items.count)")
@@ -57,9 +57,9 @@ struct ShelfView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: Theme.Space.medium) {
             Image(systemName: "tray.and.arrow.down")
-                .font(.system(size: 30, weight: .light))
+                .font(.system(size: 30, weight: .light))  // 30 pt: an illustration glyph, not text
                 .foregroundStyle(.secondary)
             Text("Drop files here")
                 .font(Theme.emphasis)
@@ -74,7 +74,7 @@ struct ShelfView: View {
 
     private var list: some View {
         ScrollView {
-            VStack(spacing: 4) {
+            VStack(spacing: Theme.Space.xSmall) {
                 ForEach(store.items) { entry in
                     ShelfRow(
                         entry: entry,
@@ -127,8 +127,8 @@ private struct ShelfRow: View {
     let onRemove: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.small) {
+            HStack(spacing: Theme.Space.small) {
                 thumbnail
                 Text(entry.originalName)
                     .font(Theme.body)
@@ -154,9 +154,9 @@ private struct ShelfRow: View {
                 GlyphButton(symbol: "xmark", help: "Remove", action: onRemove)
             }
         }
-        .padding(6)
+        .padding(Theme.Space.small)
         .background(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: Theme.Radius.small)
                 .fill(hovering ? Theme.accentSoft : .clear)
         )
     }
@@ -171,7 +171,7 @@ private struct ShelfRow: View {
             }
         }
         .frame(width: 32, height: 32)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small))
     }
 }
 

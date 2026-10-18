@@ -103,7 +103,8 @@ check: the actions show in the Shortcuts app.
   `SettingsView.toolOptions`. Ticket 12's status block slots in between the two.
   No option lives in a popover or an in-window gear: the Menu Bar, Switches and
   Color Picker popovers keep their working controls plus a `ToolSettingsLink`
-  ("Settings…" → `SettingsPage.open(.tool(id))`), and the Scratchpad header gear
+  ("Settings…" → `SettingsPage.open(.tool(id))`, at the right of their
+  `PopoverHeader`), and the Scratchpad header gear
   opens its page. A new tool option goes on the tool page, never back in a popover.
   The Menu Bar page edits the tool's live manager even while off
   (`ToolRegistry.offeredTool`), so it starts with what was chosen. The **pins
@@ -456,7 +457,15 @@ state until it next asks; `currentValue()` is then already off.
   carry literals while the migration is in progress; new code uses the tokens.
   The capture surfaces (preview cards, detail, Markup, Remove Background, Disk)
   are migrated; their remaining literals are commented exceptions (Markup's
-  image-pixel text, treemap tile corners, the card toolbar's 2 pt gaps).
+  image-pixel text, treemap tile corners, the card toolbar's 2 pt gaps). So are
+  the tool popovers and tool windows (Switches, Windows, Highlight Copy,
+  Clipboard, Menu Bar, Color Picker, QR, Scratchpad, Shelf, KeyClu, Clean Mode
+  settings): **every tool popover opens with `PopoverHeader`** (`Support/Theme.swift`:
+  the name at 15 pt semibold, then any popover controls, then the
+  `ToolSettingsLink` when the tool has options), and tiles or cards inside a
+  popover (Switches tiles, the Menu Bar how-to, Color Picker's format and
+  contrast cards) take a flat `.quaternary.opacity(0.5)` fill, since the
+  popover chrome is already the glass.
   **Four standard windows** besides Settings: the screenshot detail, Markup,
   Remove Background and Disk are plain titled windows (titled, closable,
   miniaturizable, resizable, standard title bar and background, normal level),
