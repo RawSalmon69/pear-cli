@@ -58,6 +58,20 @@ enum Prefs {
         return max(1, stored ?? 5)
     }
 
+    // MARK: - Settings window
+
+    static let settingsPageKey = "settingsLastPage"
+
+    /// The page Settings opens on: the last one shown, or General. A stored page
+    /// that is not offered (Licence in a free build) also gives General.
+    static func settingsPage(defaults: UserDefaults = .standard) -> SettingsPage {
+        SettingsPage.resolved(defaults.string(forKey: settingsPageKey))
+    }
+
+    static func setSettingsPage(_ page: SettingsPage, defaults: UserDefaults = .standard) {
+        defaults.set(page.rawValue, forKey: settingsPageKey)
+    }
+
     // MARK: - Panel pins
 
     static let pinnedToolsKey = "panelPinnedTools"

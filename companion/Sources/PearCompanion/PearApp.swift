@@ -11,6 +11,15 @@ struct PearApp: App {
         // companion panel are driven imperatively by the AppDelegate's
         // PanelController — a MenuBarExtra window can't stay open on focus loss.
         Settings { EmptyView() }
+            // The real Settings is an AppKit window (`SettingsWindowController`).
+            // Without this, the app menu's Settings… ⌘, — live while Settings
+            // makes Pear a regular app — would open this empty scene instead.
+            .commands {
+                CommandGroup(replacing: .appSettings) {
+                    Button("Settings…") { SettingsPage.open() }
+                        .keyboardShortcut(",")
+                }
+            }
     }
 }
 

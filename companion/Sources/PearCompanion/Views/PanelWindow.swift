@@ -51,6 +51,8 @@ final class PanelController: NSObject {
     /// it (with a 1 pt tolerance for sub-point frame rounding) to tell our own
     /// fit-driven moves apart from a real user drag.
     private var lastProgrammaticOrigin: NSPoint = .zero
+    /// Created on first open; reused (and frame-remembered) after that.
+    private lazy var settings = SettingsWindowController(env: env)
 
     /// Persists the status item's bar position across launches. Without it the
     /// item is a fresh identity every launch, and macOS drops fresh items at
@@ -87,6 +89,13 @@ final class PanelController: NSObject {
             forName: .pearTogglePanel, object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor in self?.toggle() }
+        }
+        // Deferred a turn like the toggle: the post can come from a button
+        // inside the panel this is about to tear down.
+        NotificationCenter.default.addObserver(
+            forName: .pearOpenSettings, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.openSettings() }
         }
         // Starting a capture from a panel tile used to leave the panel sitting
         // over the very thing being captured — and in a full-screen shot, in it.
@@ -156,6 +165,10 @@ final class PanelController: NSObject {
     /// `performClick` lets AppKit place and highlight it like any status menu.
     private func showMenu() {
         let menu = NSMenu()
+        // Shows the ⌘, that the panel and the app menu answer to.
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettingsFromMenu), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
         let update = NSMenuItem(title: "Check for Updates…", action: nil, keyEquivalent: "")
         if env.updater != nil {
             update.target = self
@@ -169,6 +182,17 @@ final class PanelController: NSObject {
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil
+    }
+
+    @objc private func openSettingsFromMenu() {
+        SettingsPage.open()
+    }
+
+    /// The panel would float over the window (it sits at status-bar level), so
+    /// it closes first.
+    private func openSettings() {
+        hide()
+        settings.show()
     }
 
     @objc private func checkForUpdates() {
@@ -246,6 +270,7 @@ final class PanelController: NSObject {
         // Only reached when the search field is not first responder: the field
         // swallows Esc and hands it to `PanelModel` (clear, then close).
         panel.onCancel = { [weak self] in self?.hide() }
+        panel.onOpenSettings = { SettingsPage.open() }
         // Delegate drives the close-on-focus-loss toggle and drag detection.
         panel.delegate = self
         panel.contentView = host
@@ -308,7 +333,7 @@ final class PanelController: NSObject {
     }
 
     /// Whether a resign-key should close the panel. Pure so the guard — never
-    /// close while our own Settings/Help popover or the folder-picker sheet owns
+    /// close while our own Help popover or the folder-picker sheet owns
     /// focus, and never if the panel took key back — is testable without AppKit.
     static func shouldAutoClose(
         prefEnabled: Bool,
@@ -323,7 +348,7 @@ final class PanelController: NSObject {
 
 extension PanelController: NSWindowDelegate {
     /// Close on focus loss when the user opted in (the default). Deferred one
-    /// turn because opening our own Settings/Help popover — or the folder
+    /// turn because opening our own Help popover — or the folder
     /// picker — resigns the panel's key status to a child window; re-checking
     /// next turn lets a self-owned popover keep the panel up.
     func windowDidResignKey(_ notification: Notification) {
@@ -357,6 +382,7 @@ extension PanelController: NSWindowDelegate {
 /// first clicks land via `PanelHostingView.acceptsFirstMouse`.
 private final class PearPanel: NSPanel {
     var onCancel: (() -> Void)?
+    var onOpenSettings: (() -> Void)?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -364,6 +390,19 @@ private final class PearPanel: NSPanel {
     // One dismissal grammar across every floating surface: Esc closes.
     override func cancelOperation(_ sender: Any?) {
         onCancel?()
+    }
+
+    /// ⌘, opens Settings. Caught at the window, before the search field (first
+    /// responder) sees it.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // Caps Lock is in the device-independent mask; it must not block ⌘,.
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            .subtracting(.capsLock) == .command,
+           event.charactersIgnoringModifiers == "," {
+            onOpenSettings?()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }
 

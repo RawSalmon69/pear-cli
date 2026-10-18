@@ -67,10 +67,11 @@ final class EntitlementRolloutTests: XCTestCase {
         try XCTSkipIf(FeatureFlags.paywall, "only meaningful in a free build")
 
         XCTAssertFalse(
-            SettingsPopover.Tab.visible.contains(.licence),
-            "the Licence tab must not be offered while the app is free")
+            SettingsPage.visible.contains(.licence),
+            "the Licence page must not be offered while the app is free")
         // And a caller that asks for it anyway lands somewhere sensible.
-        XCTAssertEqual(SettingsPopover.Tab.visible.first, .general)
+        XCTAssertEqual(SettingsPage.visible.first, .general)
+        XCTAssertEqual(SettingsPage.resolved(SettingsPage.licence.rawValue), .general)
     }
 
     /// The paid surfaces are driven off `.expired`, which the free path can never

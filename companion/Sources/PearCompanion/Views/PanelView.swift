@@ -143,11 +143,19 @@ struct PanelView: View {
     @ViewBuilder
     private func toolList(_ model: PanelModel) -> some View {
         if model.showsNoMatch {
-            Text("No tools match")
-                .font(Theme.Typography.body())
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, Theme.Space.large)
+            VStack(spacing: Theme.Space.small) {
+                Text("No tools match")
+                    .font(Theme.Typography.body())
+                    .foregroundStyle(.secondary)
+                // A tool that is switched off does not show here; Tools is
+                // where it is switched back on.
+                Button("Open Settings") { SettingsPage.open(.tools) }
+                    .font(Theme.Typography.small())
+                    .controlSize(.small)
+                    .focusable(false)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Theme.Space.large)
         } else {
             VStack(spacing: 0) {
                 ForEach(model.rows, id: \.id) { entry in
@@ -309,8 +317,6 @@ private final class AutoFocusTextField: NSTextField {
 /// Setup / offline states, designed rather than apologetic.
 struct ConnectionBanner: View {
     @Environment(AppEnvironment.self) private var env
-    @State private var showSettings = false
-
     var body: some View {
         switch env.messaging.connectionState {
         case .needsSetup:
@@ -322,10 +328,9 @@ struct ConnectionBanner: View {
                     .font(Theme.body)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Button("Set up the key…") { showSettings = true }
+                Button("Set up the key…") { SettingsPage.open(.general) }
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.accent)
-                    .popover(isPresented: $showSettings) { SettingsPopover() }
             }
             .padding(Theme.heroPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -722,7 +727,6 @@ struct PickYourFourCard: View {
 
 struct BottomBar: View {
     @Environment(AppEnvironment.self) private var env
-    @State private var showSettings = false
     @State private var showHelp = false
 
     var body: some View {
@@ -771,10 +775,9 @@ struct BottomBar: View {
             .popover(isPresented: $showHelp) {
                 HelpView(known: env.tools.known, onClose: { showHelp = false })
             }
-            GlyphButton(symbol: "gearshape.fill", help: "Settings", tint: .secondary) {
-                showSettings = true
+            GlyphButton(symbol: "gearshape.fill", help: "Settings (⌘,)", tint: .secondary) {
+                SettingsPage.open()
             }
-            .popover(isPresented: $showSettings) { SettingsPopover() }
             GlyphButton(symbol: "power", help: "Quit Pear", tint: .secondary) {
                 NSApp.terminate(nil)
             }

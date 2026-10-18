@@ -1,12 +1,71 @@
 import SwiftUI
 import AppKit
 
-/// Settings, split into a few tabs so a dozen tools' worth of controls read
-/// as small groups instead of one long scroll. General = look and capture,
-/// Tools = per-tool on/off, Menu Bar = the runner, Licence = trial and key.
-struct SettingsPopover: View {
+extension Notification.Name {
+    /// Opens the Settings window. `PanelController` owns the window, so the
+    /// panel's gear, ⌘, and the status-item menu all reach the same one.
+    static let pearOpenSettings = Notification.Name("pearOpenSettings")
+}
+
+/// The Settings window's sidebar pages, in sidebar order. Tool pages and
+/// Shortcuts slot in here (tickets 10/11).
+enum SettingsPage: String, CaseIterable, Identifiable {
+    case general, appearance, tools, licence, about
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .appearance: "Appearance"
+        case .tools: "Tools"
+        case .licence: "Licence"
+        case .about: "About"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .general: "gearshape"
+        case .appearance: "paintpalette"
+        case .tools: "square.grid.2x2"
+        case .licence: "key"
+        case .about: "info.circle"
+        }
+    }
+
+    /// The pages actually offered. Licence is hidden while the app is free:
+    /// with `FeatureFlags.paywall` off nothing locks and the trial clock
+    /// never starts, so the pane would sit there reporting "14 days left"
+    /// forever and inviting people to buy something that is not for sale.
+    static var visible: [SettingsPage] {
+        allCases.filter { FeatureFlags.paywall || $0 != .licence }
+    }
+
+    /// A stored page name, or General when it is unknown or not offered — a
+    /// caller asking for a hidden page gets General rather than a blank pane.
+    static func resolved(_ raw: String?) -> SettingsPage {
+        guard let page = raw.flatMap(SettingsPage.init(rawValue:)), visible.contains(page)
+        else { return .general }
+        return page
+    }
+
+    /// Opens Settings on `page`, or on the last page shown. The open itself is
+    /// deferred by the observer, so a caller inside the panel is never torn
+    /// down mid-action.
+    @MainActor static func open(_ page: SettingsPage? = nil) {
+        if let page { Prefs.setSettingsPage(page) }
+        NotificationCenter.default.post(name: .pearOpenSettings, object: nil)
+    }
+}
+
+/// Settings, a standard window with a sidebar (`SettingsWindowController`).
+/// General = panel, capture and startup; Appearance = accent and the menu-bar
+/// runner; Tools = per-tool on/off; Licence (paid builds only); About.
+struct SettingsView: View {
     @Environment(AppEnvironment.self) private var env
-    @State private var tab: Tab
+    /// Raw, so a page written by `SettingsPage.open` while the window is up
+    /// switches it live; `SettingsPage.resolved` keeps it to an offered page.
+    @AppStorage(Prefs.settingsPageKey) private var storedPage = SettingsPage.general.rawValue
     @State private var showAccentWheel = false
     @State private var keyField = ""
     @State private var role = CoupleKey.deviceRole
@@ -24,52 +83,47 @@ struct SettingsPopover: View {
     @AppStorage(Prefs.hdBackgroundRemovalKey) private var hdEnabled = false
     @State private var hd = HDBackgroundModelManager.shared
 
-    enum Tab: String, CaseIterable, Identifiable {
-        case general = "General", tools = "Tools", menuBar = "Menu Bar", licence = "Licence"
-        var id: String { rawValue }
+    private var page: SettingsPage { SettingsPage.resolved(storedPage) }
 
-        /// The tabs actually offered. Licence is hidden while the app is free:
-        /// with `FeatureFlags.paywall` off nothing locks and the trial clock
-        /// never starts, so the pane would sit there reporting "14 days left"
-        /// forever and inviting people to buy something that is not for sale.
-        static var visible: [Tab] {
-            allCases.filter { FeatureFlags.paywall || $0 != .licence }
-        }
-    }
-
-    /// Opens on `tab`. The locked state passes `.licence`, so "I have a licence"
-    /// lands on the field instead of on General.
-    init(tab: Tab = .general) {
-        // A caller asking for a hidden tab gets General rather than a blank pane.
-        _tab = State(initialValue: Tab.visible.contains(tab) ? tab : .general)
+    private var selection: Binding<SettingsPage?> {
+        Binding(
+            get: { page },
+            set: { if let new = $0 { storedPage = new.rawValue } }
+        )
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
-            Picker("", selection: $tab) {
-                ForEach(Tab.visible) { Text($0.rawValue).tag($0) }
+        NavigationSplitView {
+            List(selection: selection) {
+                ForEach(SettingsPage.visible) { page in
+                    Label(page.title, systemImage: page.icon).tag(page)
+                }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-
+            .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
+            .toolbar(removing: .sidebarToggle)
+        } detail: {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.sectionGap) {
-                    switch tab {
-                    case .general: generalTab
-                    case .tools: toolsTab
-                    case .menuBar: RunnerSettingsView(runner: env.runner)
+                    switch page {
+                    case .general: generalPage
+                    case .appearance: appearancePage
+                    // Temporary: tickets 10/11 replace this page with one page
+                    // per tool and a Shortcuts page. Until then it is the only
+                    // home of the on/off toggles, hotkey recorders and Clean Mode
+                    // settings, carried over unchanged from the popover.
+                    case .tools: toolsPage
                     case .licence:
-                        // Unreachable while free (the tab is not offered), but a
-                        // stored selection could still name it.
-                        if FeatureFlags.paywall { LicenceSettingsView() } else { generalTab }
+                        // Unreachable while free (`resolved` never returns it),
+                        // kept as a second guard.
+                        if FeatureFlags.paywall { LicenceSettingsView() } else { generalPage }
+                    case .about: aboutPage
                     }
                 }
-                .padding(.top, 4)
+                .padding(Theme.Space.xLarge)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxHeight: 360)
         }
-        .padding(16)
-        .frame(width: 300)
+        .frame(minWidth: 600, minHeight: 440)
     }
 
     @ViewBuilder private var backgroundRemovalSection: some View {
@@ -124,11 +178,88 @@ struct SettingsPopover: View {
         }
     }
 
-    @ViewBuilder private var generalTab: some View {
+    @ViewBuilder private var generalPage: some View {
         if FeatureFlags.coupleNote {
             coupleKeySection
         }
 
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Panel")
+            Toggle("Close when it loses focus", isOn: $panelClosesOnFocusLoss)
+                .font(Theme.body)
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+            Text("When off, the panel stays open until you click the menu-bar icon or press Esc. Drag it by any empty area.")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Startup")
+            Toggle("Open at login", isOn: loginItemBinding)
+                .font(Theme.body)
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+        }
+
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Feedback")
+            Toggle("Sound effects", isOn: $soundsEnabled)
+                .font(Theme.body)
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+        }
+
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Screenshots")
+            Text("Captures are copied to the clipboard and saved here.")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+            Toggle("Save a copy to this folder", isOn: $autoSave)
+                .font(Theme.body)
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+            HStack(spacing: 6) {
+                Text(folder)
+                    .font(Theme.caption)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(autoSave ? .secondary : .quaternary)
+                Spacer()
+                Button("Change…") { pickFolder() }
+                    .font(Theme.caption)
+                    .disabled(!autoSave)
+            }
+        }
+
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Preview stack")
+            Text("Previews stack in the corner and stay until you swipe them away.")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+            Stepper(value: $previewMaxStack, in: 1...10) {
+                Text("Keep up to \(previewMaxStack) previews")
+                    .font(Theme.body)
+            }
+            Toggle("Auto-dismiss after a delay", isOn: $previewAutoDismiss)
+                .font(Theme.body)
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+            Stepper(value: $previewAutoDismissSeconds, in: 2...60, step: 1) {
+                Text("Dismiss after \(Int(previewAutoDismissSeconds))s")
+                    .font(Theme.caption)
+                    .foregroundStyle(previewAutoDismiss ? .secondary : .quaternary)
+            }
+            .disabled(!previewAutoDismiss)
+        }
+
+        backgroundRemovalSection
+    }
+
+    /// Accent colour and the menu-bar runner. Named Appearance so "Menu Bar"
+    /// means only the menu-bar hider tool.
+    @ViewBuilder private var appearancePage: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             SectionLabel(text: "Accent")
             HStack(spacing: 8) {
@@ -141,9 +272,9 @@ struct SettingsPopover: View {
                         ThemeStore.shared.preset = preset
                     }
                 }
-                // Not a SwiftUI ColorPicker (its NSColorPanel dismisses this
-                // transient popover, killing the binding) and not the system
-                // color panel either — owner wants one simple wheel, inline.
+                // Not a SwiftUI ColorPicker and not the system color panel —
+                // owner wants one simple wheel, inline. (It also dodged the
+                // color panel dismissing the old transient popover.)
                 Button {
                     showAccentWheel.toggle()
                 } label: {
@@ -171,78 +302,7 @@ struct SettingsPopover: View {
             }
         }
 
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
-            SectionLabel(text: "Panel")
-            Toggle("Close when it loses focus", isOn: $panelClosesOnFocusLoss)
-                .font(Theme.body)
-                .toggleStyle(.switch)
-                .tint(Theme.accent)
-            Text("When off, the panel stays open until you click the menu-bar icon or press Esc. Drag it by any empty area.")
-                .font(Theme.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
-            SectionLabel(text: "Screenshots")
-            Text("Captures are copied to the clipboard and saved here.")
-                .font(Theme.caption)
-                .foregroundStyle(.secondary)
-            Toggle("Save a copy to this folder", isOn: $autoSave)
-                .font(Theme.body)
-                .toggleStyle(.switch)
-                .tint(Theme.accent)
-            HStack(spacing: 6) {
-                Text(folder)
-                    .font(Theme.caption)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .foregroundStyle(autoSave ? .secondary : .quaternary)
-                Spacer()
-                Button("Change…") { pickFolder() }
-                    .font(Theme.caption)
-                    .disabled(!autoSave)
-            }
-        }
-
-        backgroundRemovalSection
-
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
-            SectionLabel(text: "Preview stack")
-            Text("Previews stack in the corner and stay until you swipe them away.")
-                .font(Theme.caption)
-                .foregroundStyle(.secondary)
-            Stepper(value: $previewMaxStack, in: 1...10) {
-                Text("Keep up to \(previewMaxStack) previews")
-                    .font(Theme.body)
-            }
-            Toggle("Auto-dismiss after a delay", isOn: $previewAutoDismiss)
-                .font(Theme.body)
-                .toggleStyle(.switch)
-                .tint(Theme.accent)
-            Stepper(value: $previewAutoDismissSeconds, in: 2...60, step: 1) {
-                Text("Dismiss after \(Int(previewAutoDismissSeconds))s")
-                    .font(Theme.caption)
-                    .foregroundStyle(previewAutoDismiss ? .secondary : .quaternary)
-            }
-            .disabled(!previewAutoDismiss)
-        }
-
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
-            SectionLabel(text: "Feedback")
-            Toggle("Sound effects", isOn: $soundsEnabled)
-                .font(Theme.body)
-                .toggleStyle(.switch)
-                .tint(Theme.accent)
-        }
-
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
-            SectionLabel(text: "Startup")
-            Toggle("Open at login", isOn: loginItemBinding)
-                .font(Theme.body)
-                .toggleStyle(.switch)
-                .tint(Theme.accent)
-        }
+        RunnerSettingsView(runner: env.runner)
     }
 
     /// Reads/writes the login-item state straight from `SMAppService` (its
@@ -252,7 +312,7 @@ struct SettingsPopover: View {
         Binding(get: { LoginItem.isEnabled }, set: { LoginItem.setEnabled($0) })
     }
 
-    private var toolsTab: some View {
+    private var toolsPage: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             Text("A tool you turn off does not load at all. Changes apply immediately.")
                 .font(Theme.caption)
@@ -285,6 +345,64 @@ struct SettingsPopover: View {
             set: { env.tools.setEnabled(id, $0) }
         )
     }
+
+    @ViewBuilder private var aboutPage: some View {
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Pear")
+            Text("Version \(Self.version)")
+                .font(Theme.body)
+                .textSelection(.enabled)
+            if let updater = env.updater {
+                Button("Check for Updates…") { updater.checkForUpdates() }
+                    .font(Theme.body)
+            }
+        }
+
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Licences and notices")
+            Text("Pear includes work from these projects.")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+            // Shown inline, not opened in a text editor: the files live inside
+            // the signed app bundle, and saving an edit there breaks the seal.
+            ForEach(Self.notices, id: \.url) { notice in
+                DisclosureGroup(notice.title) {
+                    ScrollView {
+                        Text((try? String(contentsOf: notice.url, encoding: .utf8)) ?? "")
+                            .font(Theme.Typography.small())
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(height: 180)
+                }
+                .font(Theme.body)
+            }
+        }
+    }
+
+    private static var version: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "dev"
+        guard let build = info?["CFBundleVersion"] as? String else { return short }
+        return "\(short) (\(build))"
+    }
+
+    /// Every bundled licence and notice file: `Resources/Licenses/` plus the
+    /// runner artwork's `Resources/Runners/*.txt`.
+    private static let notices: [(title: String, url: URL)] = {
+        ["Licenses", "Runners"].flatMap { folder -> [URL] in
+            guard let dir = Bundle.pearResources.url(forResource: folder, withExtension: nil),
+                  let files = try? FileManager.default.contentsOfDirectory(
+                    at: dir, includingPropertiesForKeys: nil)
+            else { return [] }
+            return files.filter { $0.pathExtension == "txt" }
+                .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        }
+        .map { url in
+            let name = url.deletingPathExtension().lastPathComponent
+            return (name == "NOTICE" ? "Runner artwork (NOTICE)" : name, url)
+        }
+    }()
 
     private var coupleKeySection: some View {
             VStack(alignment: .leading, spacing: Theme.itemGap) {

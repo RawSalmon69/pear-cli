@@ -91,8 +91,6 @@ struct LockedCopy: Equatable, Sendable {
 struct LockedStateCard: View {
     let reason: ExpiryReason
 
-    @State private var showLicence = false
-
     private var copy: LockedCopy { LockedCopy.of(reason) }
 
     var body: some View {
@@ -113,9 +111,8 @@ struct LockedStateCard: View {
                 Link("Buy a license", destination: LockedCopy.pricingURL)
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.accent)
-                Button("I have a license") { showLicence = true }
+                Button("I have a license") { SettingsPage.open(.licence) }
                     .buttonStyle(.bordered)
-                    .popover(isPresented: $showLicence) { SettingsPopover(tab: .licence) }
             }
             .font(Theme.body)
             .controlSize(.regular)

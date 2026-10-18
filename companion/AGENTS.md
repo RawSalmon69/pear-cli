@@ -81,8 +81,27 @@ check: the actions show in the Shortcuts app.
   item + the companion panel (a non-activating `NSPanel`, replaced the old
   `MenuBarExtra`). Closes on focus loss by default (`Prefs.panelClosesOnFocusLoss`),
   draggable, recreate-per-open so idle cost ~0. Left click toggles the panel;
-  right/control-click pops a native menu (Check for Updates…, Quit Pear) by
-  setting `statusItem.menu` only for that click — never leave it set.
+  right/control-click pops a native menu (Settings… ⌘,, Check for Updates…, Quit
+  Pear) by setting `statusItem.menu` only for that click — never leave it set.
+- **Settings is a window** (`Views/SettingsWindowController.swift` +
+  `Views/SettingsView.swift`), not a popover: one standard titled window, reused,
+  frame autosaved (`PearSettingsWindow`), a `NavigationSplitView` sidebar of
+  `SettingsPage`s — General, Appearance (accent + the runner, so "Menu Bar" now
+  means only the hider tool), a temporary Tools page (per-tool on/off, hotkey
+  recorders, Clean Mode; tickets 10/11 replace it), Licence (paid builds only),
+  About (version, Check for Updates…, every bundled licence/notice shown inline).
+  Everything opens it through `SettingsPage.open(_:)` → `pearOpenSettings` →
+  `PanelController.openSettings()`, which closes the panel first (it floats at
+  status-bar level, over the window): the panel's gear, ⌘, while the panel is key
+  (`PearPanel.performKeyEquivalent`, ahead of the search field), the status-item
+  menu, the app menu (`CommandGroup(replacing: .appSettings)` in `PearApp`, or the
+  empty `Settings` scene would open), and "Open Settings" under "No tools match"
+  (lands on Tools). The last page is `Prefs.settingsPage` (`settingsLastPage`),
+  read through `@AppStorage`, so `open(.licence)` switches a window already up.
+  While it is open Pear is `.regular` (Dock icon, ⌘-Tab, menu bar), back to
+  `.accessory` on `windowWillClose`; the panel stays non-activating and the
+  capture-hides-panel observer is untouched. Each open from closed rebuilds the
+  root view (`.id(UUID())`), standing in for the popover's per-open rebuild.
 - **Panel structure** (`Views/PanelView.swift`, `Views/PanelModel.swift`): the
   cat + a search field (focused on open) on top, the cat's line under it, the
   one-time "Pick your four" card, four big pinned tiles (icon, name, shortcut in
@@ -273,7 +292,8 @@ every one of these tools already runs from the background, as a hotkey does.
 - **The app is FREE right now, and stays that way until the owner says otherwise.**
   `FeatureFlags.paywall` is off, so nothing locks, the trial clock never starts,
   no revocation request is made, and **no licensing surface is visible** — the
-  Settings Licence tab is filtered out by `SettingsPopover.Tab.visible`. The
+  Settings Licence page is filtered out by `SettingsPage.visible`, and
+  `SettingsPage.resolved` turns a stored or requested `licence` into General. The
   licensing code is complete and tested, deliberately dormant. Do not flip the
   flag, do not surface the pane, and do not ship a build that does either without
   an explicit instruction. Two tests in `EntitlementRolloutTests` fail if a free

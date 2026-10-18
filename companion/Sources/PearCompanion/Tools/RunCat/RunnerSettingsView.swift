@@ -5,7 +5,7 @@ import SwiftUI
 /// `RunnerModel`, so changes take effect immediately and persist through the
 /// model's setters.
 ///
-/// Drop this into `SettingsPopover` as its own section. It takes the model so
+/// Lives on the Settings window's Appearance page (`SettingsView`). It takes the model so
 /// there is one source of truth — the same instance the menu-bar label reads.
 struct RunnerSettingsView: View {
     @Bindable var runner: RunnerModel
