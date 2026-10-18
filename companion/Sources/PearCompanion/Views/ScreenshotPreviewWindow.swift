@@ -575,6 +575,26 @@ final class ScreenshotPreviewController {
     }
 }
 
+/// Whether VoiceOver is running, kept live from AppKit's KVO-observable
+/// `NSWorkspace.isVoiceOverEnabled`. SwiftUI's environment value is unproven in
+/// a short-lived non-activating panel's hosting view.
+@MainActor @Observable
+final class VoiceOverState {
+    static let shared = VoiceOverState()
+
+    private(set) var isOn = NSWorkspace.shared.isVoiceOverEnabled
+    @ObservationIgnored private var observation: NSKeyValueObservation?
+
+    private init() {
+        observation = NSWorkspace.shared.observe(\.isVoiceOverEnabled) { [weak self] _, _ in
+            Task { @MainActor in
+                let on = NSWorkspace.shared.isVoiceOverEnabled
+                if self?.isOn != on { self?.isOn = on }
+            }
+        }
+    }
+}
+
 /// Borderless panels refuse key status by default; buttons need it.
 private final class NonActivatingPanel: NSPanel {
     override var canBecomeKey: Bool { true }
@@ -611,8 +631,6 @@ private struct ScreenshotPreviewView: View {
     let onHoverChange: (Bool) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// VoiceOver cannot hover, so with it on the actions stay up.
-    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @State private var drag: CGSize = .zero
     @State private var hovering = false
     @State private var copied = false
@@ -643,8 +661,9 @@ private struct ScreenshotPreviewView: View {
             .accessibilityHint("Opens the screenshot in a window")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction(.default, onOpen)
-            .overlay(alignment: .bottom) { if hovering || voiceOver { toolbar } }
-            .overlay(alignment: .topTrailing) { if hovering || voiceOver { closeButton } }
+            // VoiceOver cannot hover, so with it on the actions stay up.
+            .overlay(alignment: .bottom) { if hovering || VoiceOverState.shared.isOn { toolbar } }
+            .overlay(alignment: .topTrailing) { if hovering || VoiceOverState.shared.isOn { closeButton } }
             .overlay(alignment: .topLeading) {
                 if insights.showsQRBadge { qrBadge }
             }

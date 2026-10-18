@@ -509,13 +509,16 @@ state until it next asks; `currentValue()` is then already off.
   call sites get it free; a picker or toggle with a hidden label still passes a
   real title (`Picker("Auto-hide after", …).labelsHidden()`, never `""`). The
   preview card keeps its hover-only actions up while VoiceOver is on
-  (`accessibilityVoiceOverEnabled`), since VoiceOver cannot hover. **Every spring
-  goes through `Theme.motion(_:reduce:)`** with `@Environment(\.accessibilityReduceMotion)`
+  (`VoiceOverState`, live from KVO on `NSWorkspace.isVoiceOverEnabled`; the
+  SwiftUI environment value is unproven in a non-activating panel), since
+  VoiceOver cannot hover. **Every spring is passed through
+  `Theme.motion(_:reduce:)`** with `@Environment(\.accessibilityReduceMotion)`
   (a short ease under Reduce Motion); a view that slides in switches its
-  transition to `.opacity` there too (`NotesSection`). `grep -rn "\.spring(" Sources`
-  should hit only inside `Theme.motion(`. Under Reduce Motion the mascot does not
-  bounce and its blink loop (a `.task` keyed on mood and the setting) is never
-  started. AppKit surfaces read `NSWorkspace.shared.accessibilityDisplayShouldReduceMotion`
+  transition to `.opacity` there too (`NotesSection`). The one exception is the
+  mascot bounce, which does not run at all under Reduce Motion:
+  `grep -rn "\.spring(" Sources | grep -v "Theme.motion(.spring"` hits only
+  `MascotView`. Under Reduce Motion its blink loop (a `.task` keyed on the
+  setting alone, so a mood change keeps the 3.5 s cadence) is never started. AppKit surfaces read `NSWorkspace.shared.accessibilityDisplayShouldReduceMotion`
   (the preview stack's `animate` already does). **Focus blockers**
   (`.focusable(false)`, `.focusEffectDisabled()`) are allowed in the panel only on
   `ToolRow` and `PinnedTile`, which the search field's ↑ ↓ ↩ already reach;

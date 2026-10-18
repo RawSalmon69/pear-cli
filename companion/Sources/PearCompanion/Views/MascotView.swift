@@ -39,10 +39,12 @@ struct MascotView: View {
             .fixedSize()
             .multilineTextAlignment(.leading)
             .offset(y: bounce ? -3 : 0)
-            // Restarted whenever the mood or Reduce Motion changes: a worried
-            // cat never blinks, and with Reduce Motion on the loop never runs.
-            .task(id: reduceMotion ? nil : mood) {
-                guard !reduceMotion, mood != .worried else { return }
+            // Restarted only when Reduce Motion changes, so a mood change keeps
+            // the cadence; with it on the loop never runs. No worried check: a
+            // `mood` read here would be the one the task started with, and the
+            // worried frame ignores `blinking` anyway.
+            .task(id: reduceMotion) {
+                guard !reduceMotion else { return }
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(3.5))
                     guard !Task.isCancelled else { return }
@@ -52,10 +54,12 @@ struct MascotView: View {
                 }
             }
             .onChange(of: mood == .excited) { _, excited in
+                // No bounce at all under Reduce Motion, so these springs skip
+                // `Theme.motion`.
                 guard excited, !reduceMotion else { return }
-                withAnimation(Theme.motion(.spring(response: 0.3, dampingFraction: 0.45), reduce: reduceMotion)) { bounce = true }
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.45)) { bounce = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    withAnimation(Theme.motion(.spring(response: 0.3, dampingFraction: 0.6), reduce: reduceMotion)) { bounce = false }
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { bounce = false }
                 }
             }
             .accessibilityLabel("Pear the cat, \(moodLabel)")
