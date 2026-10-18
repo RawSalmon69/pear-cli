@@ -34,9 +34,21 @@ final class ShelfTool: Tool {
         window?.hide()
     }
 
+    /// The Add File to Shelf action: copies the file in, then opens the shelf
+    /// if it is closed so the item is there to drag out.
+    func add(_ file: URL) async {
+        let controller = resolveWindow()
+        await controller.store.add(file)
+        if !controller.isOpen { controller.toggle() }
+    }
+
     private func toggle() {
+        resolveWindow().toggle()
+    }
+
+    private func resolveWindow() -> ShelfWindowController {
         let controller = window ?? ShelfWindowController(store: ShelfStore())
         window = controller
-        controller.toggle()
+        return controller
     }
 }

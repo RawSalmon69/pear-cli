@@ -9,13 +9,15 @@ import SwiftUI
 final class ShelfWindowController {
     private var panel: NSPanel?
     private var keyMonitor: Any?
-    private let store: ShelfStore
+    let store: ShelfStore
 
     private static let panelSize = NSSize(width: 300, height: 380)
 
     init(store: ShelfStore) {
         self.store = store
     }
+
+    var isOpen: Bool { panel != nil }
 
     func toggle() {
         if panel != nil {

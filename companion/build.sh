@@ -11,7 +11,14 @@ VERSION="${1:-$(git describe --tags --always 2> /dev/null | sed 's/^V//' || echo
 APP="build/Pear.app"
 
 echo "Building Pear ${VERSION}..."
-swift build -c release
+# The const-values flags make swiftc record the App Intents declarations, which
+# the metadata step below turns into Metadata.appintents (Xcode's
+# ExtractAppIntentsMetadata, which SwiftPM never runs). The list is a committed
+# plain JSON array: the native backend rejects the toolchain's versioned file.
+swift build -c release \
+    -Xswiftc -emit-const-values \
+    -Xswiftc -Xfrontend -Xswiftc -const-gather-protocols-file \
+    -Xswiftc -Xfrontend -Xswiftc "$PWD/Resources/AppIntentsProtocols.json"
 # Ask SwiftPM where the products went: `.build/<triple>/release` under the native
 # backend, `.build/out/Products/Release` under SwiftBuild (Swift 6.4's default).
 BIN="$(swift build -c release --show-bin-path)"
@@ -46,6 +53,42 @@ plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP/Contents/Inf
 if [[ -f Resources/PearCompanion.icns ]]; then
     cp Resources/PearCompanion.icns "$APP/Contents/Resources/PearCompanion.icns"
 fi
+
+# App Intents metadata (Shortcuts/Spotlight actions), written into Resources
+# before codesign seals it. The const-values file sits inside the bin path under
+# the native backend and in the sibling Intermediates tree under SwiftBuild.
+CONST_VALUES="$(find "$BIN" -name 'PearCompanion*.swiftconstvalues')"
+if [[ -z "$CONST_VALUES" ]]; then
+    CONST_VALUES="$(find "$BIN/../.." -path '*/Release/*' -name 'PearCompanion*.swiftconstvalues')"
+fi
+if [[ -z "$CONST_VALUES" ]]; then
+    echo "ERROR: no PearCompanion .swiftconstvalues under $BIN; App Intents metadata cannot be built."
+    exit 1
+fi
+INTENTS_TMP="build/appintents"
+mkdir -p "$INTENTS_TMP"
+echo "$CONST_VALUES" > "$INTENTS_TMP/constvalues.txt"
+find "$PWD/Sources/PearCompanion" -name '*.swift' > "$INTENTS_TMP/sources.txt"
+# Derived at build time, so CI's Xcode and a local one each describe themselves.
+XCODE_BUILD="$(xcodebuild -version | awk '/Build version/ { print $3 }')"
+xcrun appintentsmetadataprocessor \
+    --output "$APP/Contents/Resources" \
+    --toolchain-dir "$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain" \
+    --module-name PearCompanion \
+    --sdk-root "$(xcrun --sdk macosx --show-sdk-path)" \
+    --xcode-version "$XCODE_BUILD" \
+    --platform-family macOS \
+    --deployment-target 14.0 \
+    --target-triple "$(uname -m)-apple-macos14.0" \
+    --bundle-identifier "$(plutil -extract CFBundleIdentifier raw Resources/Info.plist)" \
+    --binary-file "$APP/Contents/MacOS/Pear" \
+    --source-file-list "$INTENTS_TMP/sources.txt" \
+    --swift-const-vals-list "$INTENTS_TMP/constvalues.txt" \
+    --compile-time-extraction \
+    --deployment-aware-processing \
+    --no-app-shortcuts-localization \
+    --force
+rm -rf "$INTENTS_TMP"
 
 # Embed the Developer ID provisioning profile that authorizes the CloudKit and
 # push entitlements. Without it a hardened, entitled build will not launch.

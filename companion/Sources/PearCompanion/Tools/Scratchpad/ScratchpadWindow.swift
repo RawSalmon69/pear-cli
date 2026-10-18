@@ -19,6 +19,8 @@ final class ScratchpadWindowController {
         self.store = store
     }
 
+    var isOpen: Bool { panel?.isVisible == true }
+
     func toggle() {
         if let panel, panel.isVisible {
             hide()

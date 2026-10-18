@@ -34,9 +34,22 @@ final class ScratchpadTool: Tool {
         window?.hide()
     }
 
+    /// The New Scratchpad Note action: a fresh note (holding `text`, if any),
+    /// with the panel opened if it is closed.
+    func newNote(text: String?) {
+        let controller = resolveWindow()
+        controller.store.createNote()
+        if let text, !text.isEmpty { controller.store.updateText(text) }
+        if !controller.isOpen { controller.toggle() }
+    }
+
     private func toggle() {
+        resolveWindow().toggle()
+    }
+
+    private func resolveWindow() -> ScratchpadWindowController {
         let controller = window ?? ScratchpadWindowController()
         window = controller
-        controller.toggle()
+        return controller
     }
 }

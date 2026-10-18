@@ -30,6 +30,13 @@ final class SwitchesTool: Tool {
         .popover { [model] in AnyView(SwitchesView(model: model)) }
     }
 
+    /// The Toggle Keep Awake action, the same switch the grid's tile flips.
+    /// Returns the new state.
+    func toggleKeepAwake() -> Bool {
+        model.setKeepAwake(!model.keepAwakeOn)
+        return model.keepAwakeOn
+    }
+
     func stop() {
         model.teardown()
     }

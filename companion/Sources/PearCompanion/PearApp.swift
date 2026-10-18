@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private var panelController: PanelController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Shortcuts actions reach the tools through this (see `PearIntents`).
+        ToolRegistry.live = environment.tools
         // Notes whether the HD model is on disk, for the settings UI. It is NOT
         // loaded here: compiled, it is ~160 MB resident for a feature most
         // sessions never touch, so the first cutout loads it (`prepared()`).

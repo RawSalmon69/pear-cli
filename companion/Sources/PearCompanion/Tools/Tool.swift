@@ -186,6 +186,21 @@ final class ToolRegistry {
         return !isLocked() || tool.survivesExpiry
     }
 
+    /// The live tool an App Intent runs, through the same gate as registration:
+    /// a tool the user switched off, or one the paywall locks, throws
+    /// `ToolUnavailable` instead of running.
+    func runnableTool(_ id: String) throws -> any Tool {
+        guard let entry = catalog.first(where: { $0.id == id }) else {
+            throw ToolUnavailable(title: id)
+        }
+        guard shouldRun(entry.tool) else { throw ToolUnavailable(title: entry.tool.title) }
+        return entry.tool
+    }
+
+    /// The app's registry, set once at launch so App Intents (which the system
+    /// constructs itself) can reach it. Nil in tests and before launch.
+    static var live: ToolRegistry?
+
     // MARK: - Live enable / disable
 
     /// Flips a tool on or off without a relaunch: persists the choice, then
@@ -343,4 +358,12 @@ final class ToolRegistry {
     func isEnabled(_ id: String) -> Bool {
         known.first { $0.id == id }?.isEnabled ?? false
     }
+}
+
+/// Why a Shortcuts action did not run: its tool is off (or locked) in Settings.
+/// `localizedStringResource` is the failure text Shortcuts shows.
+struct ToolUnavailable: Error, CustomLocalizedStringResourceConvertible {
+    let title: String
+    var message: String { "\(title) is turned off in Pear Settings" }
+    var localizedStringResource: LocalizedStringResource { "\(message)" }
 }

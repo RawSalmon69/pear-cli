@@ -36,38 +36,34 @@ bundle for UNUserNotificationCenter + resources) — always run via `build.sh` +
 `open`. CI (`companion.yml`) runs build+test+assemble on every `companion/**`
 push/PR.
 
-**App Intents metadata (spike, 2026-10-18): YES, with one build step.** Stock
-`swift build` + `build.sh` emit none: a probe `AppIntent` + `AppShortcutsProvider`
-compiled into Pear left no `Metadata.appintents` in `build/Pear.app` or `.build`.
-Fix, no Xcode project: (1) `swift build -c release -Xswiftc -emit-const-values
--Xswiftc -Xfrontend -Xswiftc -const-gather-protocols-file -Xswiftc -Xfrontend
--Xswiftc <list>`, `<list>` a committed plain JSON array of the names in the
-toolchain's `usr/share/swift/SwiftConstantValues/AppIntents.json` (`--build-system
-native` rejects that file's versioned form as "malformed"); (2) before codesign,
-`xcrun appintentsmetadataprocessor --output "$APP/Contents/Resources" --toolchain-dir
-"$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain" --module-name PearCompanion
---sdk-root "$(xcrun --sdk macosx --show-sdk-path)" --xcode-version <xcodebuild
--version build, e.g. 27A9275> --platform-family macOS --deployment-target 14.0
---target-triple "$(uname -m)-apple-macos14.0" --bundle-identifier
-com.rawsalmon69.pear.companion --binary-file "$APP/Contents/MacOS/Pear"
---source-file-list <file of Sources/PearCompanion/**/*.swift> --swift-const-vals-list
-<file of found PearCompanion*.swiftconstvalues> --compile-time-extraction
---deployment-aware-processing --no-app-shortcuts-localization --force`, which writes
-`Metadata.appintents/{extract.actionsdata,version.json}`. Find the const-values file,
-don't hardcode it: it lands in `.build/out/Intermediates.noindex/…` (SwiftBuild) or
-`.build/<triple>/release/PearCompanion.build/` (native). Evidence: a Developer
-ID-signed Pear copy under a throwaway bundle ID got LaunchServices `base flags:
-link-enabled` (real Pear has none); a tiny SwiftPM app built the same way appeared in
-Shortcuts' action index after one launch (`~/Library/Shortcuts/ToolKit` `Tools` row
-`….TinySpikeIntent|appIntent`, "Tiny Spike Action"). Before any launch, linkd logs
-`Rejecting … is not trusted` for an unnotarized bundle (spctl: "Unnotarized
-Developer ID"), so a fresh dev build must be opened once; notarized release not
-tested. The metadata is plain resources sealed by the existing codesign, as in any
-Xcode-built notarized app. Only `build.sh` needs the steps (both workflows call it).
-Seen while testing: on Swift 6.4's default SwiftBuild backend, products land in
-`.build/out/Products/Release`, which `build.sh`'s case-sensitive `-path '*release*'`
-misses, so a local build ships without Sparkle or the resource bundle. Owner check:
-the action shows in the Shortcuts app.
+**App Intents metadata: `build.sh` builds it.** SwiftPM never runs Xcode's
+ExtractAppIntentsMetadata step, so a stock `swift build` leaves no
+`Metadata.appintents` and Shortcuts never sees an action. `build.sh` does it in two
+steps, no Xcode project: the release build passes `-emit-const-values` plus
+`-const-gather-protocols-file Resources/AppIntentsProtocols.json` (a committed plain
+JSON array of the names in the toolchain's
+`usr/share/swift/SwiftConstantValues/AppIntents.json`; `--build-system native`
+rejects that file's versioned form as "malformed"), then, before codesign,
+`xcrun appintentsmetadataprocessor` writes
+`Contents/Resources/Metadata.appintents/{extract.actionsdata,version.json}`. The
+const-values file is found, not hardcoded: inside the bin path under the native
+backend (`.build/<triple>/release/PearCompanion.build/`) or under
+`.build/out/Intermediates.noindex/…/Release/` with SwiftBuild (Xcode 27's default);
+none found fails the build. `--xcode-version` comes from `xcodebuild -version` at
+build time, so CI's Xcode and a local one each describe themselves. Both workflows
+only call `build.sh`. To check a build, the `actions` key of `extract.actionsdata`
+(plain JSON) must list all eight intents. Product paths come from `swift build
+--show-bin-path`: the old `find -path '*release*'` missed SwiftBuild's
+`.build/out/Products/Release` and shipped a local app with no Sparkle and no
+resource bundle. Spike evidence (2026-10-18): a Developer ID-signed Pear copy under
+a throwaway bundle ID got LaunchServices `base flags: link-enabled` (real Pear had
+none); a tiny SwiftPM app built the same way appeared in Shortcuts' action index
+after one launch (`~/Library/Shortcuts/ToolKit` `Tools` row
+`….TinySpikeIntent|appIntent`). Before any launch, linkd logs `Rejecting … is not
+trusted` for an unnotarized bundle (spctl: "Unnotarized Developer ID"), so a fresh
+dev build must be opened once; a notarized release is untested. The metadata is
+plain resources sealed by the existing codesign, as in any Xcode-built app. Owner
+check: the actions show in the Shortcuts app.
 
 ## Architecture
 
@@ -202,6 +198,18 @@ this app was the one that set it, so a lock somebody else set is displayed but l
 alone at quit. Four tests hold that line. Prior art:
 [awake](https://github.com/pistachionet/awake) (MIT), mechanism only), **Clean Mode**
 (screen blanker, default OFF), **RunCat** menu-bar runner.
+Shortcuts (macOS 14+) and Spotlight (26+): eight App Intents in
+`Intents/PearIntents.swift` plus a `PearShortcuts` App Shortcuts provider — Capture
+Region, Capture Full Screen, Capture Window, Grab Text, Pick Color, Toggle Keep
+Awake (returns the new state), Add File to Shelf (copies the file in, opens the
+shelf) and New Scratchpad Note (optional text). Each resolves its tool through
+`ToolRegistry.runnableTool(id)`, the registration gate, so a tool that is off or
+paywall-locked throws `ToolUnavailable` ("<Tool> is turned off in Pear Settings",
+`IntentResolutionTests`), then calls the entry point its hotkey uses. The system
+constructs intents itself, so the app delegate sets `ToolRegistry.live` at launch;
+an action arriving before that fails with "Pear is still starting". No intent sets
+`openAppWhenRun`: Pear is an accessory app with no window to bring forward and
+every one of these tools already runs from the background, as a hotkey does.
 
 ## Key decisions & invariants
 
