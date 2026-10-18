@@ -54,6 +54,10 @@ enum PinLayout {
 @MainActor
 final class PinController: NSObject, NSWindowDelegate {
     private static var open: [PinController] = []
+    /// Pins ever opened, for the cascade. Monotonic rather than `open.count`,
+    /// which repeats after a middle pin closes and stacks the next one exactly
+    /// on a survivor.
+    private static var opened = 0
     private static var observingCaptures = false
 
     private let panel: PinPanel
@@ -75,7 +79,8 @@ final class PinController: NSObject, NSWindowDelegate {
             pixels: pixels.width > 0 ? pixels : image.size,
             scale: pixels.width > 0 ? screen?.backingScaleFactor ?? 2 : 1,
             visible: screen?.visibleFrame ?? .zero,
-            cascade: open.count)
+            cascade: opened)
+        opened += 1
 
         let imageView = PinImageView(frame: NSRect(origin: .zero, size: frame.size))
         imageView.image = image
@@ -101,7 +106,6 @@ final class PinController: NSObject, NSWindowDelegate {
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.isMovableByWindowBackground = true
         panel.contentAspectRatio = frame.size
         panel.contentMinSize = PinLayout.minimumSize(for: frame.size)
         panel.contentView = imageView
@@ -145,7 +149,9 @@ private final class PinPanel: NSPanel {
 
     /// An agent app has no File menu to supply ⌘W.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+        // Caps Lock is in the device-independent mask; it must not block ⌘W.
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            .subtracting(.capsLock) == .command,
            event.charactersIgnoringModifiers == "w" {
             close()
             return true
@@ -155,9 +161,11 @@ private final class PinPanel: NSPanel {
 }
 
 /// `NSImageView` is a control and keeps its mouse-downs, which would leave a
-/// pin that cannot be dragged by its only surface. Hand them to the window.
+/// pin that cannot be dragged by its only surface. Hand them to the window with
+/// `performDrag`, the one move mechanism: no `isMovableByWindowBackground` or
+/// `mouseDownCanMoveWindow` beside it, so nothing races it. Edge resizing is
+/// the window frame's, and only events that reach this view are drags.
 private final class PinImageView: NSImageView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override var mouseDownCanMoveWindow: Bool { true }
     override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
 }
