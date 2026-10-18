@@ -22,7 +22,7 @@ struct HelpView: View {
               summary: "25 runners that speed up as the CPU gets busier. Pick one in Settings › Menu Bar.",
               category: .system),
         Extra(icon: "keyboard", title: "Custom shortcuts", hotkey: nil,
-              summary: "Every shortcut can be changed in Settings › Tools. Click Record Shortcut. Changes apply immediately.",
+              summary: "Change any shortcut, including the Windows snaps, in Settings › Shortcuts. Click it and press the new keys; Esc cancels, Delete removes it. Changes apply immediately.",
               category: .utilities),
         Extra(icon: "escape", title: "Esc closes anything", hotkey: "esc",
               summary: "Esc closes any Pear panel or window.",

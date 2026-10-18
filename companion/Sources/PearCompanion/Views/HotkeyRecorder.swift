@@ -39,6 +39,8 @@ enum HotkeyRecording {
         case kVK_Return: "↩"
         case kVK_Tab: "⇥"
         case kVK_Escape: "esc"
+        case kVK_Delete: "⌫"
+        case kVK_ForwardDelete: "⌦"
         default: characters?.uppercased() ?? "?"
         }
     }
@@ -59,11 +61,11 @@ final class HotkeyRecorderModel {
     private(set) var message: String?
     @ObservationIgnored private var monitor: Any?
 
-    func toggle(registry: ToolRegistry, id: String) {
-        isRecording ? cancel() : start(registry: registry, id: id)
+    func toggle(registry: ToolRegistry, owner: ShortcutOwner) {
+        isRecording ? cancel() : start(registry: registry, owner: owner)
     }
 
-    private func start(registry: ToolRegistry, id: String) {
+    private func start(registry: ToolRegistry, owner: ShortcutOwner) {
         message = nil
         isRecording = true
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -71,7 +73,7 @@ final class HotkeyRecorderModel {
             // onDisappear on abrupt popover teardown): a leaked monitor that
             // kept returning nil would eat every keyDown in the app forever.
             guard let self else { return event }
-            self.handle(event, registry: registry, id: id)
+            self.handle(event, registry: registry, owner: owner)
             return nil // swallow: the key must not type into whatever is focused
         }
     }
@@ -89,23 +91,24 @@ final class HotkeyRecorderModel {
         isRecording = false
     }
 
-    private func handle(_ event: NSEvent, registry: ToolRegistry, id: String) {
+    private func handle(_ event: NSEvent, registry: ToolRegistry, owner: ShortcutOwner) {
         let keyCode = Int(event.keyCode)
         // Esc cancels the recording outright.
         if keyCode == kVK_Escape {
             cancel()
             return
         }
-        // Delete/⌫ removes the binding entirely — no chord fires, not even the
-        // default. The row's reset arrow brings the default back.
-        if keyCode == kVK_Delete || keyCode == kVK_ForwardDelete {
-            registry.removeHotkey(id)
+        let carbon = HotkeyRecording.carbonModifiers(from: event.modifierFlags)
+        // A bare Delete/⌫ removes the binding entirely — no chord fires, not even
+        // the default. The row's reset arrow brings the default back. With a
+        // modifier it is an ordinary chord (Windows' Restore is ⌃⌥⌫).
+        if keyCode == kVK_Delete || keyCode == kVK_ForwardDelete, carbon == 0 {
+            registry.removeShortcut(owner)
             teardown()
             return
         }
         // A global chord needs at least one of ⌃⌥⇧⌘, or a bare letter would
         // fire constantly; keep recording so the user can try again.
-        let carbon = HotkeyRecording.carbonModifiers(from: event.modifierFlags)
         guard carbon != 0 else {
             message = "Hold ⌃ ⌥ ⇧ or ⌘ with a key"
             return
@@ -114,28 +117,65 @@ final class HotkeyRecorderModel {
             keyCode: keyCode, carbonModifiers: carbon,
             characters: event.charactersIgnoringModifiers)
         let chord = HotKeyChord(keyCode: keyCode, modifiers: carbon, label: label)
-        if let conflict = registry.conflictingTool(for: chord, excluding: id) {
+        if let conflict = registry.conflictingTool(for: chord, excluding: owner) {
             message = "Used by \(conflict)"
             return
         }
-        registry.setHotkeyOverride(id, chord)
+        registry.setShortcut(chord, for: owner)
         teardown()
     }
 }
 
-/// The shortcut control under a tool's toggle: shows the effective chord (or
-/// "Record Shortcut…"), records a new one live, and — for a tool with a
-/// default — offers a reset. All changes apply immediately via the registry.
+/// The recorder's view of the registry: one verb set for both kinds of owner,
+/// so the row and the model never branch on which one they are editing.
+extension ToolRegistry {
+    func shortcutLabel(for owner: ShortcutOwner) -> String? {
+        switch owner {
+        case .tool(let id): hotkeyLabel(for: id)
+        case .windows(let id): windowsChord(for: id)?.label
+        }
+    }
+
+    /// Records a chord, or resets to the default with nil.
+    func setShortcut(_ chord: HotKeyChord?, for owner: ShortcutOwner) {
+        switch owner {
+        case .tool(let id): setHotkeyOverride(id, chord)
+        case .windows(let id): setWindowsChord(chord, for: id)
+        }
+    }
+
+    func removeShortcut(_ owner: ShortcutOwner) {
+        switch owner {
+        case .tool(let id): removeHotkey(id)
+        case .windows(let id): removeWindowsChord(id)
+        }
+    }
+
+    /// A reset arrow only makes sense when the binding is changed and there is a
+    /// default to go back to. Every Windows binding has one.
+    func canResetShortcut(_ owner: ShortcutOwner) -> Bool {
+        switch owner {
+        case .tool(let id): hasHotkeyOverride(id) && hasDefaultHotkey(id)
+        case .windows(let id): isWindowsChordCustomized(id)
+        }
+    }
+}
+
+/// One Shortcuts-page control: shows the effective chord (or "Record
+/// Shortcut…"), records a new one live, removes it, and — when it differs from
+/// a default — resets it. All changes apply immediately via the registry.
+/// `name` is what VoiceOver reads ("Screenshot", "Left Half").
 struct HotkeyRecorderRow: View {
     @Environment(AppEnvironment.self) private var env
-    let id: String
+    let owner: ShortcutOwner
+    let name: String
     @State private var model = HotkeyRecorderModel()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
+            HStack(spacing: Theme.Space.small) {
                 Button {
-                    model.toggle(registry: env.tools, id: id)
+                    model.toggle(registry: env.tools, owner: owner)
                 } label: {
                     Text(buttonLabel)
                         .font(Theme.caption)
@@ -145,26 +185,31 @@ struct HotkeyRecorderRow: View {
                 .controlSize(.small)
                 .tint(Theme.accent)
                 .focusable(false)
+                .accessibilityLabel("Shortcut for \(name)")
+                .accessibilityValue(model.isRecording ? "Recording" : (label ?? "None"))
+                .accessibilityHint("Press to record a new shortcut")
 
-                if env.tools.hotkeyLabel(for: id) != nil {
+                if label != nil {
                     Button {
-                        env.tools.removeHotkey(id)
+                        env.tools.removeShortcut(owner)
                     } label: {
-                        Image(systemName: "xmark.circle").font(.system(size: 10))
+                        Image(systemName: "xmark.circle").font(Theme.Typography.tiny())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .help("Remove shortcut")
+                    .accessibilityLabel("Remove shortcut for \(name)")
                 }
-                if env.tools.hasHotkeyOverride(id), env.tools.hasDefaultHotkey(id) {
+                if env.tools.canResetShortcut(owner) {
                     Button {
-                        env.tools.setHotkeyOverride(id, nil)
+                        env.tools.setShortcut(nil, for: owner)
                     } label: {
-                        Image(systemName: "arrow.uturn.backward").font(.system(size: 10))
+                        Image(systemName: "arrow.uturn.backward").font(Theme.Typography.tiny())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .help("Reset to default shortcut")
+                    .accessibilityLabel("Reset shortcut for \(name) to default")
                 }
                 Spacer(minLength: 0)
             }
@@ -177,8 +222,10 @@ struct HotkeyRecorderRow: View {
         .onDisappear { model.teardown() }
     }
 
+    private var label: String? { env.tools.shortcutLabel(for: owner) }
+
     private var buttonLabel: String {
         if model.isRecording { return "Press keys…" }
-        return env.tools.hotkeyLabel(for: id) ?? "Record Shortcut…"
+        return label ?? "Record Shortcut…"
     }
 }

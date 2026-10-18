@@ -8,6 +8,13 @@ struct HotKeyChord: Equatable {
     let label: String
 }
 
+/// Who a chord belongs to: a tool's single hotkey, or one Windows snap binding
+/// (by its `WindowSettings.ChordBinding.id`).
+enum ShortcutOwner: Hashable {
+    case tool(String)
+    case windows(String)
+}
+
 /// How a tool's panel tile behaves when tapped.
 enum ToolEntry {
     /// Runs an action (screenshot, OCR).
@@ -74,11 +81,6 @@ protocol Tool: AnyObject {
     /// negotiating position. Saved screenshots need no exemption — they are plain
     /// files in a folder, reachable in Finder with the app locked.
     var survivesExpiry: Bool { get }
-    /// Chords the tool registers itself in `start()`, beyond its single
-    /// rebindable `hotkey`. Defaults empty. The registry does not register these
-    /// — it only needs to know about them so the shortcut recorder can report a
-    /// conflict instead of letting the user bind a chord that silently loses.
-    var extraChords: [HotKeyChord] { get }
     /// Hotkey behavior; defaults to the tile action for `.action` tools.
     func hotkeyFired()
     /// Launch-time hook for always-on engines. Default no-op.
@@ -98,7 +100,6 @@ extension Tool {
     var showsTile: Bool { true }
     var acceptsHotkey: Bool { true }
     var survivesExpiry: Bool { false }
-    var extraChords: [HotKeyChord] { [] }
 
     func start() {}
     func stop() {}
@@ -160,6 +161,18 @@ final class ToolRegistry {
     /// `if licensed` checks scattered through twenty tools to get wrong — it is
     /// the same mechanism that already makes a user-disabled tool inert.
     @ObservationIgnored var isLocked: () -> Bool = { false }
+
+    /// The Windows snap chords as they are now, in default order, removed ones
+    /// left out. Held here so the Shortcuts page redraws and the conflict check
+    /// sees the live set. `windowsStore` is injectable for tests; production and
+    /// `WindowTrigger` both use `.standard`.
+    private(set) var windowsChords: [WindowSettings.ChordBinding]
+    @ObservationIgnored private let windowsStore: UserDefaults
+
+    init(windowsStore: UserDefaults = .standard) {
+        self.windowsStore = windowsStore
+        windowsChords = WindowSettings.chords(windowsStore)
+    }
 
     // MARK: - Registration
 
@@ -254,25 +267,72 @@ final class ToolRegistry {
         catalog.first(where: { $0.id == id })?.tool.hotkey != nil
     }
 
-    /// Title of an enabled tool already bound to `chord`, or nil if it's free.
-    /// Matches keyCode+modifiers (labels are cosmetic) against every enabled
-    /// tool's effective chord, plus any `extraChords` a tool registers itself —
-    /// those never pass through this registry, so without them the recorder would
-    /// happily hand out a chord that loses to a tool-owned one at runtime.
-    func conflictingTool(for chord: HotKeyChord, excluding id: String) -> String? {
+    /// Who already owns `chord`, as the warning names it — a tool's title, or
+    /// "Windows: Left Half" — or nil if it's free. The one answer for both sets:
+    /// every enabled tool's effective chord, then the live Windows bindings.
+    /// Matches keyCode+modifiers only (labels are cosmetic). A disabled tool, or
+    /// Windows switched off, registers nothing and so blocks nothing; but a
+    /// Windows binding being recorded still sees the other Windows bindings,
+    /// because that clash is inside the set and bites the moment it is enabled.
+    func conflictingTool(for chord: HotKeyChord, excluding owner: ShortcutOwner) -> String? {
         func matches(_ other: HotKeyChord) -> Bool {
             other.keyCode == chord.keyCode && other.modifiers == chord.modifiers
         }
-        for entry in catalog where entry.id != id {
-            guard shouldRun(entry.tool) else { continue }
-            if let existing = effectiveChord(for: entry.tool), matches(existing) {
-                return entry.tool.title
-            }
-            if entry.tool.extraChords.contains(where: matches) {
-                return entry.tool.title
-            }
+        for entry in catalog where owner != .tool(entry.id) {
+            guard shouldRun(entry.tool), let existing = effectiveChord(for: entry.tool),
+                  matches(existing) else { continue }
+            return entry.tool.title
+        }
+        let windows = catalog.first { $0.id == WindowsTool.toolID }
+        let recordingWindows = if case .windows = owner { true } else { false }
+        guard recordingWindows || windows.map({ shouldRun($0.tool) }) == true else { return nil }
+        for binding in windowsChords where owner != .windows(binding.id) && matches(binding.chord) {
+            return "\(windows?.tool.title ?? "Windows"): \(RingLabel.text(for: binding.action))"
         }
         return nil
+    }
+
+    // MARK: - Windows chords
+
+    func windowsChord(for id: String) -> HotKeyChord? {
+        windowsChords.first { $0.id == id }?.chord
+    }
+
+    func isWindowsChordCustomized(_ id: String) -> Bool {
+        WindowSettings.isChordCustomized(id, windowsStore)
+    }
+
+    /// Rebinds one Windows chord, or restores its default with nil, live.
+    func setWindowsChord(_ chord: HotKeyChord?, for id: String) {
+        WindowSettings.setChord(chord, for: id, windowsStore)
+        reloadWindowsChords()
+    }
+
+    func removeWindowsChord(_ id: String) {
+        WindowSettings.removeChord(for: id, windowsStore)
+        reloadWindowsChords()
+    }
+
+    /// Every tool shortcut back to its default (removed ones too), and every
+    /// Windows chord back to its default.
+    func resetAllShortcuts() {
+        for entry in catalog where Prefs.hasHotkeyCustomization(entry.id) {
+            setHotkeyOverride(entry.id, nil)
+        }
+        WindowSettings.resetChords(windowsStore)
+        reloadWindowsChords()
+    }
+
+    /// The Windows tool registers its chords itself in `start()`, so a running
+    /// one is stopped and started to pick up the change (both are idempotent and
+    /// cheap; `WindowTrigger` documents this as its rebind path). A disabled one
+    /// just reads the stored value at its next enable.
+    private func reloadWindowsChords() {
+        windowsChords = WindowSettings.chords(windowsStore)
+        guard let entry = catalog.first(where: { $0.id == WindowsTool.toolID }),
+              activated.contains(entry.id) else { return }
+        entry.tool.stop()
+        entry.tool.start()
     }
 
     // MARK: - Internals
@@ -311,7 +371,9 @@ final class ToolRegistry {
     /// Single choke point: resolves the effective chord and registers it,
     /// storing the token under the tool id.
     private func registerHotkey(_ tool: any Tool) {
-        guard let chord = effectiveChord(for: tool) else { return }
+        // Tests drive the registry with real chords; none may claim a hotkey on
+        // the developer's live session (same guard as `WindowTrigger`).
+        guard !CleanModeRuntime.isRunningTests, let chord = effectiveChord(for: tool) else { return }
         hotkeyTokens[tool.id] = HotKeyManager.shared.register(
             keyCode: chord.keyCode, modifiers: chord.modifiers
 ) { [weak tool] in tool?.hotkeyFired() }

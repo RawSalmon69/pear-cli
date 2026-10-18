@@ -87,8 +87,8 @@ check: the actions show in the Shortcuts app.
   `Views/SettingsView.swift`), not a popover: one standard titled window, reused,
   frame autosaved (`PearSettingsWindow`), a `NavigationSplitView` sidebar of
   `SettingsPage`s — General, Appearance (accent + the runner, so "Menu Bar" now
-  means only the hider tool), a temporary Tools page (per-tool on/off, hotkey
-  recorders, Clean Mode; tickets 10/11 replace it), Licence (paid builds only),
+  means only the hider tool), **Shortcuts** (below), a temporary Tools page
+  (per-tool on/off, Clean Mode; ticket 10 replaces it), Licence (paid builds only),
   About (version, Check for Updates…, every bundled licence/notice shown inline).
   Everything opens it through `SettingsPage.open(_:)` → `pearOpenSettings` →
   `PanelController.openSettings()`, which closes the panel first (it floats at
@@ -109,6 +109,25 @@ check: the actions show in the Shortcuts app.
   change so the first open gets focus. The panel stays non-activating and the
   capture-hides-panel observer is untouched. Each open from closed rebuilds the
   root view (`.id(UUID())`), standing in for the popover's per-open rebuild.
+- **Shortcuts page** (`SettingsView.shortcutsPage`, `Views/HotkeyRecorder.swift`):
+  every key combination in Pear — a `HotkeyRecorderRow` per tool with
+  `acceptsHotkey` (Switches, Windows and Highlight Copy get none), then one per
+  Windows snap chord by action name — each recordable, removable and resettable,
+  plus "Reset All Shortcuts…" (`ToolRegistry.resetAllShortcuts`, both sets). The
+  recorder: click, press keys with a modifier; Esc cancels; a bare Delete removes
+  (⌃⌥⌫ etc. record normally). Rows address a `ShortcutOwner` (`.tool(id)` /
+  `.windows(bindingID)`). **`ToolRegistry.conflictingTool(for:excluding:)` is the
+  one answer to "who owns this chord?"** for both sets, symmetric: every enabled
+  tool's effective chord, then the live `registry.windowsChords` (read from
+  `WindowSettings`, never the defaults), warning "Used by Screenshot" or "Used by
+  Windows: Left Half". A disabled tool, or Windows off, blocks nothing (it
+  registers nothing); a Windows binding being recorded still sees the other
+  Windows bindings. A Windows chord change goes through the registry, which
+  stops and starts a running `WindowsTool` so `WindowTrigger` re-registers the
+  chords live. `WindowSettings.removeChord` uses the same "none" sentinel as
+  `Prefs.removeHotkey`. Under XCTest the registry registers no Carbon hotkeys
+  (`CleanModeRuntime.isRunningTests`), like `WindowTrigger`. Tests:
+  `ShortcutRegistryTests` (Windows chords in an injected suite).
 - **Panel structure** (`Views/PanelView.swift`, `Views/PanelModel.swift`): the
   cat + a search field (focused on open) on top, the cat's line under it, the
   one-time "Pick your four" card, four big pinned tiles (icon, name, shortcut in

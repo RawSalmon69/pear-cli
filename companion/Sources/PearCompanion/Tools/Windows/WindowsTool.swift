@@ -11,7 +11,9 @@ import SwiftUI
 /// geometry, drawing, or event handling of its own.
 @MainActor
 final class WindowsTool: Tool, WindowTriggerDelegate {
-    let id = "windows"
+    /// The registry finds the Windows chords' owner by this id.
+    static let toolID = "windows"
+    let id = WindowsTool.toolID
     let title = "Windows"
     let icon = "macwindow.on.rectangle"
     var category: ToolCategory { .system }
@@ -26,10 +28,10 @@ final class WindowsTool: Tool, WindowTriggerDelegate {
     var defaultEnabled: Bool { false }
 
     /// Nil on purpose: this tool owns a *set* of chords plus the Fn hold, and
-    /// registers them itself in `start()`. `extraChords` is what exposes them to
-    /// the registry's conflict check.
+    /// registers them itself in `start()`. The registry reads them from
+    /// `WindowSettings` for its conflict check, and restarts this tool when one
+    /// changes so the new chord is live.
     var hotkey: HotKeyChord? { nil }
-    var extraChords: [HotKeyChord] { WindowSettings.chords().map(\.chord) }
 
     // Built on first use. Tool inits run at launch for every registered tool, so
     // none of this — an event tap, a panel, an AX client — may exist until the

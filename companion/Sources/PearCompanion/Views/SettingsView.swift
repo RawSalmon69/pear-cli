@@ -7,16 +7,17 @@ extension Notification.Name {
     static let pearOpenSettings = Notification.Name("pearOpenSettings")
 }
 
-/// The Settings window's sidebar pages, in sidebar order. Tool pages and
-/// Shortcuts slot in here (tickets 10/11).
+/// The Settings window's sidebar pages, in sidebar order. Tool pages slot in
+/// here (ticket 10).
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case general, appearance, tools, licence, about
+    case general, appearance, shortcuts, tools, licence, about
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .general: "General"
         case .appearance: "Appearance"
+        case .shortcuts: "Shortcuts"
         case .tools: "Tools"
         case .licence: "Licence"
         case .about: "About"
@@ -27,6 +28,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape"
         case .appearance: "paintpalette"
+        case .shortcuts: "keyboard"
         case .tools: "square.grid.2x2"
         case .licence: "key"
         case .about: "info.circle"
@@ -60,13 +62,15 @@ enum SettingsPage: String, CaseIterable, Identifiable {
 
 /// Settings, a standard window with a sidebar (`SettingsWindowController`).
 /// General = panel, capture and startup; Appearance = accent and the menu-bar
-/// runner; Tools = per-tool on/off; Licence (paid builds only); About.
+/// runner; Shortcuts = every key combination; Tools = per-tool on/off; Licence
+/// (paid builds only); About.
 struct SettingsView: View {
     @Environment(AppEnvironment.self) private var env
     /// Raw, so a page written by `SettingsPage.open` while the window is up
     /// switches it live; `SettingsPage.resolved` keeps it to an offered page.
     @AppStorage(Prefs.settingsPageKey) private var storedPage = SettingsPage.general.rawValue
     @State private var showAccentWheel = false
+    @State private var confirmResetShortcuts = false
     @State private var keyField = ""
     @State private var role = CoupleKey.deviceRole
     @State private var keyStatus: String?
@@ -107,10 +111,10 @@ struct SettingsView: View {
                     switch page {
                     case .general: generalPage
                     case .appearance: appearancePage
-                    // Temporary: tickets 10/11 replace this page with one page
-                    // per tool and a Shortcuts page. Until then it is the only
-                    // home of the on/off toggles, hotkey recorders and Clean Mode
-                    // settings, carried over unchanged from the popover.
+                    case .shortcuts: shortcutsPage
+                    // Temporary: ticket 10 replaces this page with one page per
+                    // tool. Until then it is the only home of the on/off toggles
+                    // and Clean Mode settings, carried over from the popover.
                     case .tools: toolsPage
                     case .licence:
                         // Unreachable while free (`resolved` never returns it),
@@ -325,16 +329,64 @@ struct SettingsView: View {
                     }
                     .toggleStyle(.switch)
                     .tint(Theme.accent)
-                    if tool.acceptsHotkey {
-                        HotkeyRecorderRow(id: tool.id)
-                            .padding(.leading, 24)
-                    }
                     if tool.id == CleanModeTool.toolID {
                         CleanModeSettingsView()
                             .padding(.leading, 24)
                     }
                 }
             }
+        }
+    }
+
+    /// Every key combination in Pear: each tool that can take a shortcut
+    /// (`acceptsHotkey`; Switches, Windows and Highlight Copy get no recorder),
+    /// then each Windows snap chord by action name.
+    @ViewBuilder private var shortcutsPage: some View {
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Tools")
+            Text("Click a shortcut, then press the new keys with at least one of ⌃ ⌥ ⇧ ⌘. Esc cancels; Delete on its own removes the shortcut. Changes apply immediately.")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(env.tools.known.filter(\.acceptsHotkey), id: \.id) { tool in
+                shortcutRow(owner: .tool(tool.id), name: tool.title) {
+                    Label(tool.title, systemImage: tool.icon)
+                }
+            }
+        }
+
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Windows")
+            Text("Snap the front window. These work while the Windows tool is on.")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(WindowSettings.chordDefaults) { binding in
+                let name = RingLabel.text(for: binding.action)
+                shortcutRow(owner: .windows(binding.id), name: name) { Text(name) }
+            }
+        }
+
+        Button("Reset All Shortcuts…") { confirmResetShortcuts = true }
+            .font(Theme.body)
+            .help("Put every tool and Windows shortcut back to its default")
+            .confirmationDialog(
+                "Reset all shortcuts to their defaults?", isPresented: $confirmResetShortcuts
+            ) {
+                Button("Reset All Shortcuts", role: .destructive) { env.tools.resetAllShortcuts() }
+            } message: {
+                Text("Every changed or removed shortcut, including the Windows ones, goes back to its default.")
+            }
+    }
+
+    private func shortcutRow(
+        owner: ShortcutOwner, name: String, @ViewBuilder label: () -> some View
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.small) {
+            label()
+                .font(Theme.body)
+                .frame(width: 200, alignment: .leading)
+            HotkeyRecorderRow(owner: owner, name: name)
         }
     }
 

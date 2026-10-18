@@ -131,7 +131,7 @@ final class EntitlementGateTests: XCTestCase {
         registry.setHotkeyOverride("gate.paid", chord)
         defer { registry.setHotkeyOverride("gate.paid", nil) }
 
-        XCTAssertNil(registry.conflictingTool(for: chord, excluding: "gate.content"))
+        XCTAssertNil(registry.conflictingTool(for: chord, excluding: .tool("gate.content")))
     }
 
     // MARK: - Unlocking mid-session

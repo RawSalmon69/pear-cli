@@ -110,14 +110,30 @@ enum WindowSettings {
     // MARK: - Chords
 
     /// Effective chords, in default order. A stored override replaces the
-    /// default chord; an unparseable one falls back to it. A binding never
-    /// vanishes, so a corrupt string costs the user a custom chord, not the
-    /// action.
+    /// default chord; an unparseable one falls back to it. Only an explicit
+    /// `removeChord` drops a binding, so a corrupt string costs the user a custom
+    /// chord, not the action.
     static func chords(_ store: UserDefaults = .standard) -> [ChordBinding] {
-        chordDefaults.map { binding in
+        chordDefaults.compactMap { binding in
+            if isChordRemoved(binding.id, store) { return nil }
             guard let chord = storedChord(binding.id, store) else { return binding }
             return ChordBinding(id: binding.id, action: binding.action, chord: chord)
         }
+    }
+
+    /// Unbinds one chord: no key fires that action until it is recorded again or
+    /// reset. Same "none" sentinel `Prefs.removeHotkey` writes for tools.
+    static func removeChord(for id: String, _ store: UserDefaults = .standard) {
+        store.set(Prefs.hotkeyRemovedValue, forKey: Key.chord(id))
+    }
+
+    static func isChordRemoved(_ id: String, _ store: UserDefaults = .standard) -> Bool {
+        store.string(forKey: Key.chord(id)) == Prefs.hotkeyRemovedValue
+    }
+
+    /// Whether the user changed or removed this binding — drives its reset arrow.
+    static func isChordCustomized(_ id: String, _ store: UserDefaults = .standard) -> Bool {
+        store.object(forKey: Key.chord(id)) != nil
     }
 
     /// Rebinds one chord, or restores its default with nil.
