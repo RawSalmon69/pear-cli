@@ -297,6 +297,54 @@ Channels: companion GitHub release + appcast only. The CLI (nightly/Homebrew) is
 untouched by companion changes. Restate channel scope and confirm with the
 maintainer before tagging.
 
+**Control Center control (spike, 2026-10-18): YES.** SwiftPM + `build.sh` can
+build, embed and Developer ID-sign a WidgetKit control extension, with no Xcode
+project. Proven with a throwaway probe (one `ControlWidgetToggle`, a
+`SetValueIntent`, `@main WidgetBundle`, all `@available(macOS 26, *)`), built both
+as a second `executableTarget` inside this package (platforms stay `.v14`;
+`swift build -c release --product <X>`) and standalone. Steps: (1) the target takes
+`swiftSettings: .unsafeFlags(["-application-extension"])` and
+`linkerSettings: .unsafeFlags(["-Xlinker", "-application_extension"])`. The
+WidgetBundle's `@main` supplies `main`, so you do not need `-e _NSExtensionMain`.
+(2) SwiftPM never runs Xcode's ExtractAppIntentsMetadata step, so `build.sh` does
+it itself: run
+`xcrun swiftc -typecheck -wmo -parse-as-library -module-name <X> -target arm64-apple-macos14.0 -sdk "$(xcrun --show-sdk-path)" -emit-const-values-path <X>.swiftconstvalues -Xfrontend -const-gather-protocols-file -Xfrontend <json list: AppIntent, AppEntity, AppEnum, EntityQuery, …> Sources/<X>/*.swift`,
+then `xcrun appintentsmetadataprocessor --output <appex>/Contents/Resources`
+(module, sdk-root, xcode-version, platform-family macOS, deployment-target,
+target-triple, source-file-list, swift-const-vals-list). That writes
+`Metadata.appintents`, byte-identical to the metadata built from the default
+swift-build backend's own const values. Do this pass yourself, because the `native` backend emits no const
+values. (3) Assemble `Contents/PlugIns/<Name>.appex/Contents/{MacOS,Resources,Info.plist}`
+with `CFBundlePackageType XPC!`,
+`NSExtension.NSExtensionPointIdentifier = com.apple.widgetkit-extension` and
+`LSMinimumSystemVersion 26.0`, which is meant to keep 14–15 from loading it. (4) Sign
+the appex before the app, using the same `sign()` as Sparkle's nested code
+(`--options runtime --timestamp`) plus its own `--entitlements`:
+`com.apple.security.app-sandbox`, plus a `UNWK3RC4T7.`-prefixed app group if you
+use one. Then sign the app as today. Evidence, signed with the real Developer ID
+and no keychain prompt: `codesign --verify --deep --strict -vvv` reported
+"valid on disk / satisfies its Designated Requirement". `spctl -a -vv` reported
+"rejected, source=Unnotarized Developer ID", which is expected before
+notarization. After `lsregister -f`, `pluginkit -mAvvv -i <appex id>` listed it
+with `SDK = com.apple.widgetkit-extension` and `Parent Bundle` = the host, and
+chronod logged `Added extensions: [<WidgetExtension - identifier: <host id>::<appex id> … isApple: false>]`,
+the same record a shipping third-party widget gets. Provisioning (reasoned, not
+notarized): the appex needs no profile. App-sandbox and team-prefixed app groups
+are unrestricted on macOS under Developer ID; only `group.`-style IDs need profile
+authorisation. The release workflow needs nothing new, because `build.sh` does all
+the signing with the existing cert, identity and notary secrets, and
+`PearCompanion.provisionprofile` stays app-only. **Not proven here** (owner checks
+for ticket 16): (a) the control showing in Control Center's gallery and toggling;
+chronod fetches descriptors lazily, so this needs the GUI. (b) Whether
+non-sandboxed Pear touching an app-group container prompts on macOS 15+. Prefer a
+Darwin-notification channel (`notify_post` / `notify_get_state`), which needs no
+group container. (c) A real 14/15 install ignoring the appex. (d) The notary
+verdict on the first tagged build. Side finding: Xcode 27's default SwiftPM
+backend stamps `LC_BUILD_VERSION sdk 14.0` (the deployment target), while CI's
+Xcode 26 and `--build-system native` stamp the real SDK. Check
+`xcrun vtool -show-build` when SDK-gated behaviour differs between a local build
+and CI.
+
 ## Gotchas (each cost real time)
 
 - **Sparkle version**: bump both plist version fields; appcast `sparkle:version`
