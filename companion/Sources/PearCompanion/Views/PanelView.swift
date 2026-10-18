@@ -2,9 +2,9 @@ import SwiftUI
 import AppKit
 
 /// The panel: the cat and a search field on top, the four pinned tiles, the
-/// recent captures, then one compact list of every other enabled tool. `PanelModel` makes every decision
-/// (tiles, rows, selection, what a key does, the cat's line); this view renders
-/// it and forwards keys.
+/// recent captures, then one compact list of every other enabled tool.
+/// `PanelModel` makes every decision (tiles, rows, selection, what a key does,
+/// the cat's line); this view renders it and forwards keys.
 struct PanelView: View {
     @Environment(AppEnvironment.self) private var env
     /// Closes the panel. Esc on an empty search calls it.
@@ -15,7 +15,8 @@ struct PanelView: View {
     @State private var pins = Prefs.pinnedTools()
     @State private var pickYourFourDismissed = Prefs.isPickYourFourDismissed()
     @State private var popovers = TilePopoverState()
-    /// Read once per open; the view is rebuilt for every open.
+    /// Read and checked against the disk once per open; the view is rebuilt
+    /// for every open.
     @State private var recentCaptures = Prefs.recentCaptures()
 
     /// Tools with a row, in offer order. `all` already applies the enabled and
@@ -39,7 +40,6 @@ struct PanelView: View {
             pins: pins,
             pickYourFourDismissed: pickYourFourDismissed,
             recentCaptures: captureTool == nil ? [] : recentCaptures,
-            fileExists: { FileManager.default.fileExists(atPath: $0.path) },
             hasUnseenNote: FeatureFlags.coupleNote && env.hasUnseenIncoming,
             query: query,
             selection: selection)
@@ -168,6 +168,7 @@ struct PanelView: View {
                     }
                 }
             }
+            .background(WindowMoveBlocker())
         }
     }
 
@@ -752,6 +753,53 @@ struct RecentCaptureTile: View {
                     Thumbnail.image(at: url, maxPixel: maxPixel)
                 }.value
             }
+    }
+}
+
+/// Keeps the panel from moving while the pointer is over the recent-captures
+/// strip, so pressing a tile always drags the file, never the panel. The panel
+/// moves by its background (`isMovableByWindowBackground`), and the shelf found
+/// that a drag view's `mouseDownCanMoveWindow = false` is not reliably honoured
+/// under that setting, so this switches the setting itself off before any press
+/// can land: on entering the strip, on every move inside it (which also covers
+/// a pointer already inside when the panel opens, or a missed enter), and back
+/// on when the pointer leaves or the strip goes away (search, teardown). One
+/// tracking view behind the whole strip, gaps included, so it is the only
+/// writer and no enter/exit ordering between tiles can leave it wrong.
+/// Hit-transparent: tracking areas fire on geometry, so the tiles above still
+/// get every click.
+private struct WindowMoveBlocker: NSViewRepresentable {
+    func makeNSView(context: Context) -> BlockerView { BlockerView() }
+    func updateNSView(_ nsView: BlockerView, context: Context) {}
+
+    final class BlockerView: NSView {
+        private var holding = false
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(NSTrackingArea(
+                rect: .zero,
+                options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+                owner: self))
+        }
+
+        override func mouseEntered(with event: NSEvent) { hold(true) }
+        override func mouseMoved(with event: NSEvent) { hold(true) }
+        override func mouseExited(with event: NSEvent) { hold(false) }
+
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            hold(false)
+            super.viewWillMove(toWindow: newWindow)
+        }
+
+        private func hold(_ on: Bool) {
+            guard on != holding, let window else { return }
+            holding = on
+            window.isMovableByWindowBackground = !on
+        }
     }
 }
 

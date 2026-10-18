@@ -133,9 +133,9 @@ check: the actions show in the Shortcuts app.
 - **Panel structure** (`Views/PanelView.swift`, `Views/PanelModel.swift`): the
   cat + a search field (focused on open) on top, the cat's line under it, the
   one-time "Pick your four" card, four big pinned tiles (icon, name, shortcut in
-  a key label), the recent-captures strip, then one compact list of every other enabled tool (icon, name,
-  optional live `Tool.status` such as Switches "2 on", shortcut label or "no
-  shortcut"), then the bottom bar. **Pin fill rule:** the user's pins in order
+  a key label), the recent-captures strip, then one compact list of every other
+  enabled tool (icon, name, optional live `Tool.status` such as Switches "2 on",
+  shortcut label or "no shortcut"), then the bottom bar. **Pin fill rule:** the user's pins in order
   that are enabled, then enabled unpinned tools in offer order, up to four;
   fewer enabled tools give fewer tiles, never placeholders. Defaults are
   Screenshot, Grab Text, Clipboard, Shelf (`Prefs.defaultPinnedTools`). Right-click
@@ -150,12 +150,17 @@ check: the actions show in the Shortcuts app.
   `Prefs` (`pinnedTools` / `setPinnedTools`, which the Settings pins picker in
   ticket 10 will call; any pin change retires the card for good, as does closing it).
   **Recent captures:** `PanelModel.recents` is the newest three of
-  `Prefs.recentCaptures` whose files still exist (the existence check is
-  injected), hidden when empty and while searching, and hidden when no capture
-  mode is enabled (the view passes none). Thumbnails come from `Thumbnail`
+  `Prefs.recentCaptures`, which drops missing files once per open (the
+  existence check is injected), hidden when empty and while searching, and
+  hidden when no capture mode is enabled (the view passes none). Thumbnails come from `Thumbnail`
   (240 px, decoded off-main per open) and stay out of the arrow-key order. The
   shelf's `ShelfDragOverlay` carries click and drag, since SwiftUI `.onDrag`
-  does not start in a non-activating panel. A click closes the panel, then
+  does not start in a non-activating panel. While the pointer is anywhere over
+  the strip, a hit-transparent tracking view behind it (`WindowMoveBlocker`)
+  turns the panel's `isMovableByWindowBackground` off, so a press on a tile can
+  never start a window move (the shelf found `mouseDownCanMoveWindow = false`
+  alone unreliable); the rest of the panel still drags by its background. A
+  click closes the panel, then
   `ScreenshotTool.openCapture` → `ScreenshotService.open`: the detail window of
   the card already backed by that file, or of a fresh card presented for it, so
   the detail window keeps one construction path and the card's actions.

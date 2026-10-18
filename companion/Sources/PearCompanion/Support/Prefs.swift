@@ -108,11 +108,16 @@ enum Prefs {
     /// that still exist.
     static let recentCapturesKept = 10
 
-    /// Newest first. Stored as plain paths: every entry is a file Pear filed
-    /// itself. Not checked for existence here; the panel drops missing files.
-    static func recentCaptures(defaults: UserDefaults = .standard) -> [URL] {
+    /// Newest first, minus any whose file is gone (the 7-day sweep, or the user
+    /// deleted it). Stored as plain paths: every entry is a file Pear filed
+    /// itself. `exists` is injected so the filter is testable off-disk.
+    static func recentCaptures(
+        defaults: UserDefaults = .standard,
+        exists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }
+    ) -> [URL] {
         (defaults.stringArray(forKey: recentCapturesKey) ?? [])
             .map { URL(fileURLWithPath: $0, isDirectory: false) }
+            .filter(exists)
     }
 
     /// Puts a just-filed capture first, dropping any older entry for the same

@@ -314,24 +314,31 @@ final class PanelModelTests: XCTestCase {
 
     private func capture(_ name: String) -> URL { URL(fileURLWithPath: "/captures/\(name).png") }
 
-    func testRecentsDropMissingFilesAndShowAtMostThree() {
+    func testRecentsShowAtMostThreeNewestFirst() {
         let all = (1...5).map { capture("shot\($0)") }
-        let gone: Set<URL> = [all[1]]
-        let model = PanelModel(entries: tools, problems: [], recentCaptures: all,
-                               fileExists: { !gone.contains($0) })
-        XCTAssertEqual(model.recents, [all[0], all[2], all[3]])
+        let model = PanelModel(entries: tools, problems: [], recentCaptures: all)
+        XCTAssertEqual(model.recents, Array(all.prefix(3)))
     }
 
-    func testRecentsHiddenWhenNoneExist() {
+    func testRecentsHiddenWhenEmpty() {
         XCTAssertEqual(PanelModel(entries: tools, problems: []).recents, [])
-        let model = PanelModel(entries: tools, problems: [], recentCaptures: [capture("gone")],
-                               fileExists: { _ in false })
-        XCTAssertEqual(model.recents, [])
+    }
+
+    /// Missing files are dropped on read, so a list whose files are all gone
+    /// reaches the model empty and the strip hides.
+    func testPrefsRecentCapturesDropMissingFiles() {
+        withSuite { defaults in
+            for name in ["a", "b", "c"] { Prefs.recordCapture(capture(name), defaults: defaults) }
+            let gone: Set<URL> = [capture("b")]
+            XCTAssertEqual(Prefs.recentCaptures(defaults: defaults, exists: { !gone.contains($0) }),
+                           [capture("c"), capture("a")])
+            let none = Prefs.recentCaptures(defaults: defaults, exists: { _ in false })
+            XCTAssertEqual(PanelModel(entries: tools, problems: [], recentCaptures: none).recents, [])
+        }
     }
 
     func testRecentsHideWhileSearching() {
-        var model = PanelModel(entries: tools, problems: [], recentCaptures: [capture("a")],
-                               fileExists: { _ in true })
+        var model = PanelModel(entries: tools, problems: [], recentCaptures: [capture("a")])
         _ = model.handle(.typed("sh"))
         XCTAssertEqual(model.recents, [])
         _ = model.handle(.escape)
@@ -340,17 +347,17 @@ final class PanelModelTests: XCTestCase {
 
     /// Thumbnails are click-and-drag only: the arrows still walk tiles then list.
     func testRecentsStayOutOfTheKeyboardOrder() {
-        var model = PanelModel(entries: tools, problems: [], recentCaptures: [capture("a")],
-                               fileExists: { _ in true })
+        var model = PanelModel(entries: tools, problems: [], recentCaptures: [capture("a")])
         XCTAssertEqual(model.handle(.enter), .run("screenshot"))
     }
 
     func testPrefsRecentCapturesNewestFirstDedupedCappedAtTen() {
         withSuite { defaults in
-            XCTAssertEqual(Prefs.recentCaptures(defaults: defaults), [])
+            let all: (URL) -> Bool = { _ in true }
+            XCTAssertEqual(Prefs.recentCaptures(defaults: defaults, exists: all), [])
             for i in 1...12 { Prefs.recordCapture(capture("shot\(i)"), defaults: defaults) }
             Prefs.recordCapture(capture("shot5"), defaults: defaults)
-            let recents = Prefs.recentCaptures(defaults: defaults)
+            let recents = Prefs.recentCaptures(defaults: defaults, exists: all)
             XCTAssertEqual(recents.count, Prefs.recentCapturesKept)
             XCTAssertEqual(recents.prefix(3), [capture("shot5"), capture("shot12"), capture("shot11")])
             XCTAssertEqual(recents.filter { $0 == capture("shot5") }.count, 1)
