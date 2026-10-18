@@ -112,23 +112,28 @@ struct PanelModel {
     /// The one-time card, until dismissed or any pin changes; not while searching.
     var showsPickYourFour: Bool { !pickYourFourDismissed && trimmedQuery.isEmpty }
 
-    /// Whether the right-click menu offers Unpin. A tile that only fills an
-    /// empty slot is not a pin, so it offers Pin, which keeps it there.
-    func isPinned(_ id: String) -> Bool { pins.contains(id) }
+    /// Whether the right-click menu offers Unpin: only for a real pin in the
+    /// pinned row. A tile that only fills an empty slot, or a stored pin pushed
+    /// past the fourth tile, offers Pin, which puts it in the row for good.
+    func isPinned(_ id: String) -> Bool {
+        pins.contains(id) && filledPins.contains { $0.id == id }
+    }
 
     /// Unpin drops the id and pins the next tools in offer order into the
     /// freed slot, so the slot never refills with the tool just unpinned. Pin
     /// appends the id, unless four enabled pins already show: then it takes the
     /// fourth tile's place. Disabled pins are kept, so a tool switched back on
-    /// returns to its slot.
+    /// returns to its slot. The selection follows the toggled tool, so Return
+    /// never runs a different tool that slid under the highlight.
     mutating func togglePin(_ id: String) {
-        if let index = pins.firstIndex(of: id) {
-            pins.remove(at: index)
+        if isPinned(id) {
+            pins.removeAll { $0 == id }
             for entry in entries where entry.id != id && !pins.contains(entry.id) {
                 guard enabledPinIndices.count < Self.pinSlots else { break }
                 pins.append(entry.id)
             }
         } else {
+            pins.removeAll { $0 == id }
             let enabled = enabledPinIndices
             if enabled.count >= Self.pinSlots {
                 pins[enabled[Self.pinSlots - 1]] = id
@@ -137,6 +142,7 @@ struct PanelModel {
             }
         }
         pickYourFourDismissed = true
+        selection = selectable.firstIndex { $0.id == id } ?? 0
     }
 
     private var enabledPinIndices: [Int] {

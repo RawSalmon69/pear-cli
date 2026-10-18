@@ -112,6 +112,7 @@ struct PanelView: View {
         next.togglePin(id)
         pins = next.pins
         pickYourFourDismissed = next.pickYourFourDismissed
+        selection = next.selection
         Prefs.setPinnedTools(next.pins)
     }
 

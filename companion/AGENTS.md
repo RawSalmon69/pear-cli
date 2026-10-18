@@ -99,11 +99,13 @@ the action shows in the Shortcuts app.
   a tile or row for Pin / Unpin: Unpin pins the next tool into the freed slot (so
   it never refills with the tool just unpinned); Pin with four enabled pins
   already showing replaces the fourth; disabled pins stay stored and come back
-  when the tool does. While searching the tiles and card hide and results span
-  every tool. Arrows walk tiles left to right, then the list, so Return on open
-  runs the first pin. Pins and the card live in `Prefs` (`pinnedTools` /
-  `setPinnedTools`, which Settings calls too; any pin change retires the card for
-  good, as does closing it).
+  when the tool does. Unpin is offered only for a real pin in the row; a tile
+  that only fills a slot, or a stored pin pushed past the fourth tile, offers
+  Pin. The selection follows the toggled tool. While searching the tiles and
+  card hide and results span every tool. Arrows walk tiles left to right, then
+  the list, so Return on open runs the first pin. Pins and the card live in
+  `Prefs` (`pinnedTools` / `setPinnedTools`, which the Settings pins picker in
+  ticket 10 will call; any pin change retires the card for good, as does closing it).
   **`PanelModel` is the only decision point** — a pure value type, tested in
   `PanelModelTests`: tiles, rows (case-insensitive substring on title, summary and
   `Tool.aliases`), clamped selection, ↑/↓/↩ and two-stage Esc (clear the search,

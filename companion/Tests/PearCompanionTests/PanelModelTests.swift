@@ -208,6 +208,41 @@ final class PanelModelTests: XCTestCase {
         XCTAssertEqual(pinnedIDs(model), ["screenshot", "ocr", "shelf", "switches"])
     }
 
+    func testStoredPinPastTheFourthTileOffersPinAndPinningShowsIt() {
+        var model = model(pins: ["screenshot", "ocr", "clipboard", "shelf", "switches"])
+        XCTAssertEqual(ids(model), ["keyclu", "switches"])
+        XCTAssertFalse(model.isPinned("switches"))
+        model.togglePin("switches")
+        XCTAssertEqual(model.pins, ["screenshot", "ocr", "clipboard", "switches"])
+        XCTAssertEqual(pinnedIDs(model), ["screenshot", "ocr", "clipboard", "switches"])
+    }
+
+    func testSelectionFollowsTheToolAfterPinning() {
+        var model = model([.down, .down, .down, .down])
+        XCTAssertEqual(model.selectedID, "keyclu")
+        model.togglePin("keyclu")
+        XCTAssertEqual(pinnedIDs(model), ["screenshot", "ocr", "clipboard", "keyclu"])
+        XCTAssertEqual(model.selectedID, "keyclu")
+        XCTAssertEqual(model.handle(.enter), .run("keyclu"))
+    }
+
+    func testSelectionFollowsTheToolAfterUnpinning() {
+        var model = model([.down, .down])
+        XCTAssertEqual(model.selectedID, "clipboard")
+        model.togglePin("clipboard")
+        XCTAssertEqual(ids(model), ["clipboard", "switches"])
+        XCTAssertEqual(model.selectedID, "clipboard")
+        XCTAssertEqual(model.handle(.enter), .run("clipboard"))
+    }
+
+    func testSelectionFallsToTheFirstItemWhenTheToggledToolIsNotShown() {
+        // Searching hides the tiles; a pin toggled from a result that no longer
+        // matches anything visible lands on the first result, not a stray one.
+        var model = model([.typed("sh"), .down, .down])
+        model.togglePin("ocr")
+        XCTAssertEqual(model.selectedID, "screenshot")
+    }
+
     // MARK: - "Pick your four"
 
     func testPickYourFourShowsUntilDismissed() {
