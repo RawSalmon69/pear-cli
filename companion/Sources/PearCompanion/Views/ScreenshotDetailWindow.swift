@@ -97,6 +97,7 @@ struct ScreenshotDetailView: View {
     let onCopy: () -> Void
     let onCopyText: (() -> Void)?
     let onQRTap: (([String]) -> Void)?
+    let onPin: () -> Void
     let onSave: () -> Void
     let onReveal: () -> Void
     let onMarkup: () -> Void
@@ -353,6 +354,8 @@ struct ScreenshotDetailView: View {
                     .keyboardShortcut("s", modifiers: .command)
             }
             DetailAction(symbol: "folder", title: "Reveal", action: onReveal)
+            DetailAction(symbol: "pin", title: "Pin", action: onPin)
+                .accessibilityLabel("Pin to screen")
             if canRemoveBackground {
                 DetailAction(symbol: "person.and.background.dotted",
                              title: "Remove background", action: onRemoveBackground)

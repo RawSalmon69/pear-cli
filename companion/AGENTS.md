@@ -130,7 +130,14 @@ AppKit, not custom gesture math), an eyedropper that samples exact image pixels
 `ScreenshotInsights` — full OCR text in its own scroll box, QR payloads, color
 palette, file facts — scanned once off-main *after* the card is on screen, so
 nothing delays capture → preview and the window always opens mid-scan. Cards are
-**backed by a file, never by bytes** (see `CaptureStore` below). **OCR / Grab Text**
+**backed by a file, never by bytes** (see `CaptureStore` below). **Pin** (card and
+detail window, `PinWindow.swift`) floats the shot in a borderless, always-on-top
+AppKit panel: dragged by its body, resized from its edges with the aspect locked
+(`contentAspectRatio`), closed by Esc / ⌘W while key; many at once. It reads the
+file once at pin time and holds that image, so it outlives its card and a later
+sweep, and nothing is restored at relaunch. Pins hide for a capture and come back
+after, like the preview stack, so a full-screen shot never contains one;
+`PinLayout` (initial fit + cascade) is the tested piece. **OCR / Grab Text**
 (⌃⇧T, Vision), **Background
 removal** (Apple Vision default; opt-in HD BEN2 Core ML — see below), **QR**
 (⌃⇧Q, scan screen region / generate from clipboard, auto QR badge + Copy-text

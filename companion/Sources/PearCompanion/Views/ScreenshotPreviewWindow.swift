@@ -141,6 +141,7 @@ final class ScreenshotPreviewController {
             onCopyText: onCopyText,
             onQRTap: onQRTap,
             onOpen: { [weak self] in self?.openDetail(id: id) },
+            onPin: { [weak self] in self?.pin(id: id) },
             onSave: onSave,
             onReveal: onReveal,
             onMarkup: { [weak self] in
@@ -211,6 +212,20 @@ final class ScreenshotPreviewController {
         insights.scan()
     }
 
+    // MARK: Pin
+
+    /// Pins the card's capture to the screen. The card stays; the pin reads the
+    /// file once and outlives it. A failed read drops the card, like any other.
+    private func pin(id: UUID) {
+        guard let entry = entries.first(where: { $0.id == id }) else { return }
+        // The screen of whatever was clicked: the card, or its detail window.
+        let screen = NSApp.keyWindow?.screen ?? entry.panel.screen
+        if !PinController.pin(url: entry.url, on: screen) {
+            SoundEffects.play(.discard)
+            dismiss(id: id)
+        }
+    }
+
     // MARK: Detail window
 
     /// Opens the big view for a card, or refocuses the one already open. The
@@ -244,6 +259,7 @@ final class ScreenshotPreviewController {
             onCopy: context.onCopy,
             onCopyText: context.onCopyText,
             onQRTap: context.onQRTap,
+            onPin: { [weak self] in self?.pin(id: id) },
             onSave: context.onSave,
             onReveal: context.onReveal,
             onMarkup: { close(); context.onMarkup() },
@@ -573,6 +589,7 @@ private struct ScreenshotPreviewView: View {
     let onCopyText: (() -> Void)?
     let onQRTap: (([String]) -> Void)?
     let onOpen: () -> Void
+    let onPin: () -> Void
     let onSave: () -> Void
     let onReveal: () -> Void
     let onMarkup: () -> Void
@@ -640,6 +657,8 @@ private struct ScreenshotPreviewView: View {
                 }
             }
             PreviewAction(symbol: "folder", help: "Reveal", action: onReveal)
+            PreviewAction(symbol: "pin", help: "Pin to screen", action: onPin)
+                .accessibilityLabel("Pin to screen")
             if canRemoveBackground {
                 PreviewAction(
                     symbol: "person.and.background.dotted",
