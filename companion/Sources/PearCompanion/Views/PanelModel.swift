@@ -27,7 +27,8 @@ enum PanelProblem: Comparable {
 ///
 /// Arrows walk one linear order, the pinned tiles left to right and then the
 /// list, so Return on open runs the first pinned tool and every tool is
-/// reachable from the keyboard.
+/// reachable from the keyboard. Recent captures are click-and-drag only and
+/// stay out of that order.
 struct PanelModel {
     /// One tool as the list sees it.
     struct Entry: Equatable {
@@ -57,6 +58,7 @@ struct PanelModel {
     }
 
     static let pinSlots = 4
+    static let recentSlots = 3
 
     /// Enabled tools with a row, in offer order.
     var entries: [Entry]
@@ -64,6 +66,12 @@ struct PanelModel {
     /// The user's pinned ids in order, enabled or not (`Prefs.pinnedTools`).
     private(set) var pins: [String]
     private(set) var pickYourFourDismissed: Bool
+    /// Filed captures, newest first (`Prefs.recentCaptures`), not yet checked
+    /// for existence.
+    var recentCaptures: [URL]
+    /// Whether a capture's file is still there. Injected so the model never
+    /// touches the disk.
+    var fileExists: (URL) -> Bool
     /// An unseen couple note. The caller passes false unless `FeatureFlags.coupleNote`.
     var hasUnseenNote = false
     private(set) var query = ""
@@ -72,9 +80,12 @@ struct PanelModel {
 
     init(entries: [Entry], problems: [PanelProblem],
          pins: [String] = Prefs.defaultPinnedTools, pickYourFourDismissed: Bool = false,
+         recentCaptures: [URL] = [], fileExists: @escaping (URL) -> Bool = { _ in true },
          hasUnseenNote: Bool = false, query: String = "", selection: Int = 0) {
         self.entries = entries
         self.problems = problems
+        self.recentCaptures = recentCaptures
+        self.fileExists = fileExists
         self.pins = pins
         self.pickYourFourDismissed = pickYourFourDismissed
         self.hasUnseenNote = hasUnseenNote
@@ -107,6 +118,14 @@ struct PanelModel {
         guard query.isEmpty else { return entries.filter { $0.matches(query) } }
         let pinned = filledPins
         return entries.filter { !pinned.contains($0) }
+    }
+
+    /// The recent-captures strip: the newest three whose files still exist (the
+    /// 7-day sweep or the user may have removed them). Empty hides the strip,
+    /// and so does searching, like the pinned row.
+    var recents: [URL] {
+        guard trimmedQuery.isEmpty else { return [] }
+        return Array(recentCaptures.lazy.filter(fileExists).prefix(Self.recentSlots))
     }
 
     /// The one-time card, until dismissed or any pin changes; not while searching.

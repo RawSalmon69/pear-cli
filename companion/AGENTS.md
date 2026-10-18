@@ -133,7 +133,7 @@ check: the actions show in the Shortcuts app.
 - **Panel structure** (`Views/PanelView.swift`, `Views/PanelModel.swift`): the
   cat + a search field (focused on open) on top, the cat's line under it, the
   one-time "Pick your four" card, four big pinned tiles (icon, name, shortcut in
-  a key label), then one compact list of every other enabled tool (icon, name,
+  a key label), the recent-captures strip, then one compact list of every other enabled tool (icon, name,
   optional live `Tool.status` such as Switches "2 on", shortcut label or "no
   shortcut"), then the bottom bar. **Pin fill rule:** the user's pins in order
   that are enabled, then enabled unpinned tools in offer order, up to four;
@@ -149,6 +149,16 @@ check: the actions show in the Shortcuts app.
   the list, so Return on open runs the first pin. Pins and the card live in
   `Prefs` (`pinnedTools` / `setPinnedTools`, which the Settings pins picker in
   ticket 10 will call; any pin change retires the card for good, as does closing it).
+  **Recent captures:** `PanelModel.recents` is the newest three of
+  `Prefs.recentCaptures` whose files still exist (the existence check is
+  injected), hidden when empty and while searching, and hidden when no capture
+  mode is enabled (the view passes none). Thumbnails come from `Thumbnail`
+  (240 px, decoded off-main per open) and stay out of the arrow-key order. The
+  shelf's `ShelfDragOverlay` carries click and drag, since SwiftUI `.onDrag`
+  does not start in a non-activating panel. A click closes the panel, then
+  `ScreenshotTool.openCapture` → `ScreenshotService.open`: the detail window of
+  the card already backed by that file, or of a fresh card presented for it, so
+  the detail window keeps one construction path and the card's actions.
   **`PanelModel` is the only decision point** — a pure value type, tested in
   `PanelModelTests`: tiles, rows (case-insensitive substring on title, summary and
   `Tool.aliases`), clamped selection, ↑/↓/↩ and two-stage Esc (clear the search,
@@ -411,7 +421,11 @@ state until it next asks; `currentValue()` is then already off.
 - **Captures are files, not bytes.** A capture is filed the moment it is taken:
   into the user's screenshot folder when auto-save is on, otherwise into
   `~/Library/Application Support/PearCompanion/Captures` (`CaptureStore`,
-  7-day retention swept at launch). Preview cards and the detail window hold
+  7-day retention swept at launch). `ScreenshotService.deliver`, the one point
+  every capture mode passes through, records the filed URL in
+  `Prefs.recentCaptures` (plain paths, newest first, deduped, last 10) for the
+  panel's strip, which drops missing files on read and holds only small
+  thumbnails, never the image. Preview cards and the detail window hold
   that URL plus a thumbnail and re-read the file per action — holding the PNG
   for a card's lifetime cost 30–200 MB resident for a stack of 6K shots. Never
   put the bytes back on the card, and never point a card at `NSTemporaryDirectory`:

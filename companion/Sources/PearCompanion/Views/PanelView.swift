@@ -1,8 +1,8 @@
 import SwiftUI
 import AppKit
 
-/// The panel: the cat and a search field on top, the four pinned tiles, then one
-/// compact list of every other enabled tool. `PanelModel` makes every decision
+/// The panel: the cat and a search field on top, the four pinned tiles, the
+/// recent captures, then one compact list of every other enabled tool. `PanelModel` makes every decision
 /// (tiles, rows, selection, what a key does, the cat's line); this view renders
 /// it and forwards keys.
 struct PanelView: View {
@@ -15,10 +15,18 @@ struct PanelView: View {
     @State private var pins = Prefs.pinnedTools()
     @State private var pickYourFourDismissed = Prefs.isPickYourFourDismissed()
     @State private var popovers = TilePopoverState()
+    /// Read once per open; the view is rebuilt for every open.
+    @State private var recentCaptures = Prefs.recentCaptures()
 
     /// Tools with a row, in offer order. `all` already applies the enabled and
     /// paywall gates.
     private var tools: [any Tool] { env.tools.all.filter(\.showsTile) }
+
+    /// Any enabled capture mode can open a recent capture; with all three off
+    /// the strip has nothing to open it with, so it hides.
+    private var captureTool: ScreenshotTool? {
+        env.tools.all.lazy.compactMap { $0 as? ScreenshotTool }.first
+    }
 
     private var model: PanelModel {
         PanelModel(
@@ -30,6 +38,8 @@ struct PanelView: View {
             problems: PanelProblem.current(diskUsedFraction: env.stats.diskUsedFraction),
             pins: pins,
             pickYourFourDismissed: pickYourFourDismissed,
+            recentCaptures: captureTool == nil ? [] : recentCaptures,
+            fileExists: { FileManager.default.fileExists(atPath: $0.path) },
             hasUnseenNote: FeatureFlags.coupleNote && env.hasUnseenIncoming,
             query: query,
             selection: selection)
@@ -55,6 +65,7 @@ struct PanelView: View {
                 PickYourFourCard(dismiss: dismissPickYourFour)
             }
             pinnedRow(model)
+            recentStrip(model)
             toolList(model)
             BottomBar()
         }
@@ -131,6 +142,28 @@ struct PanelView: View {
                             PinnedTile(entry: entry, selected: entry.id == model.selectedID) {
                                 activate(tool)
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Recent captures
+
+    /// Click opens the capture in the detail window, closing the panel first
+    /// (it floats above that window); drag hands out the file. Deferred a turn:
+    /// the click arrives inside the panel that `close` tears down.
+    @ViewBuilder
+    private func recentStrip(_ model: PanelModel) -> some View {
+        if !model.recents.isEmpty {
+            let tool = captureTool
+            HStack(spacing: Theme.Space.small) {
+                ForEach(model.recents, id: \.self) { url in
+                    RecentCaptureTile(url: url) {
+                        Task { @MainActor in
+                            close()
+                            tool?.openCapture(url)
                         }
                     }
                 }
@@ -681,6 +714,44 @@ struct PinnedTile: View {
         .help(entry.title)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
+    }
+}
+
+/// One recent capture as a small thumbnail, decoded off the main actor with
+/// ImageIO downsampling and never the full image. The shelf's AppKit drag
+/// overlay carries the click and the drag: SwiftUI's `.onDrag` does not start a
+/// session in a non-activating panel. Flat fill, never glass.
+struct RecentCaptureTile: View {
+    let url: URL
+    let open: () -> Void
+    @State private var thumbnail: NSImage?
+
+    /// Three tiles share the 332 pt row, so ~105 pt wide: 240 px stays crisp
+    /// at 2x and costs ~150 KB per tile.
+    private static let maxPixel = 240
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: Theme.Radius.small)
+            .fill(Color.primary.opacity(0.05))
+            .frame(height: 64)
+            .overlay {
+                if let thumbnail {
+                    Image(nsImage: thumbnail).resizable().scaledToFill()
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small))
+            .overlay { ShelfDragOverlay(provider: { url }, onClick: open) }
+            .help(url.lastPathComponent)
+            .accessibilityElement()
+            .accessibilityLabel("Recent capture, \(url.deletingPathExtension().lastPathComponent)")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(.default, open)
+            .task(id: url) {
+                let url = url, maxPixel = Self.maxPixel
+                thumbnail = await Task.detached(priority: .userInitiated) {
+                    Thumbnail.image(at: url, maxPixel: maxPixel)
+                }.value
+            }
     }
 }
 

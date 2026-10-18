@@ -310,6 +310,54 @@ final class PanelModelTests: XCTestCase {
         }
     }
 
+    // MARK: - Recent captures
+
+    private func capture(_ name: String) -> URL { URL(fileURLWithPath: "/captures/\(name).png") }
+
+    func testRecentsDropMissingFilesAndShowAtMostThree() {
+        let all = (1...5).map { capture("shot\($0)") }
+        let gone: Set<URL> = [all[1]]
+        let model = PanelModel(entries: tools, problems: [], recentCaptures: all,
+                               fileExists: { !gone.contains($0) })
+        XCTAssertEqual(model.recents, [all[0], all[2], all[3]])
+    }
+
+    func testRecentsHiddenWhenNoneExist() {
+        XCTAssertEqual(PanelModel(entries: tools, problems: []).recents, [])
+        let model = PanelModel(entries: tools, problems: [], recentCaptures: [capture("gone")],
+                               fileExists: { _ in false })
+        XCTAssertEqual(model.recents, [])
+    }
+
+    func testRecentsHideWhileSearching() {
+        var model = PanelModel(entries: tools, problems: [], recentCaptures: [capture("a")],
+                               fileExists: { _ in true })
+        _ = model.handle(.typed("sh"))
+        XCTAssertEqual(model.recents, [])
+        _ = model.handle(.escape)
+        XCTAssertEqual(model.recents, [capture("a")])
+    }
+
+    /// Thumbnails are click-and-drag only: the arrows still walk tiles then list.
+    func testRecentsStayOutOfTheKeyboardOrder() {
+        var model = PanelModel(entries: tools, problems: [], recentCaptures: [capture("a")],
+                               fileExists: { _ in true })
+        XCTAssertEqual(model.handle(.enter), .run("screenshot"))
+    }
+
+    func testPrefsRecentCapturesNewestFirstDedupedCappedAtTen() {
+        withSuite { defaults in
+            XCTAssertEqual(Prefs.recentCaptures(defaults: defaults), [])
+            for i in 1...12 { Prefs.recordCapture(capture("shot\(i)"), defaults: defaults) }
+            Prefs.recordCapture(capture("shot5"), defaults: defaults)
+            let recents = Prefs.recentCaptures(defaults: defaults)
+            XCTAssertEqual(recents.count, Prefs.recentCapturesKept)
+            XCTAssertEqual(recents.prefix(3), [capture("shot5"), capture("shot12"), capture("shot11")])
+            XCTAssertEqual(recents.filter { $0 == capture("shot5") }.count, 1)
+            XCTAssertFalse(recents.contains(capture("shot2")))
+        }
+    }
+
     // MARK: - Esc
 
     func testEscClearsSearchFirstThenCloses() {

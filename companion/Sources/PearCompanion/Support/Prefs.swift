@@ -101,6 +101,28 @@ enum Prefs {
         defaults.set(true, forKey: pickYourFourDismissedKey)
     }
 
+    // MARK: - Recent captures
+
+    static let recentCapturesKey = "recentCaptures"
+    /// How many filed captures are remembered; the panel shows the newest three
+    /// that still exist.
+    static let recentCapturesKept = 10
+
+    /// Newest first. Stored as plain paths: every entry is a file Pear filed
+    /// itself. Not checked for existence here; the panel drops missing files.
+    static func recentCaptures(defaults: UserDefaults = .standard) -> [URL] {
+        (defaults.stringArray(forKey: recentCapturesKey) ?? [])
+            .map { URL(fileURLWithPath: $0, isDirectory: false) }
+    }
+
+    /// Puts a just-filed capture first, dropping any older entry for the same
+    /// file and anything past the cap.
+    static func recordCapture(_ url: URL, defaults: UserDefaults = .standard) {
+        let path = url.path
+        let older = (defaults.stringArray(forKey: recentCapturesKey) ?? []).filter { $0 != path }
+        defaults.set(Array(([path] + older).prefix(recentCapturesKept)), forKey: recentCapturesKey)
+    }
+
     // MARK: - Per-tool toggles
 
     /// Disabled tools are never registered, so their hotkeys and engines

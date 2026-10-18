@@ -285,6 +285,15 @@ final class ScreenshotPreviewController {
         controller.show()
     }
 
+    /// Opens the detail window of the newest card backed by `url`. False when
+    /// no card is.
+    @discardableResult
+    func openDetail(backedBy url: URL) -> Bool {
+        guard let entry = entries.first(where: { $0.url == url }) else { return false }
+        openDetail(id: entry.id)
+        return true
+    }
+
     /// Visible frame the stack anchors to: the screen the shot was taken on, so
     /// the card appears where the user was just looking instead of flying to
     /// another display.

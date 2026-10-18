@@ -65,6 +65,11 @@ final class ScreenshotTool: Tool {
         }
     }
 
+    /// A recent capture from the panel, in the detail window.
+    func openCapture(_ url: URL) {
+        resolveService().open(url)
+    }
+
     private func resolveService() -> ScreenshotService {
         if let service { return service }
         let created = ScreenshotService(messaging: messaging)

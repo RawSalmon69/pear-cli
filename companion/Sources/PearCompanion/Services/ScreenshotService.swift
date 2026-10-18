@@ -243,8 +243,18 @@ final class ScreenshotService {
     /// the card is backed by the file from here on.
     private func deliver(tempURL: URL, capturedOn screen: NSScreen?) {
         let url = fileCapture(tempURL)
+        Prefs.recordCapture(url) // the panel's recent-captures strip
         copyToPasteboard(at: url)
         present(at: url, capturedOn: screen)
+    }
+
+    /// Opens the detail window for a capture already on disk (the panel's
+    /// recent strip): through its card if one is up, otherwise through a fresh
+    /// card for the file, so the window has the card's whole set of actions.
+    func open(_ url: URL) {
+        guard !preview.openDetail(backedBy: url) else { return }
+        present(at: url, capturedOn: nil)
+        preview.openDetail(backedBy: url)
     }
 
     /// The screen the pointer is on. For a region drag or a window click that is
