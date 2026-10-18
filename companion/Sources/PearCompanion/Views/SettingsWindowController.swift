@@ -64,13 +64,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     /// Back to menu-bar only, unless another standard window (Disk, a
     /// screenshot's detail, Markup) is still up: dropping to accessory under it
-    /// would take away its Dock icon and ⌘-Tab.
+    /// would take away its Dock icon and ⌘-Tab. That window's own close then
+    /// applies the same rule (`StandardWindow.didClose`).
     func windowWillClose(_ notification: Notification) {
-        let closing = notification.object as? NSWindow
-        let othersOpen = NSApp.windows.contains {
-            $0 !== closing && $0.isVisible && $0.styleMask.contains(.titled)
-        }
-        if !othersOpen { NSApp.setActivationPolicy(.accessory) }
+        StandardWindow.didClose(notification.object as? NSWindow)
     }
 }
 

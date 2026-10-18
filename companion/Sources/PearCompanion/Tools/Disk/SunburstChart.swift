@@ -419,17 +419,17 @@ struct SunburstChartView: View {
     }
 
     private var centerLabel: some View {
-        VStack(spacing: 1) {
+        VStack(spacing: Theme.Space.xSmall) {
             Text(root.name)
-                .font(Theme.rounded(11, .semibold))
+                .font(Theme.Typography.small(.semibold))
                 .lineLimit(1)
                 .truncationMode(.middle)
             Text(ByteFormat.si(root.size))
-                .font(Theme.rounded(13, .bold))
+                .font(Theme.Typography.body(.bold))
                 .monospacedDigit()
                 .foregroundStyle(Theme.accent)
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, Theme.Space.small)
         .frame(maxWidth: 110)
         .allowsHitTesting(false)
     }

@@ -51,6 +51,7 @@ final class DiskWindowController: NSObject, NSWindowDelegate {
     /// window to show the result in.
     func windowWillClose(_ notification: Notification) {
         model.cancel()
+        StandardWindow.didClose(notification.object as? NSWindow)
     }
 }
 

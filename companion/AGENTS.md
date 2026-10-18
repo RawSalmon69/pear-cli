@@ -100,8 +100,10 @@ check: the actions show in the Shortcuts app.
   read through `@AppStorage`, so `open(.licence)` switches a window already up.
   While it is open Pear is `.regular` (Dock icon, ⌘-Tab, menu bar), back to
   `.accessory` on `windowWillClose` unless another visible titled window (Disk,
-  detail, Markup) remains; it is not miniaturizable, since a minimised window
-  never fires `windowWillClose`. Activation runs one turn after the policy change
+  detail, Markup, Remove Background) remains, and whichever closes last drops
+  Pear back: all five call `StandardWindow.didClose` (`Views/StandardWindow.swift`,
+  tested) from `windowWillClose`. Only Settings ever switches to `.regular`. It
+  is not miniaturizable, since a minimised window never fires `windowWillClose`. Activation runs one turn after the policy change
   so the first open gets focus. The panel stays non-activating and the
   capture-hides-panel observer is untouched. Each open from closed rebuilds the
   root view (`.id(UUID())`), standing in for the popover's per-open rebuild.
@@ -338,6 +340,16 @@ every one of these tools already runs from the background, as a hotkey does.
   border. Sibling glass cards go in a `GlassGroup` (`GlassEffectContainer` on
   macOS 26+, pass-through on 14–15); never glass inside glass. Call sites still
   carry literals while the migration is in progress; new code uses the tokens.
+  The capture surfaces (preview cards, detail, Markup, Remove Background, Disk)
+  are migrated; their remaining literals are commented exceptions (Markup's
+  image-pixel text, treemap tile corners, the card toolbar's 2 pt gaps).
+  **Four standard windows** besides Settings: the screenshot detail, Markup,
+  Remove Background and Disk are plain titled windows (titled, closable,
+  miniaturizable, resizable, standard title bar and background, normal level),
+  shown with `makeKeyAndOrderFront` + `NSApp.activate`. Preview cards stay
+  non-activating borderless panels. Window Shot's icon is
+  `macwindow.and.cursorarrow` (SF Symbols 5, macOS 14), distinct from Windows'
+  `macwindow.on.rectangle`.
 - **HD background removal** is opt-in: default is Apple Vision (instant, no
   download). Turning on "High-quality mode" downloads a **BEN2 Base** Core ML
   fp16 model (~205MB) from the project's GitHub release (`ben2-bg-model-v1`,

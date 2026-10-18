@@ -59,6 +59,10 @@ final class BackgroundRemoverWindowController: NSObject, NSWindowDelegate {
     func close() {
         window?.close()
     }
+
+    func windowWillClose(_ notification: Notification) {
+        StandardWindow.didClose(notification.object as? NSWindow)
+    }
 }
 
 /// Titled window that also closes on Esc — matches the app's dismissal grammar

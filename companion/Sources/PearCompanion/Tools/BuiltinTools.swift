@@ -43,7 +43,7 @@ final class ScreenshotTool: Tool {
         case .window:
             id = "screenshot-window"
             title = "Window Shot"
-            icon = "macwindow.on.rectangle"
+            icon = "macwindow.and.cursorarrow"
             summary = "Click a window to grab it, shadow and all."
             hotkey = HotKeyChord(keyCode: kVK_ANSI_W, modifiers: controlKey | shiftKey, label: "⌃⇧W")
         }

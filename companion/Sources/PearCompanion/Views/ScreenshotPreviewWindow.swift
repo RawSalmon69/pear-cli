@@ -100,8 +100,9 @@ final class ScreenshotPreviewController {
     /// display the user is working on rather than the one they have left.
     private var anchorVisible: NSRect = .zero
 
-    /// Thumbnail (208×130) plus the card's 3pt glass rim on each side.
-    private static let panelSize = NSSize(width: 214, height: 136)
+    /// Thumbnail (208×130) plus the card's glass rim on each side.
+    private static let panelSize = NSSize(width: 208 + 2 * Theme.Space.xSmall,
+                                          height: 130 + 2 * Theme.Space.xSmall)
     private static let margin: CGFloat = 20
     private static let gap: CGFloat = 12
 
@@ -175,7 +176,7 @@ final class ScreenshotPreviewController {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         let host = PreviewHostingView(rootView: content)
-        host.clipToCard(radius: 12)
+        host.clipToCard(radius: Theme.Radius.medium)
         panel.contentView = host
 
         let entry = PreviewEntry(
@@ -606,10 +607,10 @@ private struct ScreenshotPreviewView: View {
     private static let thumbWidth: CGFloat = 208
     private static let thumbHeight: CGFloat = 130
     /// Slim glass rim: the card reads as a framed thumbnail, not a thumbnail
-    /// floating in a panel. Keep `cardRadius - inset` as the inner radius so the
-    /// two corners stay concentric.
-    private static let inset: CGFloat = 3
-    private static let cardRadius: CGFloat = 12
+    /// floating in a panel. The inner radius is `cardRadius - inset` (10 − 4 =
+    /// `Radius.small`), so the two corners stay concentric.
+    private static let inset = Theme.Space.xSmall
+    private static let cardRadius = Theme.Radius.medium
 
     var body: some View {
         Image(nsImage: image)
@@ -644,6 +645,8 @@ private struct ScreenshotPreviewView: View {
 
     /// Icon-only actions in a floating capsule over the thumbnail's lower edge.
     private var toolbar: some View {
+        // Exception: 2 pt gaps, so up to eight 26 pt actions fit the 208 pt
+        // thumbnail; the scale's smallest step (4) would push the bar past it.
         HStack(spacing: 2) {
             PreviewAction(symbol: copied ? "checkmark" : "doc.on.doc", help: "Copy") {
                 onCopy(); withAnimation { copied = true }
@@ -671,20 +674,19 @@ private struct ScreenshotPreviewView: View {
                 PreviewAction(symbol: "paperplane.fill", help: "Send", tint: Theme.accent, action: onSend)
             }
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 1))
-        .padding(.bottom, 7)
+        .padding(Theme.Space.xSmall)
+        // 24 + 2 × 4 = 32 pt tall, so the default 16 pt radius is a capsule.
+        .glassCard()
+        .padding(.bottom, Theme.Space.small)
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 
     private var closeButton: some View {
         Button(action: onDismiss) {
             Image(systemName: "xmark.circle.fill")
-                .font(.system(size: 14))
+                .font(Theme.Typography.large())
                 .foregroundStyle(.white, .black.opacity(0.45))
-                .padding(5)
+                .padding(Theme.Space.xSmall)
         }
         .buttonStyle(.plain)
         .transition(.opacity)
@@ -693,14 +695,14 @@ private struct ScreenshotPreviewView: View {
     private var qrBadge: some View {
         Button(action: { onQRTap?(insights.payloads) }) {
             Image(systemName: "qrcode")
-                .font(.system(size: 11, weight: .semibold))
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.white)
-                .padding(5)
+                .padding(Theme.Space.xSmall)
                 .background(Circle().fill(.black.opacity(0.55)))
         }
         .buttonStyle(.plain)
         .help("QR code found. Copy its contents.")
-        .padding(6)
+        .padding(Theme.Space.small)
         .transition(.opacity)
     }
 
@@ -730,10 +732,10 @@ private struct PreviewAction: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 12, weight: .medium))
+                .font(Theme.Typography.body(.medium))
                 .foregroundStyle(hovering ? Theme.accent : tint)
                 .frame(width: 26, height: 24)
-                .background(RoundedRectangle(cornerRadius: 7).fill(hovering ? Theme.accentSoft : .clear))
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.small).fill(hovering ? Theme.accentSoft : .clear))
         }
         .buttonStyle(.plain)
         .focusable(false)

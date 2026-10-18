@@ -44,7 +44,7 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
 
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: Self.initialContentSize(for: image)),
-            styleMask: [.titled, .closable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -92,6 +92,7 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
         }
         window?.delegate = nil
         window = nil
+        StandardWindow.didClose(notification.object as? NSWindow)
         onClosed?(self)
     }
 }
@@ -169,7 +170,7 @@ struct MarkupEditorView: View {
 
     private var toolbar: some View {
         HStack(spacing: Theme.itemGap) {
-            HStack(spacing: 2) {
+            HStack(spacing: Theme.Space.xSmall) {
                 ForEach(MarkupTool.allCases) { candidate in
                     ToolButton(
                         symbol: candidate.symbol,
@@ -180,8 +181,8 @@ struct MarkupEditorView: View {
                     }
                 }
             }
-            .padding(4)
-            .glassCard(cornerRadius: 10)
+            .padding(Theme.Space.xSmall)
+            .glassCard(cornerRadius: Theme.Radius.medium)
 
             Divider().frame(height: 22).opacity(0.4)
 
@@ -249,12 +250,16 @@ struct MarkupEditorView: View {
                 if let draftOrigin {
                     TextField("Text", text: $draftText)
                         .textFieldStyle(.plain)
+                        // Exception: sized to the annotation it becomes, in image
+                        // pixels, so the draft sits exactly where the text lands.
                         .font(.system(size: max(draftFontSize * scale, 6),
                                       weight: .semibold, design: .rounded))
                         .foregroundColor(color)
                         .focused($textFieldFocused)
                         .frame(minWidth: 40, alignment: .leading)
                         .fixedSize()
+                        // Exception: a 2 pt pad and its 4 pt box keep the draft's
+                        // glyphs on the origin the flattened text is drawn at.
                         .padding(2)
                         .background(RoundedRectangle(cornerRadius: 4).fill(.thinMaterial))
                         .offset(x: draftOrigin.x * scale, y: draftOrigin.y * scale)
@@ -282,30 +287,30 @@ struct MarkupEditorView: View {
     }
 
     private var cropConfirmBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Theme.Space.medium) {
             if let cropRect {
                 Text("\(Int(cropRect.width.rounded())) × \(Int(cropRect.height.rounded()))")
                     .font(Theme.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             Button { cancelCrop() } label: {
-                Image(systemName: "xmark").font(.system(size: 12, weight: .semibold))
+                Image(systemName: "xmark").font(Theme.Typography.body(.semibold))
             }
             .buttonStyle(.plain)
             .help("Cancel crop (Esc)")
 
             Button { commitCrop() } label: {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(Theme.Typography.body(.bold))
                     .foregroundStyle(Theme.accent)
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.return, modifiers: [])
             .help("Apply crop (Return)")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .glassCard(cornerRadius: 12)
+        .padding(.horizontal, Theme.Space.medium)
+        .padding(.vertical, Theme.Space.small)
+        .glassCard(cornerRadius: Theme.Radius.medium)
         .shadow(color: .black.opacity(0.2), radius: 8, y: 3)
     }
 
@@ -515,11 +520,11 @@ private struct ToolButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 14, weight: .medium))
+                .font(Theme.Typography.large(.medium))
                 .foregroundStyle(isActive ? Theme.accent : (hovering ? Theme.accent : .primary))
                 .frame(width: 30, height: 28)
                 .background(
-                    RoundedRectangle(cornerRadius: 7)
+                    RoundedRectangle(cornerRadius: Theme.Radius.small)
                         .fill(isActive ? Theme.accentSoft : (hovering ? Theme.accentSoft.opacity(0.5) : .clear))
                 )
         }

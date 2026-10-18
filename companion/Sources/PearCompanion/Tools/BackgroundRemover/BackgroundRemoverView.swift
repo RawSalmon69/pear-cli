@@ -104,17 +104,17 @@ struct BackgroundRemoverView: View {
     @State private var targeted = false
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: Theme.Space.medium) {
             content
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(18)
+        .padding(Theme.Space.large)
         .onDrop(of: [.fileURL], isTargeted: $targeted, perform: handleDrop)
         .overlay {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: Theme.Radius.medium)
                 .strokeBorder(Theme.accent, lineWidth: 2)
                 .opacity(targeted ? 1 : 0)
-                .padding(6)
+                .padding(Theme.Space.small)
                 .animation(.easeOut(duration: 0.12), value: targeted)
         }
     }
@@ -131,9 +131,10 @@ struct BackgroundRemoverView: View {
     }
 
     private var dropArea: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Theme.Space.medium) {
             Spacer()
             Image(systemName: "person.and.background.dotted")
+                // Exception: an empty-state illustration, not text.
                 .font(.system(size: 40, weight: .light))
                 .foregroundStyle(.secondary)
             Text("Drop an image here")
@@ -153,11 +154,11 @@ struct BackgroundRemoverView: View {
             qualityFootnote
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(RoundedRectangle(cornerRadius: 12).strokeBorder(.secondary.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [6])))
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.medium).strokeBorder(.secondary.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [6])))
     }
 
     private var working: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: Theme.Space.medium) {
             Spacer()
             ProgressView()
             Text("Removing background…")
@@ -172,26 +173,26 @@ struct BackgroundRemoverView: View {
     }
 
     private var result: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Theme.Space.medium) {
             ZStack {
                 Checkerboard()
                 if let cutout = model.cutout {
                     Image(nsImage: cutout)
                         .resizable()
                         .scaledToFit()
-                        .padding(8)
+                        .padding(Theme.Space.small)
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.medium))
             .overlay(alignment: .topLeading) {
                 Text(model.usedHD ? "High quality" : "Fast")
                     .font(Theme.caption)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(8)
+                    .padding(.horizontal, Theme.Space.small).padding(.vertical, Theme.Space.xSmall)
+                    .glassCard()
+                    .padding(Theme.Space.small)
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.small) {
                 Button { model.copy() } label: { Label("Copy", systemImage: "doc.on.doc") }
                 Button { model.save() } label: { Label("Save…", systemImage: "square.and.arrow.down") }
                 if model.isSaved {

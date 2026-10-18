@@ -141,7 +141,7 @@ struct PearShortcuts: AppShortcutsProvider {
         AppShortcut(intent: CaptureFullScreenIntent(), phrases: ["Capture the screen with \(.applicationName)"],
                     shortTitle: "Capture Full Screen", systemImageName: "camera.on.rectangle")
         AppShortcut(intent: CaptureWindowIntent(), phrases: ["Capture a window with \(.applicationName)"],
-                    shortTitle: "Capture Window", systemImageName: "macwindow.on.rectangle")
+                    shortTitle: "Capture Window", systemImageName: "macwindow.and.cursorarrow")
         AppShortcut(intent: GrabTextIntent(), phrases: ["Grab text with \(.applicationName)"],
                     shortTitle: "Grab Text", systemImageName: "text.viewfinder")
         AppShortcut(intent: PickColorIntent(), phrases: ["Pick a color with \(.applicationName)"],

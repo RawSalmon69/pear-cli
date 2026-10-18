@@ -312,6 +312,7 @@ struct MarkupCanvas: View {
         case let .text(origin, string, color, fontSize):
             guard !string.isEmpty else { return }
             let text = Text(string)
+                // Exception: annotation text is drawn at its own image-pixel size.
                 .font(.system(size: fontSize * s, weight: .semibold, design: .rounded))
                 .foregroundColor(color)
             context.draw(context.resolve(text), at: point(origin, s), anchor: .topLeading)

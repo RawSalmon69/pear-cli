@@ -45,27 +45,31 @@ final class ScreenshotDetailWindowController: NSObject, NSWindowDelegate {
         self.imageSize = imageSize
     }
 
-    /// Shows the window, or brings an already-open one forward.
+    /// Shows the window, or brings an already-open one forward. Activates Pear,
+    /// like the other standard windows, so it opens in front and key: a click
+    /// on a non-activating card leaves Pear inactive, and the window's ⌘ keys
+    /// and Esc would otherwise wait for a second click.
     func show() {
         if let window {
             window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
             return
         }
         let visible = (NSScreen.screens.first ?? NSScreen.main)?.visibleFrame ?? .zero
         let size = ScreenshotDetailLayout.windowSize(image: imageSize, visible: visible)
         let window = DetailWindow(
             contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.titlebarAppearsTransparent = true
         window.title = "Screenshot"
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.contentView = NSHostingView(rootView: content)
         window.center()
         window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
         self.window = window
     }
 
@@ -75,6 +79,7 @@ final class ScreenshotDetailWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         window = nil
+        StandardWindow.didClose(notification.object as? NSWindow)
         onClosed?()
     }
 }
@@ -137,7 +142,7 @@ struct ScreenshotDetailView: View {
     /// Zoom chrome over the image's bottom-left: out / readout / in, then fit
     /// and 1:1. ⌘−, ⌘+ and ⌘0 do the same from the keyboard.
     private var zoomBar: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: Theme.Space.xSmall) {
             ZoomButton(symbol: "minus.magnifyingglass", help: "Zoom out", action: zoom.zoomOut)
                 .keyboardShortcut("-", modifiers: .command)
             Text("\(zoom.percent)%")
@@ -151,11 +156,11 @@ struct ScreenshotDetailView: View {
                 .keyboardShortcut("0", modifiers: .command)
             ZoomButton(symbol: "1.magnifyingglass", help: "Actual size", action: zoom.actualSize)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
-        .padding(12)
+        .padding(.horizontal, Theme.Space.small)
+        .padding(.vertical, Theme.Space.xSmall)
+        // The default 16 pt radius clamps to a capsule on a bar this short.
+        .glassCard()
+        .padding(Theme.Space.medium)
     }
 
     /// Copies a color in the user's chosen format and flashes a confirmation —
@@ -186,7 +191,7 @@ struct ScreenshotDetailView: View {
                 colorSection
                 detailSection
             }
-            .padding(14)
+            .padding(Theme.edgePadding)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -208,16 +213,16 @@ struct ScreenshotDetailView: View {
                         .font(Theme.body)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
+                        .padding(Theme.Space.small)
                 }
                 .frame(height: 190)
-                .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.5)))
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.medium).fill(.quaternary.opacity(0.5)))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: Theme.Radius.medium)
                         .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
                 }
             } else if insights.isScanning {
-                HStack(spacing: 6) {
+                HStack(spacing: Theme.Space.small) {
                     ProgressView().controlSize(.small)
                     Text("Reading text…").font(Theme.body).foregroundStyle(.secondary)
                 }
@@ -238,7 +243,7 @@ struct ScreenshotDetailView: View {
                       action: DetailSection.Action(symbol: "doc.on.doc", help: "Copy code") {
                           onQRTap?(insights.payloads)
                       }) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
                 ForEach(insights.payloads, id: \.self) { payload in
                     if let url = QRCode.openableURL(in: [payload]) {
                         Link(payload, destination: url)
@@ -269,9 +274,9 @@ struct ScreenshotDetailView: View {
                 run: { zoom.isPicking.toggle() }
             )
         ) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: Theme.Space.small) {
                 if let picked {
-                    HStack(spacing: 8) {
+                    HStack(spacing: Theme.Space.small) {
                         Swatch(color: picked, size: CGSize(width: 44, height: 26),
                                copied: copiedValue == Prefs.colorFormat.value(for: picked)) {
                             copy(picked)
@@ -287,7 +292,7 @@ struct ScreenshotDetailView: View {
                         Text("Reading colors…").font(Theme.body).foregroundStyle(.secondary)
                     }
                 } else {
-                    HStack(spacing: 6) {
+                    HStack(spacing: Theme.Space.small) {
                         // Keyed by position, not by hex: a flat shot (white
                         // page, dark terminal) resolves every band to the same
                         // colour, and `PickedColor.id` is its hex string.
@@ -306,7 +311,7 @@ struct ScreenshotDetailView: View {
     private var detailSection: some View {
         let details = insights.details
         return DetailSection(title: "Details") {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
                 DetailRow(label: "Dimensions", value: details.dimensionsLabel)
                 if let megapixels = details.megapixelsLabel {
                     DetailRow(label: "Pixels", value: megapixels)
@@ -346,7 +351,7 @@ struct ScreenshotDetailView: View {
     }
 
     private var actionBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.small) {
             DetailAction(symbol: "doc.on.doc", title: "Copy", action: onCopy)
                 .keyboardShortcut("c", modifiers: .command)
             if canSave {
@@ -369,7 +374,7 @@ struct ScreenshotDetailView: View {
                              tint: Theme.accent, action: onSend)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, Theme.Space.medium)
         .frame(height: ScreenshotDetailLayout.actionBarHeight)
     }
 }
@@ -700,8 +705,8 @@ private struct DetailSection<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
+            HStack(spacing: Theme.Space.small) {
                 Text(title.uppercased())
                     .font(Theme.caption)
                     .foregroundStyle(.secondary)
@@ -713,7 +718,7 @@ private struct DetailSection<Content: View>: View {
                 Spacer()
                 if let action {
                     Button(action: action.run) {
-                        Image(systemName: action.symbol).font(.system(size: 11, weight: .medium))
+                        Image(systemName: action.symbol).font(Theme.Typography.small(.medium))
                     }
                     .buttonStyle(.plain)
                     .focusable(false)
@@ -732,7 +737,7 @@ private struct DetailRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label).font(Theme.caption).foregroundStyle(.secondary)
-            Spacer(minLength: 8)
+            Spacer(minLength: Theme.Space.small)
             Text(value)
                 .font(Theme.body)
                 .lineLimit(1)
@@ -755,18 +760,18 @@ private struct Swatch: View {
 
     var body: some View {
         Button(action: action) {
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: Theme.Radius.small)
                 .fill(color.swiftUIColor)
                 .frame(width: size.width, height: size.height)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: Theme.Radius.small)
                         .strokeBorder(.white.opacity(hovering ? 0.7 : 0.18),
                                       lineWidth: hovering ? 1 : 0.5)
                 }
                 .overlay {
                     if copied {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(Theme.Typography.small(.bold))
                             .foregroundStyle(color.luminance > 0.4 ? .black : .white)
                     }
                 }
@@ -792,7 +797,7 @@ private struct ZoomButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 12, weight: .medium))
+                .font(Theme.Typography.body(.medium))
                 .foregroundStyle(hovering ? Theme.accent : .primary)
                 .frame(width: 24, height: 20)
                 .contentShape(Rectangle())
@@ -816,14 +821,14 @@ private struct DetailAction: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: symbol).font(.system(size: 12, weight: .medium))
+            HStack(spacing: Theme.Space.xSmall) {
+                Image(systemName: symbol).font(Theme.Typography.body(.medium))
                 Text(title).font(Theme.body)
             }
             .foregroundStyle(hovering ? Theme.accent : tint)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 7).fill(hovering ? Theme.accentSoft : .clear))
+            .padding(.horizontal, Theme.Space.small)
+            .padding(.vertical, Theme.Space.xSmall)
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.small).fill(hovering ? Theme.accentSoft : .clear))
         }
         .buttonStyle(.plain)
         .focusable(false)

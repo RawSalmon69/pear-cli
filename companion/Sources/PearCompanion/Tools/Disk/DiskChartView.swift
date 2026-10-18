@@ -53,7 +53,7 @@ struct DiskChartView: View {
             if !stack.isEmpty {
                 GlyphButton(symbol: "chevron.left", help: "Back", tint: .secondary) { goUp() }
             }
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
                 Text(title)
                     .font(Theme.title)
                     .lineLimit(1)
@@ -118,7 +118,7 @@ struct DiskChartView: View {
                 onGoUp: { goUp() },
                 contextActions: { contextActions(for: $0) }
             )
-            .padding(4)
+            .padding(Theme.Space.xSmall)
         case .treemap:
             TreemapChartView(
                 root: root,
@@ -128,7 +128,7 @@ struct DiskChartView: View {
                 onDrill: { drill(into: $0) },
                 contextActions: { contextActions(for: $0) }
             )
-            .glassCard(cornerRadius: 12)
+            .glassCard(cornerRadius: Theme.Radius.medium)
         }
     }
 
@@ -140,7 +140,7 @@ struct DiskChartView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: Self.chartHeight)
-        .glassCard(cornerRadius: 16)
+        .glassCard()
     }
 
     private func errorCard(_ message: String) -> some View {
@@ -160,7 +160,7 @@ struct DiskChartView: View {
         }
         .frame(maxWidth: .infinity, minHeight: Self.chartHeight, alignment: .topLeading)
         .padding(Theme.heroPadding)
-        .glassCard(cornerRadius: 16)
+        .glassCard()
     }
 
     // MARK: Selected-item actions
@@ -172,9 +172,9 @@ struct DiskChartView: View {
         if let path = item.path {
             HStack(spacing: Theme.itemGap) {
                 Image(systemName: "scope")
-                    .font(.system(size: 11))
+                    .font(Theme.Typography.small())
                     .foregroundStyle(Theme.accent)
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
                     Text(item.name)
                         .font(Theme.body)
                         .lineLimit(1)
@@ -184,7 +184,7 @@ struct DiskChartView: View {
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
-                Spacer(minLength: 4)
+                Spacer(minLength: Theme.Space.xSmall)
                 GlyphButton(symbol: "magnifyingglass", help: "Reveal in Finder", tint: .secondary) {
                     NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
                 }
@@ -205,7 +205,7 @@ struct DiskChartView: View {
                 }
             }
             .padding(Theme.cardPadding)
-            .glassCard(cornerRadius: 12)
+            .glassCard(cornerRadius: Theme.Radius.medium)
         }
     }
 

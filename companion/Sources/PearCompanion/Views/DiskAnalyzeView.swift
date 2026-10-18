@@ -40,7 +40,7 @@ struct DiskAnalyzeView: View {
                 PendingDeletionSection(staging: staging)
             }
         }
-        .padding(16)
+        .padding(Theme.Space.large)
         // Hosted in a resizable window: fill it, with a floor so the dense
         // layout never collapses.
         .frame(minWidth: 380, maxWidth: .infinity, minHeight: 360, maxHeight: .infinity, alignment: .top)
@@ -74,9 +74,9 @@ private struct PendingDeletionSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.Space.xSmall) {
                 SectionLabel(text: "Pending deletion")
-                Spacer(minLength: 4)
+                Spacer(minLength: Theme.Space.xSmall)
                 Text("\(staging.count) · \(ByteFormat.si(staging.totalSize))")
                     .font(Theme.caption)
                     .foregroundStyle(.secondary)
@@ -84,7 +84,7 @@ private struct PendingDeletionSection: View {
             }
 
             ScrollView {
-                VStack(spacing: 4) {
+                VStack(spacing: Theme.Space.xSmall) {
                     ForEach(staging.items) { item in
                         PendingRow(item: item, staging: staging)
                     }
@@ -104,7 +104,7 @@ private struct PendingDeletionSection: View {
             .focusable(false)
         }
         .padding(Theme.cardPadding)
-        .glassCard(cornerRadius: 12)
+        .glassCard(cornerRadius: Theme.Radius.medium)
     }
 
     private var deleteAllTitle: String {
@@ -129,16 +129,16 @@ private struct PendingRow: View {
     let staging: DiskStagingModel
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Theme.Space.small) {
             Image(systemName: "trash")
-                .font(.system(size: 10))
+                .font(Theme.Typography.tiny())
                 .foregroundStyle(Theme.warn)
             Text(item.name)
                 .font(Theme.body)
                 .strikethrough(true, color: .secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            Spacer(minLength: 4)
+            Spacer(minLength: Theme.Space.xSmall)
             Text(ByteFormat.si(item.size))
                 .font(Theme.caption)
                 .monospacedDigit()
@@ -150,8 +150,8 @@ private struct PendingRow: View {
                 staging.restore(path: item.path)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.horizontal, Theme.Space.small)
+        .padding(.vertical, Theme.Space.xSmall)
         .contentShape(Rectangle())
         .contextMenu {
             Button("Restore") { staging.restore(path: item.path) }

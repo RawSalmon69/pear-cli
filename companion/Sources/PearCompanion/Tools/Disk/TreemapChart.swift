@@ -414,7 +414,7 @@ struct TreemapChartView: View {
                     draw(segment, in: &context, size: size)
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.medium))
             .contentShape(Rectangle())
             .onContinuousHover(coordinateSpace: .local) { phase in
                 switch phase {
@@ -482,6 +482,7 @@ struct TreemapChartView: View {
         )
         let isHovered = segment.id == hoveredID
         let isStaged = segment.path.map(stagedPaths.contains) ?? false
+        // Exception: tiles can be a few points wide, so their corners stay at 3.
         let shape = Path(roundedRect: rect, cornerRadius: 3)
 
         // Container tiles get a translucent header band so their children read
@@ -492,6 +493,7 @@ struct TreemapChartView: View {
         } else if segment.showsContainerHeader {
             context.fill(shape, with: .color(color.opacity(0.28)))
             let header = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: min(16, rect.height))
+            // Exception: matches the tile's 3 pt corner above.
             context.fill(Path(roundedRect: header, cornerRadius: 3), with: .color(color.opacity(0.85)))
         } else {
             context.fill(shape, with: .color(color.opacity(isHovered ? 1 : 0.9)))
@@ -514,7 +516,7 @@ struct TreemapChartView: View {
 
         let resolved = context.resolve(
             Text(segment.label)
-                .font(Theme.rounded(9, .semibold))
+                .font(Theme.Typography.tiny(.semibold))
                 .foregroundStyle(.white)
         )
         // Skip labels that would overflow their tile rather than clip mid-glyph.
@@ -526,7 +528,7 @@ struct TreemapChartView: View {
         if !segment.showsContainerHeader, rect.height >= 30 {
             let sizeText = context.resolve(
                 Text(ByteFormat.si(segment.size))
-                    .font(Theme.rounded(9))
+                    .font(Theme.Typography.tiny())
                     .foregroundStyle(.white.opacity(0.85))
             )
             context.draw(sizeText, at: CGPoint(x: rect.minX + 4, y: rect.minY + 15), anchor: .topLeading)
@@ -541,7 +543,7 @@ private struct TreemapTooltipView: View {
     let size: Int64
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
             Text(name)
                 .font(Theme.body)
                 .lineLimit(1)
@@ -551,9 +553,10 @@ private struct TreemapTooltipView: View {
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .glassCard(cornerRadius: 10)
+        .padding(.horizontal, Theme.Space.medium)
+        // xSmall, not small: `tooltipSize` budgets 48 pt of height for this.
+        .padding(.vertical, Theme.Space.xSmall)
+        .glassCard(cornerRadius: Theme.Radius.medium)
         .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
     }
 }
