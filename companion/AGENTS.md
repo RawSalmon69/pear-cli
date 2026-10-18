@@ -36,6 +36,39 @@ bundle for UNUserNotificationCenter + resources) — always run via `build.sh` +
 `open`. CI (`companion.yml`) runs build+test+assemble on every `companion/**`
 push/PR.
 
+**App Intents metadata (spike, 2026-10-18): YES, with one build step.** Stock
+`swift build` + `build.sh` emit none: a probe `AppIntent` + `AppShortcutsProvider`
+compiled into Pear left no `Metadata.appintents` in `build/Pear.app` or `.build`.
+Fix, no Xcode project: (1) `swift build -c release -Xswiftc -emit-const-values
+-Xswiftc -Xfrontend -Xswiftc -const-gather-protocols-file -Xswiftc -Xfrontend
+-Xswiftc <list>`, `<list>` a committed plain JSON array of the names in the
+toolchain's `usr/share/swift/SwiftConstantValues/AppIntents.json` (`--build-system
+native` rejects that file's versioned form as "malformed"); (2) before codesign,
+`xcrun appintentsmetadataprocessor --output "$APP/Contents/Resources" --toolchain-dir
+"$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain" --module-name PearCompanion
+--sdk-root "$(xcrun --sdk macosx --show-sdk-path)" --xcode-version <xcodebuild
+-version build, e.g. 27A9275> --platform-family macOS --deployment-target 14.0
+--target-triple "$(uname -m)-apple-macos14.0" --bundle-identifier
+com.rawsalmon69.pear.companion --binary-file "$APP/Contents/MacOS/Pear"
+--source-file-list <file of Sources/PearCompanion/**/*.swift> --swift-const-vals-list
+<file of found PearCompanion*.swiftconstvalues> --compile-time-extraction
+--deployment-aware-processing --no-app-shortcuts-localization --force`, which writes
+`Metadata.appintents/{extract.actionsdata,version.json}`. Find the const-values file,
+don't hardcode it: it lands in `.build/out/Intermediates.noindex/…` (SwiftBuild) or
+`.build/<triple>/release/PearCompanion.build/` (native). Evidence: a Developer
+ID-signed Pear copy under a throwaway bundle ID got LaunchServices `base flags:
+link-enabled` (real Pear has none); a tiny SwiftPM app built the same way appeared in
+Shortcuts' action index after one launch (`~/Library/Shortcuts/ToolKit` `Tools` row
+`….TinySpikeIntent|appIntent`, "Tiny Spike Action"). Before any launch, linkd logs
+`Rejecting … is not trusted` for an unnotarized bundle (spctl: "Unnotarized
+Developer ID"), so a fresh dev build must be opened once; notarized release not
+tested. The metadata is plain resources sealed by the existing codesign, as in any
+Xcode-built notarized app. Only `build.sh` needs the steps (both workflows call it).
+Seen while testing: on Swift 6.4's default SwiftBuild backend, products land in
+`.build/out/Products/Release`, which `build.sh`'s case-sensitive `-path '*release*'`
+misses, so a local build ships without Sparkle or the resource bundle. Owner check:
+the action shows in the Shortcuts app.
+
 ## Architecture
 
 - **`Tool` protocol + `ToolRegistry`** (`Tools/Tool.swift`): every feature is a
