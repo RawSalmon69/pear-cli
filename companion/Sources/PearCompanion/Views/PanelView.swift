@@ -1,9 +1,10 @@
 import SwiftUI
 import AppKit
 
-/// The panel: the cat and a search field on top, then one compact list of every
-/// enabled tool. `PanelModel` makes every decision (rows, selection, what a key
-/// does, the cat's line); this view renders it and forwards keys.
+/// The panel: the cat and a search field on top, the four pinned tiles, then one
+/// compact list of every other enabled tool. `PanelModel` makes every decision
+/// (tiles, rows, selection, what a key does, the cat's line); this view renders
+/// it and forwards keys.
 struct PanelView: View {
     @Environment(AppEnvironment.self) private var env
     /// Closes the panel. Esc on an empty search calls it.
@@ -11,6 +12,8 @@ struct PanelView: View {
 
     @State private var query = ""
     @State private var selection = 0
+    @State private var pins = Prefs.pinnedTools()
+    @State private var pickYourFourDismissed = Prefs.isPickYourFourDismissed()
     @State private var popovers = TilePopoverState()
 
     /// Tools with a row, in offer order. `all` already applies the enabled and
@@ -25,6 +28,8 @@ struct PanelView: View {
                     aliases: $0.aliases, shortcut: env.tools.hotkeyLabel(for: $0.id))
             },
             problems: PanelProblem.current(diskUsedFraction: env.stats.diskUsedFraction),
+            pins: pins,
+            pickYourFourDismissed: pickYourFourDismissed,
             hasUnseenNote: FeatureFlags.coupleNote && env.hasUnseenIncoming,
             query: query,
             selection: selection)
@@ -46,6 +51,10 @@ struct PanelView: View {
             if case .expired(let reason) = env.entitlement.entitlement {
                 LockedStateCard(reason: reason)
             }
+            if model.showsPickYourFour {
+                PickYourFourCard(dismiss: dismissPickYourFour)
+            }
+            pinnedRow(model)
             toolList(model)
             BottomBar()
         }
@@ -96,6 +105,38 @@ struct PanelView: View {
         }
     }
 
+    // MARK: Pins
+
+    private func togglePin(_ id: String) {
+        var next = model
+        next.togglePin(id)
+        pins = next.pins
+        pickYourFourDismissed = next.pickYourFourDismissed
+        Prefs.setPinnedTools(next.pins)
+    }
+
+    private func dismissPickYourFour() {
+        pickYourFourDismissed = true
+        Prefs.dismissPickYourFour()
+    }
+
+    @ViewBuilder
+    private func pinnedRow(_ model: PanelModel) -> some View {
+        if !model.pinned.isEmpty {
+            HStack(spacing: Theme.Space.small) {
+                ForEach(model.pinned, id: \.id) { entry in
+                    if let tool = tools.first(where: { $0.id == entry.id }) {
+                        anchored(tool, pinned: model.isPinned(tool.id)) {
+                            PinnedTile(entry: entry, selected: entry.id == model.selectedID) {
+                                activate(tool)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: List
 
     @ViewBuilder
@@ -108,22 +149,30 @@ struct PanelView: View {
                 .padding(.vertical, Theme.Space.large)
         } else {
             VStack(spacing: 0) {
-                ForEach(Array(model.rows.enumerated()), id: \.element.id) { index, entry in
+                ForEach(model.rows, id: \.id) { entry in
                     if let tool = tools.first(where: { $0.id == entry.id }) {
-                        row(tool, entry, selected: index == model.selectedIndex)
+                        anchored(tool, pinned: model.isPinned(tool.id)) {
+                            ToolRow(entry: entry, status: tool.status,
+                                    selected: entry.id == model.selectedID) {
+                                activate(tool)
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
+    /// A tile or a row: the right-click Pin / Unpin, and a popover tool's popover
+    /// anchored to it. A tool is never a tile and a row at once, so it has one anchor.
     @ViewBuilder
-    private func row(_ tool: any Tool, _ entry: PanelModel.Entry, selected: Bool) -> some View {
-        let row = ToolRow(entry: entry, status: tool.status, selected: selected) {
-            activate(tool)
+    private func anchored(_ tool: any Tool, pinned: Bool,
+                          @ViewBuilder _ anchor: () -> some View) -> some View {
+        let view = anchor().contextMenu {
+            Button(pinned ? "Unpin" : "Pin") { togglePin(tool.id) }
         }
         if case .popover(let content) = tool.entry {
-            row.popover(
+            view.popover(
                 isPresented: Binding(
                     get: { popovers.activeID == tool.id },
                     set: { if !$0 { popovers.dismissed(tool.id) } }
@@ -135,7 +184,7 @@ struct PanelView: View {
                     .onDisappear { popovers.didDismiss(tool.id) }
             }
         } else {
-            row
+            view
         }
     }
 
@@ -576,6 +625,93 @@ struct ToolRow: View {
         .focusable(false)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
+    }
+}
+
+/// One pinned tool: big icon, name, and its shortcut in a key label so it is
+/// learned by sight. Flat fill, never glass: it sits on the panel's own glass.
+struct PinnedTile: View {
+    let entry: PanelModel.Entry
+    let selected: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: Theme.Space.xSmall) {
+                Image(systemName: entry.icon)
+                    .font(Theme.Typography.title(.medium))
+                    .foregroundStyle(selected ? Theme.accent : .primary)
+                    .frame(height: Theme.Space.xLarge)
+                Text(entry.title)
+                    .font(Theme.Typography.small(.medium))
+                    .lineLimit(1)
+                if let shortcut = entry.shortcut {
+                    Text(shortcut)
+                        .font(Theme.Typography.tiny(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, Theme.Space.xSmall)
+                        .background(
+                            RoundedRectangle(cornerRadius: Theme.Radius.small)
+                                .strokeBorder(.tertiary)
+                        )
+                } else {
+                    Text(entry.shortcutText)
+                        .font(Theme.Typography.tiny())
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Theme.Space.small)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.medium)
+                    .fill(selected ? Theme.accentSoft
+                          : hovering ? Theme.accentSoft.opacity(0.5) : Color.primary.opacity(0.05))
+            )
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help(entry.title)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
+    }
+}
+
+/// The one-time hint that pins exist. Gone for good once closed or once any pin
+/// changes; `PanelModel.showsPickYourFour` decides.
+struct PickYourFourCard: View {
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Space.small) {
+            Image(systemName: "pin.fill")
+                .font(Theme.Typography.body())
+                .foregroundStyle(Theme.accent)
+            VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
+                Text("Pick your four")
+                    .font(Theme.Typography.body(.semibold))
+                Text("Right-click any tool to pin it to the top, or unpin one you don't use.")
+                    .font(Theme.Typography.small())
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .font(Theme.Typography.small(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+            .help("Dismiss")
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(Theme.Space.medium)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.medium)
+                .fill(Theme.accentSoft)
+        )
     }
 }
 

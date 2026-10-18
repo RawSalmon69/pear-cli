@@ -88,18 +88,31 @@ the action shows in the Shortcuts app.
   right/control-click pops a native menu (Check for Updates…, Quit Pear) by
   setting `statusItem.menu` only for that click — never leave it set.
 - **Panel structure** (`Views/PanelView.swift`, `Views/PanelModel.swift`): the
-  cat + a search field (focused on open) on top, the cat's line under it, then
-  one compact list of every enabled tool (icon, name, optional live `Tool.status`
-  such as Switches "2 on", shortcut label or "no shortcut"), then the bottom bar.
+  cat + a search field (focused on open) on top, the cat's line under it, the
+  one-time "Pick your four" card, four big pinned tiles (icon, name, shortcut in
+  a key label), then one compact list of every other enabled tool (icon, name,
+  optional live `Tool.status` such as Switches "2 on", shortcut label or "no
+  shortcut"), then the bottom bar. **Pin fill rule:** the user's pins in order
+  that are enabled, then enabled unpinned tools in offer order, up to four;
+  fewer enabled tools give fewer tiles, never placeholders. Defaults are
+  Screenshot, Grab Text, Clipboard, Shelf (`Prefs.defaultPinnedTools`). Right-click
+  a tile or row for Pin / Unpin: Unpin pins the next tool into the freed slot (so
+  it never refills with the tool just unpinned); Pin with four enabled pins
+  already showing replaces the fourth; disabled pins stay stored and come back
+  when the tool does. While searching the tiles and card hide and results span
+  every tool. Arrows walk tiles left to right, then the list, so Return on open
+  runs the first pin. Pins and the card live in `Prefs` (`pinnedTools` /
+  `setPinnedTools`, which Settings calls too; any pin change retires the card for
+  good, as does closing it).
   **`PanelModel` is the only decision point** — a pure value type, tested in
-  `PanelModelTests`: rows (case-insensitive substring on title, summary and
+  `PanelModelTests`: tiles, rows (case-insensitive substring on title, summary and
   `Tool.aliases`), clamped selection, ↑/↓/↩ and two-stage Esc (clear the search,
   then close), the cat's line and mood. The view renders it and forwards keys.
   Keys arrive through the AppKit search field's `doCommandBy` delegate and are
   swallowed there, so Esc never also hits `PearPanel.cancelOperation`. Popover
-  tools open from their row through the same `TilePopoverState` the tile grid
-  used; Return and a click share one `activate` path. Extend the model (pins,
-  recents, permission problems) rather than adding decisions to the view.
+  tools open from their tile or row through the same `TilePopoverState`; Return
+  and a click share one `activate` path. Extend the model (recents, permission
+  problems) rather than adding decisions to the view.
 - **Panel problems** are `PanelProblem` cases declared in priority order, highest
   first, so `problems.min()` is the line the cat says; any problem makes it
   worried, none leaves the line empty and the cat idle. Planned order: Screen

@@ -58,6 +58,35 @@ enum Prefs {
         return max(1, stored ?? 5)
     }
 
+    // MARK: - Panel pins
+
+    static let pinnedToolsKey = "panelPinnedTools"
+    static let pickYourFourDismissedKey = "panelPickYourFourDismissed"
+    /// Windows defaults off, so it is not here.
+    static let defaultPinnedTools = ["screenshot", "ocr", "clipboard", "shelf"]
+
+    /// The user's pinned tool ids, in order. Absence means the defaults; an
+    /// empty list is a real choice and stays empty (the panel still fills its
+    /// row from the other tools).
+    static func pinnedTools(defaults: UserDefaults = .standard) -> [String] {
+        defaults.stringArray(forKey: pinnedToolsKey) ?? defaultPinnedTools
+    }
+
+    /// Any pin change also retires the "Pick your four" card for good: whoever
+    /// changed a pin has found pinning. The panel and Settings both call this.
+    static func setPinnedTools(_ ids: [String], defaults: UserDefaults = .standard) {
+        defaults.set(ids, forKey: pinnedToolsKey)
+        dismissPickYourFour(defaults: defaults)
+    }
+
+    static func isPickYourFourDismissed(defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: pickYourFourDismissedKey)
+    }
+
+    static func dismissPickYourFour(defaults: UserDefaults = .standard) {
+        defaults.set(true, forKey: pickYourFourDismissedKey)
+    }
+
     // MARK: - Per-tool toggles
 
     /// Disabled tools are never registered, so their hotkeys and engines
