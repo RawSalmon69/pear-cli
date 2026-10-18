@@ -4,7 +4,7 @@ import SwiftUI
 enum MascotMood {
     case idle
     case excited // unseen note waiting
-    case worried // disk nearly full
+    case worried // the panel is showing a problem
 
     func frame(blinking: Bool) -> String {
         switch self {
@@ -59,20 +59,7 @@ struct MascotView: View {
         switch mood {
         case .idle: return "relaxed"
         case .excited: return "New note"
-        case .worried: return "Disk almost full"
+        case .worried: return "worried"
         }
-    }
-}
-
-/// Time-of-day greeting for the header, addressed to the Mac's login user
-/// by first name (falls back to a plain greeting for empty account names).
-func greeting(now: Date = Date(), fullName: String = NSFullUserName()) -> String {
-    let first = fullName.split(separator: " ").first.map(String.init) ?? ""
-    let name = first.isEmpty ? "" : ", \(first)"
-    switch Calendar.current.component(.hour, from: now) {
-    case 5..<12: return "Good morning\(name)"
-    case 12..<17: return "Good afternoon\(name)"
-    case 17..<22: return "Good evening\(name)"
-    default: return first.isEmpty ? "Up late?" : "Up late, \(first)?"
     }
 }

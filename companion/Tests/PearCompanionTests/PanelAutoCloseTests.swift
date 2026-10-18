@@ -65,7 +65,7 @@ final class PanelAutoCloseTests: XCTestCase {
 
     func testTallerThanScreenPinsToBottom() {
         // Panel taller than the visible height: both clamps conflict, bottom
-        // wins (origin = minY + 8) so at least the top / greeting is on-screen.
+        // wins (origin = minY + 8) so at least the top / header is on-screen.
         XCTAssertEqual(
             PanelController.clampedVerticalOrigin(desiredY: 500, height: 1000, visible: visible),
             8)

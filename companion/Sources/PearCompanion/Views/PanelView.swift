@@ -1,42 +1,141 @@
 import SwiftUI
 import AppKit
 
-/// The panel. Hierarchy is carried by whitespace (20 pt between sections,
-/// 8 pt within) and one dominant element: the latest note from the other
-/// side, shown as the hero card. Everything else supports it.
+/// The panel: the cat and a search field on top, then one compact list of every
+/// enabled tool. `PanelModel` makes every decision (rows, selection, what a key
+/// does, the cat's line); this view renders it and forwards keys.
 struct PanelView: View {
     @Environment(AppEnvironment.self) private var env
+    /// Closes the panel. Esc on an empty search calls it.
+    let close: () -> Void
+
+    @State private var query = ""
+    @State private var selection = 0
+    @State private var popovers = TilePopoverState()
+
+    /// Tools with a row, in offer order. `all` already applies the enabled and
+    /// paywall gates.
+    private var tools: [any Tool] { env.tools.all.filter(\.showsTile) }
+
+    private var model: PanelModel {
+        PanelModel(
+            entries: tools.map {
+                PanelModel.Entry(
+                    id: $0.id, title: $0.title, icon: $0.icon, summary: $0.summary,
+                    aliases: $0.aliases, shortcut: env.tools.hotkeyLabel(for: $0.id))
+            },
+            problems: PanelProblem.current(diskUsedFraction: env.stats.diskUsedFraction),
+            hasUnseenNote: FeatureFlags.coupleNote && env.hasUnseenIncoming,
+            query: query,
+            selection: selection)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.sectionGap) {
-            HeaderSection()
+        let model = model
+        VStack(alignment: .leading, spacing: Theme.Space.large) {
+            PanelHeader(model: model, onKey: send)
             if FeatureFlags.coupleNote {
                 ConnectionBanner()
                 NotesSection()
             }
             // `unlocksTools` is false exactly when the entitlement is `.expired`,
-            // and the reason decides the wording — so match on it here. The grid
+            // and the reason decides the wording — so match on it here. The list
             // stays below on purpose: while locked it holds only the two tools
-            // that survive expiry, and those tiles are the user's way back to
+            // that survive expiry, and those rows are the user's way back to
             // their own notes and shelf items.
             if case .expired(let reason) = env.entitlement.entitlement {
                 LockedStateCard(reason: reason)
             }
-            ToolsSection()
+            toolList(model)
             BottomBar()
         }
-        .padding(16)
+        .padding(Theme.edgePadding)
         .frame(width: 360)
         .fixedSize(horizontal: false, vertical: true)
-        // The panel is a mouse surface; no control should ever wear a focus
+        // The search field carries the keyboard; no button should wear a focus
         // ring just because the window became key.
         .focusEffectDisabled()
+        // The panel can be torn down with a popover still up, skipping the
+        // popover's dismissal handshake; without this reset the stale ID left
+        // that row dead on every reopen.
+        .onDisappear { popovers.panelClosed() }
         .task {
             if FeatureFlags.coupleNote {
                 await env.messaging.refresh()
                 markVisibleSeen()
             }
-            await env.stats.refresh()
+        }
+    }
+
+    // MARK: Keys
+
+    private func send(_ key: PanelModel.Key) {
+        var next = model
+        let command = next.handle(key)
+        query = next.query
+        selection = next.selection
+        switch command {
+        case .run(let id):
+            if let tool = tools.first(where: { $0.id == id }) { activate(tool) }
+        case .close:
+            close()
+        case nil:
+            break
+        }
+    }
+
+    /// One path for a click and for Return, so a row behaves the same either way.
+    private func activate(_ tool: any Tool) {
+        switch tool.entry {
+        case .action(let run):
+            run()
+        case .popover:
+            if popovers.request(tool.id) {
+                Task { @MainActor in popovers.present(tool.id) }
+            }
+        }
+    }
+
+    // MARK: List
+
+    @ViewBuilder
+    private func toolList(_ model: PanelModel) -> some View {
+        if model.showsNoMatch {
+            Text("No tools match")
+                .font(Theme.Typography.body())
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.Space.large)
+        } else {
+            VStack(spacing: 0) {
+                ForEach(Array(model.rows.enumerated()), id: \.element.id) { index, entry in
+                    if let tool = tools.first(where: { $0.id == entry.id }) {
+                        row(tool, entry, selected: index == model.selectedIndex)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func row(_ tool: any Tool, _ entry: PanelModel.Entry, selected: Bool) -> some View {
+        let row = ToolRow(entry: entry, status: tool.status, selected: selected) {
+            activate(tool)
+        }
+        if case .popover(let content) = tool.entry {
+            row.popover(
+                isPresented: Binding(
+                    get: { popovers.activeID == tool.id },
+                    set: { if !$0 { popovers.dismissed(tool.id) } }
+                ),
+                arrowEdge: .bottom
+            ) {
+                content()
+                    .onAppear { popovers.didPresent(tool.id) }
+                    .onDisappear { popovers.didDismiss(tool.id) }
+            }
+        } else {
+            row
         }
     }
 
@@ -52,34 +151,107 @@ struct PanelView: View {
 
 // MARK: - Header
 
-struct HeaderSection: View {
-    @Environment(AppEnvironment.self) private var env
-
-    private var mood: MascotMood {
-        if let fraction = env.stats.diskUsedFraction, fraction > 0.9 { return .worried }
-        if env.hasUnseenIncoming { return .excited }
-        return .idle
-    }
+/// The cat beside the search field, with the cat's line under the field: the
+/// top current problem, or nothing at all.
+struct PanelHeader: View {
+    let model: PanelModel
+    let onKey: (PanelModel.Key) -> Void
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            MascotView(mood: mood)
+        HStack(alignment: .center, spacing: Theme.Space.medium) {
+            MascotView(mood: model.mood)
                 .frame(width: 54, alignment: .leading)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(greeting())
-                    .font(Theme.title)
-                if let health = env.stats.healthMessage {
-                    Text(health)
-                        .font(Theme.caption)
+            VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
+                HStack(spacing: Theme.Space.small) {
+                    Image(systemName: "magnifyingglass")
+                        .font(Theme.Typography.body())
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                } else if mood == .worried {
-                    Text("Your disk is nearly full")
-                        .font(Theme.caption)
+                    PanelSearchField(text: model.query, onKey: onKey)
+                        .frame(maxWidth: .infinity)
+                }
+                .padding(.horizontal, Theme.Space.small)
+                .padding(.vertical, Theme.Space.xSmall)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.Radius.small)
+                        .fill(.quaternary.opacity(0.5))
+                )
+                if !model.catLine.isEmpty {
+                    Text(model.catLine)
+                        .font(Theme.Typography.small(.semibold))
                         .foregroundStyle(Theme.warn)
+                        .lineLimit(1)
                 }
             }
-            Spacer(minLength: 0)
+        }
+    }
+}
+
+/// The search box, in AppKit because its delegate's `doCommandBy` is the one
+/// dependable place to see ↑ ↓ ↩ and Esc while the field editor has focus. Each
+/// is forwarded to the model and swallowed, so Esc never also reaches the
+/// panel's own `cancelOperation` and closes it behind the model's back.
+struct PanelSearchField: NSViewRepresentable {
+    let text: String
+    let onKey: (PanelModel.Key) -> Void
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = AutoFocusTextField()
+        field.placeholderString = "Search tools"
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.usesSingleLineMode = true
+        field.lineBreakMode = .byTruncatingTail
+        let base = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        field.font = base.fontDescriptor.withDesign(.rounded)
+            .flatMap { NSFont(descriptor: $0, size: base.pointSize) } ?? base
+        field.delegate = context.coordinator
+        return field
+    }
+
+    func updateNSView(_ field: NSTextField, context: Context) {
+        context.coordinator.onKey = onKey
+        if field.stringValue != text { field.stringValue = text }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(onKey: onKey) }
+
+    @MainActor
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var onKey: (PanelModel.Key) -> Void
+
+        init(onKey: @escaping (PanelModel.Key) -> Void) { self.onKey = onKey }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSTextField else { return }
+            onKey(.typed(field.stringValue))
+        }
+
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            let key: PanelModel.Key
+            switch selector {
+            case #selector(NSResponder.moveUp(_:)): key = .up
+            case #selector(NSResponder.moveDown(_:)): key = .down
+            case #selector(NSResponder.insertNewline(_:)): key = .enter
+            case #selector(NSResponder.cancelOperation(_:)): key = .escape
+            default: return false
+            }
+            onKey(key)
+            return true
+        }
+    }
+}
+
+/// Takes first responder once it is in a window, so typing lands in the search
+/// the moment the panel opens. Deferred a turn: the controller makes the panel
+/// key only after installing its content.
+private final class AutoFocusTextField: NSTextField {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        Task { @MainActor [weak self] in
+            guard let self, let window = self.window else { return }
+            window.makeFirstResponder(self)
         }
     }
 }
@@ -363,95 +535,42 @@ struct TilePopoverState: Equatable {
     }
 }
 
-/// Data-driven from the tool registry, grouped by category so a dozen tools
-/// read as a few labeled rows instead of one wall of tiles.
-struct ToolsSection: View {
-    @Environment(AppEnvironment.self) private var env
-    @State private var popovers = TilePopoverState()
-
-    private let columns = Array(
-        repeating: GridItem(.flexible(), spacing: Theme.itemGap), count: 4)
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
-            ForEach(ToolCategory.allCases, id: \.self) { category in
-                let tools = env.tools.all.filter { $0.category == category && $0.showsTile }
-                if !tools.isEmpty {
-                    SectionLabel(text: category.title)
-                    LazyVGrid(columns: columns, spacing: Theme.itemGap) {
-                        ForEach(tools, id: \.id) { tile(for: $0) }
-                    }
-                }
-            }
-        }
-        // MenuBarExtra can tear the panel down with a popover still up,
-        // skipping the popover's dismissal handshake; without this reset the
-        // stale ID left that tile dead on every reopen.
-        .onDisappear { popovers.panelClosed() }
-    }
-
-    @ViewBuilder
-    private func tile(for tool: any Tool) -> some View {
-        // Effective chord (override or default), read from the registry so a
-        // custom shortcut shows on the tile the moment it's set.
-        let hint = env.tools.hotkeyLabel(for: tool.id)
-        switch tool.entry {
-        case .action(let run):
-ToolTile(symbol: tool.icon, label: tool.title, hint: hint, action: run)
-        case .popover(let content):
-            ToolTile(symbol: tool.icon, label: tool.title, hint: hint) {
-                if popovers.request(tool.id) {
-                    Task { @MainActor in popovers.present(tool.id) }
-                }
-            }
-            .popover(
-                isPresented: Binding(
-                    get: { popovers.activeID == tool.id },
-                    set: { if !$0 { popovers.dismissed(tool.id) } }
-                ),
-                arrowEdge: .bottom
-            ) {
-                content()
-                    .onAppear { popovers.didPresent(tool.id) }
-                    .onDisappear { popovers.didDismiss(tool.id) }
-            }
-        }
-    }
-}
-
-struct ToolTile: View {
-    let symbol: String
-    let label: String
-    let hint: String?
+/// One tool in the panel list: icon, name, an optional live state, and the
+/// shortcut (or "no shortcut"). Flat fill, never glass: it sits on the panel's
+/// own glass. Not focusable: the search field carries the keyboard.
+struct ToolRow: View {
+    let entry: PanelModel.Entry
+    let status: String?
+    let selected: Bool
     let action: () -> Void
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 5) {
-                Image(systemName: symbol).font(.system(size: 16, weight: .medium))
-                Text(label).font(.system(size: 10, weight: .medium, design: .rounded))
-                // Always render the hint line (blank when none) so every tile
-                // is the same height whether or not it has a shortcut.
-                Text(hint ?? " ")
-                    .font(.system(size: 8, design: .rounded))
-                    .foregroundStyle(.quaternary)
-            }
-            .foregroundStyle(hovering ? Theme.accent : .primary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .frame(height: 68)
-            // Make the whole card hittable — the glass fill alone leaves the
-            // padding around the glyph/label dead, which read as a hard-to-hit
-            // tile (worst on the wide Windows tile).
-            .contentShape(Rectangle())
-            .glassCard(cornerRadius: 12)
-            .overlay {
-                if hovering {
-                    RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(Theme.accent.opacity(0.5), lineWidth: 1)
+            HStack(spacing: Theme.Space.small) {
+                Image(systemName: entry.icon)
+                    .font(Theme.Typography.body(.medium))
+                    .foregroundStyle(selected ? Theme.accent : .secondary)
+                    .frame(width: Theme.Space.large)
+                Text(entry.title)
+                    .font(Theme.Typography.body())
+                Spacer(minLength: Theme.Space.small)
+                if let status {
+                    Text(status)
+                        .font(Theme.Typography.small(.medium))
+                        .foregroundStyle(Theme.accent)
                 }
+                Text(entry.shortcutText)
+                    .font(Theme.Typography.small())
+                    .foregroundStyle(.tertiary)
             }
+            .padding(.horizontal, Theme.Space.small)
+            .padding(.vertical, Theme.Space.xSmall)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.small)
+                    .fill(selected ? Theme.accentSoft : hovering ? Theme.accentSoft.opacity(0.5) : .clear)
+            )
         }
         .buttonStyle(.plain)
         .focusable(false)

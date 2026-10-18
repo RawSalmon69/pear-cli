@@ -12,6 +12,7 @@ final class KeyCluTool: Tool {
     let icon = "keyboard"
     let category = ToolCategory.utilities
     let summary = "Show the keyboard shortcuts of the app in front."
+    let aliases = ["keyclu", "cheat sheet"]
     let hotkey: HotKeyChord? = HotKeyChord(
         keyCode: kVK_ANSI_K, modifiers: controlKey | shiftKey, label: "⌃⇧K")
 

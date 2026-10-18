@@ -14,8 +14,7 @@ extension Notification.Name {
 @Observable
 final class AppEnvironment {
     let messaging: MessagingService
-    /// Feeds the panel greeting's health line and mascot mood. What is left of
-    /// the native samplers after the Monitor tool was removed in 2.26.1.
+    /// The root disk's used fraction, behind the cat's "disk nearly full" line.
     let stats: PearStatsService
     let updater: UpdaterService?
     let tools: ToolRegistry

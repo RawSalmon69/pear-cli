@@ -200,7 +200,10 @@ final class PanelController: NSObject {
         // Standalone the view needs its own glass, or it renders transparent
         // over the desktop — the window chrome that `MenuBarExtra` used to
         // supply. (Same fix the standalone clipboard picker makes.)
-        let root = PanelView()
+        // One synchronous volume query, so the cat's line is right on the first
+        // frame instead of popping in a beat later.
+        env.stats.refresh()
+        let root = PanelView(close: { [weak self] in self?.hide() })
             .environment(env)
             .glassCard(cornerRadius: 16)
             // The panel hangs from the menu bar, so on a notched Mac its safe-
@@ -240,6 +243,8 @@ final class PanelController: NSObject {
         // so a press on them still interacts — same one-liner the scratchpad
         // window uses with editable content.
         panel.isMovableByWindowBackground = true
+        // Only reached when the search field is not first responder: the field
+        // swallows Esc and hands it to `PanelModel` (clear, then close).
         panel.onCancel = { [weak self] in self?.hide() }
         // Delegate drives the close-on-focus-loss toggle and drag detection.
         panel.delegate = self
@@ -256,7 +261,8 @@ final class PanelController: NSObject {
 
     /// Sizes the panel to its SwiftUI content and anchors it just under the
     /// status item, clamped on-screen. Re-runs from the hosting view's `layout()`
-    /// so the async stats fill-in (or a battery row appearing) never clips.
+    /// so a content change (a search narrowing the list, a problem line
+    /// appearing) never clips.
     private func fitPanelToContent() {
         guard let panel, let host,
               let buttonWindow = statusItem.button?.window else { return }
@@ -274,7 +280,7 @@ final class PanelController: NSObject {
         var origin: NSPoint
         if userMoved {
             // Keep the user's top-left corner; only grow/shrink downward so a
-            // late content change (a note arrives, the battery row appears)
+            // late content change (a note arrives, the search narrows the list)
             // doesn't yank the panel back under the menu bar.
             origin = NSPoint(x: panel.frame.minX, y: panel.frame.maxY - size.height)
         } else {
@@ -294,7 +300,7 @@ final class PanelController: NSObject {
     /// Vertical origin (bottom-left, AppKit coords) for a panel of `height`
     /// whose desired position is `desiredY`, clamped so neither the top nor the
     /// bottom leaves `visible`. The top clamp comes first so a menu-bar-anchored
-    /// panel whose top would sit above the visible area (greeting clipped
+    /// panel whose top would sit above the visible area (header clipped
     /// off-screen) is pulled down; the bottom clamp then wins if the panel is
     /// taller than the visible height. Pure, so it's testable without AppKit.
     static func clampedVerticalOrigin(desiredY: CGFloat, height: CGFloat, visible: NSRect) -> CGFloat {

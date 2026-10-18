@@ -84,6 +84,7 @@ final class OCRTool: Tool {
     let icon = "text.viewfinder"
     let category = ToolCategory.capture
     let summary = "Copy text out of any region on screen."
+    let aliases = ["ocr"]
     let hotkey: HotKeyChord? = HotKeyChord(
         keyCode: kVK_ANSI_T, modifiers: controlKey | shiftKey, label: "⌃⇧T")
 

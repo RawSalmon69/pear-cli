@@ -54,9 +54,29 @@ push/PR.
   draggable, recreate-per-open so idle cost ~0. Left click toggles the panel;
   right/control-click pops a native menu (Check for Updates…, Quit Pear) by
   setting `statusItem.menu` only for that click — never leave it set.
+- **Panel structure** (`Views/PanelView.swift`, `Views/PanelModel.swift`): the
+  cat + a search field (focused on open) on top, the cat's line under it, then
+  one compact list of every enabled tool (icon, name, optional live `Tool.status`
+  such as Switches "2 on", shortcut label or "no shortcut"), then the bottom bar.
+  **`PanelModel` is the only decision point** — a pure value type, tested in
+  `PanelModelTests`: rows (case-insensitive substring on title, summary and
+  `Tool.aliases`), clamped selection, ↑/↓/↩ and two-stage Esc (clear the search,
+  then close), the cat's line and mood. The view renders it and forwards keys.
+  Keys arrive through the AppKit search field's `doCommandBy` delegate and are
+  swallowed there, so Esc never also hits `PearPanel.cancelOperation`. Popover
+  tools open from their row through the same `TilePopoverState` the tile grid
+  used; Return and a click share one `activate` path. Extend the model (pins,
+  recents, permission problems) rather than adding decisions to the view.
+- **Panel problems** are `PanelProblem` cases declared in priority order, highest
+  first, so `problems.min()` is the line the cat says; any problem makes it
+  worried, none leaves the line empty and the cat idle. Planned order: Screen
+  Recording missing, Accessibility missing for an enabled tool that needs it,
+  disk over 90% used (the only one today). The greeting is gone. The excited
+  (unseen note) mood is behind `FeatureFlags.coupleNote`. The disk read is one
+  synchronous volume query in `PanelController.show()`; nothing waits on open.
 - **Services** (`Services/`): Screenshot, OCR (Vision), BackgroundRemoval
   (Vision + optional HD model), HDBackgroundModel (BEN2 download/manage),
-  Clipboard history, CloudKit messaging (flagged off), Stats (native samplers),
+  Clipboard history, CloudKit messaging (flagged off), Stats (disk-used fraction only),
   HotKeyManager (`.shared`, Carbon hotkeys → tokens), Updater (Sparkle),
   CommandRunner/ScreenCapture seams.
 - **`Prefs`** (`Support/Prefs.swift`): all UserDefaults keys in one place.

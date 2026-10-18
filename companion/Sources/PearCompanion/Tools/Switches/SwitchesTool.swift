@@ -17,6 +17,15 @@ final class SwitchesTool: Tool {
 
     var acceptsHotkey: Bool { false }
 
+    /// How many toggles are on, as last read. Keep Awake is always current
+    /// (Pear holds the assertion); the rest are as fresh as the popover's last
+    /// `refresh()` — no process is spawned just to label a row.
+    var status: String? {
+        let on = [model.keepAwakeOn, model.lidClosedOn, model.hideDesktopOn, model.showHiddenOn]
+            .filter { $0 }.count
+        return on > 0 ? "\(on) on" : nil
+    }
+
     var entry: ToolEntry {
         .popover { [model] in AnyView(SwitchesView(model: model)) }
     }

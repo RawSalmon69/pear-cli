@@ -2,8 +2,8 @@ import XCTest
 
 @testable import PearCompanion
 
-/// The CPU delta math outlived the Monitor tool: RunCat's animation speed and
-/// the panel greeting's health line both still run on it.
+/// The CPU delta math outlived the Monitor tool: RunCat's animation speed still
+/// runs on it.
 final class SystemSamplerTests: XCTestCase {
     func testCoreUsagesTwoCores() {
         // core0: user +50, system +20, idle +180, nice +0 -> 70 / 250 = 0.28

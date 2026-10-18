@@ -46,6 +46,12 @@ protocol Tool: AnyObject {
     var category: ToolCategory { get }
     /// One-line description shown in the help sheet. Defaults to empty.
     var summary: String { get }
+    /// Extra words the panel search matches besides title and summary
+    /// (Grab Text: "ocr"). Defaults empty.
+    var aliases: [String] { get }
+    /// Short live state on the tool's panel row ("2 on"). Defaults nil; read in
+    /// the row's body, so an `@Observable` source redraws it.
+    var status: String? { get }
     /// Whether the tool is on for a fresh install. Defaults true; a tool that
     /// alters the system on launch (the menu-bar hider) opts out.
     var defaultEnabled: Bool { get }
@@ -86,6 +92,8 @@ protocol Tool: AnyObject {
 extension Tool {
     var category: ToolCategory { .utilities }
     var summary: String { "" }
+    var aliases: [String] { [] }
+    var status: String? { nil }
     var defaultEnabled: Bool { true }
     var showsTile: Bool { true }
     var acceptsHotkey: Bool { true }

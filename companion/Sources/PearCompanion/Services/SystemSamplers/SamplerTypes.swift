@@ -1,39 +1,8 @@
 import Foundation
 
-// The small native samplers that outlived the Monitor tool. They feed the
-// panel's greeting line (disk pressure, health message) and RunCat's animation
-// speed, so they are infrastructure rather than part of the removed monitoring
-// UI. Everything here is a value type or a pure function.
-
-/// A breakdown of physical memory. `used` already includes `wired` and
-/// `compressed`; `app = used - wired - compressed`.
-struct MemorySample: Sendable {
-    let total: UInt64
-    let used: UInt64
-    let wired: UInt64
-    let compressed: UInt64
-    let free: UInt64
-
-    /// Used as a 0…1 fraction of physical memory — the single scalar the memory
-    /// history line tracks over time.
-    var usedFraction: Double {
-        total > 0 ? min(1, Double(used) / Double(total)) : 0
-    }
-}
-
-/// Battery detail. Present only on machines that have an internal battery;
-/// desktops yield `nil` and the section is hidden.
-struct BatterySample: Sendable {
-    let percent: Int?
-    let cycleCount: Int?
-    /// maxCapacity / designCapacity, as a whole percent.
-    let healthPercent: Int?
-    let isCharging: Bool
-    /// Minutes to full (charging) or to empty (discharging); nil while the
-    /// estimate is still settling.
-    let timeRemainingMinutes: Int?
-    let chargingWatts: Double?
-}
+// What is left of the native samplers after the Monitor tool was removed: the
+// CPU tick math RunCat's animation speed runs on. The panel's memory, battery
+// and uptime readings went when the panel stopped showing them.
 
 // MARK: - Pure CPU delta math
 
