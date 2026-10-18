@@ -202,7 +202,7 @@ private struct SwitchTile: View {
     @ViewBuilder private var control: some View {
         switch toggle.kind {
         case .toggle:
-            Toggle("", isOn: stateBinding)
+            Toggle(toggle.title, isOn: stateBinding)
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.mini)

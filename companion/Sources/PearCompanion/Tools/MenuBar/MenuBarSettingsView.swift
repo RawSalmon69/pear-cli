@@ -113,7 +113,7 @@ struct MenuBarOptionsView: View {
     private var rehideSection: some View {
         VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Auto-hide after")
-            Picker("", selection: rehideBinding) {
+            Picker("Auto-hide after", selection: rehideBinding) {
                 ForEach(MenuBarManager.autoRehideOptions, id: \.self) { seconds in
                     Text(label(for: seconds)).tag(seconds)
                 }

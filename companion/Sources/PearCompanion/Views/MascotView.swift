@@ -1,4 +1,3 @@
-import Combine
 import SwiftUI
 
 enum MascotMood {
@@ -23,14 +22,14 @@ enum MascotMood {
 }
 
 /// The same cat that walks across `pear status`, sitting in the panel.
-/// Blinks every few seconds; bounces once when excited.
+/// Blinks every few seconds; bounces once when excited. With Reduce Motion on
+/// it does neither, and the blink loop is never started.
 struct MascotView: View {
     let mood: MascotMood
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var blinking = false
     @State private var bounce = false
-
-    private let blinkTimer = Timer.publish(every: 3.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         Text(mood.frame(blinking: blinking))
@@ -40,16 +39,23 @@ struct MascotView: View {
             .fixedSize()
             .multilineTextAlignment(.leading)
             .offset(y: bounce ? -3 : 0)
-            .onReceive(blinkTimer) { _ in
-                guard mood != .worried else { return }
-                blinking = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { blinking = false }
+            // Restarted whenever the mood or Reduce Motion changes: a worried
+            // cat never blinks, and with Reduce Motion on the loop never runs.
+            .task(id: reduceMotion ? nil : mood) {
+                guard !reduceMotion, mood != .worried else { return }
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(3.5))
+                    guard !Task.isCancelled else { return }
+                    blinking = true
+                    try? await Task.sleep(for: .seconds(0.18))
+                    blinking = false
+                }
             }
             .onChange(of: mood == .excited) { _, excited in
-                guard excited else { return }
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.45)) { bounce = true }
+                guard excited, !reduceMotion else { return }
+                withAnimation(Theme.motion(.spring(response: 0.3, dampingFraction: 0.45), reduce: reduceMotion)) { bounce = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { bounce = false }
+                    withAnimation(Theme.motion(.spring(response: 0.3, dampingFraction: 0.6), reduce: reduceMotion)) { bounce = false }
                 }
             }
             .accessibilityLabel("Pear the cat, \(moodLabel)")

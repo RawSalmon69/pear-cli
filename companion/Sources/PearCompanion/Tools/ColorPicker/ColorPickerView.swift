@@ -115,7 +115,7 @@ struct ColorFormatPicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Pick copies")
-            Picker("", selection: $copyFormat) {
+            Picker("Pick copies", selection: $copyFormat) {
                 ForEach(ColorFormat.allCases) { Text($0.label).tag($0.rawValue) }
             }
             .labelsHidden()

@@ -730,6 +730,7 @@ private struct DetailSection<Content: View>: View {
                     .buttonStyle(.plain)
                     .focusable(false)
                     .help(action.help)
+                    .accessibilityLabel(action.help)
                 }
             }
             content()
@@ -787,6 +788,7 @@ private struct Swatch: View {
         .buttonStyle(.plain)
         .focusable(false)
         .help("Copy \(color.hexString)")
+        .accessibilityLabel("Copy \(color.hexString)")
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
         .animation(.easeOut(duration: 0.12), value: copied)
@@ -812,6 +814,7 @@ private struct ZoomButton: View {
         .buttonStyle(.plain)
         .focusable(false)
         .help(help)
+        .accessibilityLabel(help)
         .onHover { hovering = $0 }
     }
 }

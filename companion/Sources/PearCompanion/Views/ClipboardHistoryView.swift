@@ -83,6 +83,7 @@ private struct ClipRow: View {
     let onPin: () -> Void
     let onDiscard: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovering = false
     @State private var dragX: CGFloat = 0
 
@@ -164,7 +165,7 @@ private struct ClipRow: View {
                             withAnimation(.easeOut(duration: 0.18)) { dragX = 400 }
                             onDiscard()
                         } else {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { dragX = 0 }
+                            withAnimation(Theme.motion(.spring(response: 0.3, dampingFraction: 0.7), reduce: reduceMotion)) { dragX = 0 }
                         }
                     }
             )

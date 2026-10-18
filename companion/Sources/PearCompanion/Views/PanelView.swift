@@ -80,9 +80,6 @@ struct PanelView: View {
         .padding(Theme.edgePadding)
         .frame(width: 360)
         .fixedSize(horizontal: false, vertical: true)
-        // The search field carries the keyboard; no button should wear a focus
-        // ring just because the window became key.
-        .focusEffectDisabled()
         // The panel can be torn down with a popover still up, skipping the
         // popover's dismissal handshake; without this reset the stale ID left
         // that row dead on every reopen.
@@ -201,7 +198,6 @@ struct PanelView: View {
                 Button("Open Settings") { SettingsPage.open(.tools) }
                     .font(Theme.Typography.small())
                     .controlSize(.small)
-                    .focusable(false)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, Theme.Space.large)
@@ -275,6 +271,7 @@ struct PanelHeader: View {
                     Image(systemName: "magnifyingglass")
                         .font(Theme.Typography.body())
                         .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                     PanelSearchField(text: model.query, onKey: onKey)
                         .frame(maxWidth: .infinity)
                 }
@@ -294,7 +291,6 @@ struct PanelHeader: View {
                             Button("Fix") { onFix(permission) }
                                 .font(Theme.Typography.small(.semibold))
                                 .controlSize(.small)
-                                .focusable(false)
                                 .accessibilityLabel("Fix: open \(permission.paneName) settings")
                         }
                     }
@@ -315,6 +311,7 @@ struct PanelSearchField: NSViewRepresentable {
     func makeNSView(context: Context) -> NSTextField {
         let field = AutoFocusTextField()
         field.placeholderString = "Search tools"
+        field.setAccessibilityLabel("Search tools")
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
@@ -409,6 +406,7 @@ struct ConnectionBanner: View {
 
 struct NotesSection: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var draft = ""
 
     private var thread: [Message] {
@@ -429,7 +427,7 @@ struct NotesSection: View {
 
             if let hero {
                 HeroNoteCard(message: hero)
-                    .transition(.asymmetric(
+                    .transition(reduceMotion ? .opacity : .asymmetric(
                         insertion: .move(edge: .top).combined(with: .opacity),
                         removal: .opacity
                     ))
@@ -449,7 +447,8 @@ struct NotesSection: View {
 
             Composer(draft: $draft)
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: thread.first?.id)
+        .animation(Theme.motion(.spring(response: 0.35, dampingFraction: 0.8), reduce: reduceMotion),
+                   value: thread.first?.id)
     }
 }
 
@@ -518,6 +517,7 @@ struct CompactNoteRow: View {
                     Image(systemName: "doc.on.doc").font(.system(size: 10))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Copy")
                 .foregroundStyle(.secondary)
             } else {
                 Text(message.sentAt, style: .time)
@@ -652,7 +652,8 @@ struct TilePopoverState: Equatable {
 
 /// One tool in the panel list: icon, name, an optional live state, and the
 /// shortcut (or "no shortcut"). Flat fill, never glass: it sits on the panel's
-/// own glass. Not focusable: the search field carries the keyboard.
+/// own glass. Not focusable: the search field's ↑ ↓ ↩ already reach every row,
+/// and a Tab stop here would draw a second focus beside the selection.
 struct ToolRow: View {
     let entry: PanelModel.Entry
     let status: String?
@@ -696,6 +697,11 @@ struct ToolRow: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
+        .accessibilityLabel(entry.title)
+        .accessibilityValue(
+            [status, needsPermission ? "needs permission" : entry.shortcut]
+                .compactMap { $0 }.joined(separator: ", "))
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
     }
@@ -703,6 +709,7 @@ struct ToolRow: View {
 
 /// One pinned tool: big icon, name, and its shortcut in a key label so it is
 /// learned by sight. Flat fill, never glass: it sits on the panel's own glass.
+/// Not focusable, like `ToolRow`: the search field's arrows walk the tiles.
 struct PinnedTile: View {
     let entry: PanelModel.Entry
     let selected: Bool
@@ -752,6 +759,9 @@ struct PinnedTile: View {
         .buttonStyle(.plain)
         .focusable(false)
         .help(entry.title)
+        .accessibilityLabel(entry.title)
+        .accessibilityValue(needsPermission ? "needs permission" : entry.shortcut ?? "")
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
     }
@@ -760,7 +770,8 @@ struct PinnedTile: View {
 /// One recent capture as a small thumbnail, decoded off the main actor with
 /// ImageIO downsampling and never the full image. The shelf's AppKit drag
 /// overlay carries the click and the drag: SwiftUI's `.onDrag` does not start a
-/// session in a non-activating panel. Flat fill, never glass.
+/// session in a non-activating panel. The button under it never sees a click; it
+/// is the Tab stop and the VoiceOver press. Flat fill, never glass.
 struct RecentCaptureTile: View {
     let url: URL
     let open: () -> Void
@@ -771,27 +782,27 @@ struct RecentCaptureTile: View {
     private static let maxPixel = 240
 
     var body: some View {
-        RoundedRectangle(cornerRadius: Theme.Radius.small)
-            .fill(Color.primary.opacity(0.05))
-            .frame(height: 64)
-            .overlay {
-                if let thumbnail {
-                    Image(nsImage: thumbnail).resizable().scaledToFill()
+        Button(action: open) {
+            RoundedRectangle(cornerRadius: Theme.Radius.small)
+                .fill(Color.primary.opacity(0.05))
+                .frame(height: 64)
+                .overlay {
+                    if let thumbnail {
+                        Image(nsImage: thumbnail).resizable().scaledToFill()
+                    }
                 }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small))
-            .overlay { ShelfDragOverlay(provider: { url }, onClick: open) }
-            .help(url.lastPathComponent)
-            .accessibilityElement()
-            .accessibilityLabel("Recent capture, \(url.deletingPathExtension().lastPathComponent)")
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction(.default, open)
-            .task(id: url) {
-                let url = url, maxPixel = Self.maxPixel
-                thumbnail = await Task.detached(priority: .userInitiated) {
-                    Thumbnail.image(at: url, maxPixel: maxPixel)
-                }.value
-            }
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Recent capture, \(url.deletingPathExtension().lastPathComponent)")
+        .overlay { ShelfDragOverlay(provider: { url }, onClick: open) }
+        .help(url.lastPathComponent)
+        .task(id: url) {
+            let url = url, maxPixel = Self.maxPixel
+            thumbnail = await Task.detached(priority: .userInitiated) {
+                Thumbnail.image(at: url, maxPixel: maxPixel)
+            }.value
+        }
     }
 }
 
@@ -867,7 +878,6 @@ struct PickYourFourCard: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .focusable(false)
             .help("Dismiss")
             .accessibilityLabel("Dismiss")
         }
@@ -943,7 +953,5 @@ struct BottomBar: View {
         .buttonStyle(.bordered)
         .controlSize(.small)
         .tint(Theme.accent)
-        // Kill the key-focus ring that made a button look pre-selected.
-        .focusEffectDisabled()
     }
 }

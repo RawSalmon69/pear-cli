@@ -610,6 +610,9 @@ private struct ScreenshotPreviewView: View {
     let onDismiss: () -> Void
     let onHoverChange: (Bool) -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// VoiceOver cannot hover, so with it on the actions stay up.
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @State private var drag: CGSize = .zero
     @State private var hovering = false
     @State private var copied = false
@@ -636,8 +639,12 @@ private struct ScreenshotPreviewView: View {
             // Click the shot itself for the big view; the buttons layered on top
             // consume their own clicks, and a drag still becomes a swipe.
             .onTapGesture(perform: onOpen)
-            .overlay(alignment: .bottom) { if hovering { toolbar } }
-            .overlay(alignment: .topTrailing) { if hovering { closeButton } }
+            .accessibilityLabel("Screenshot")
+            .accessibilityHint("Opens the screenshot in a window")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(.default, onOpen)
+            .overlay(alignment: .bottom) { if hovering || voiceOver { toolbar } }
+            .overlay(alignment: .topTrailing) { if hovering || voiceOver { closeButton } }
             .overlay(alignment: .topLeading) {
                 if insights.showsQRBadge { qrBadge }
             }
@@ -702,6 +709,8 @@ private struct ScreenshotPreviewView: View {
                 .padding(Theme.Space.xSmall)
         }
         .buttonStyle(.plain)
+        .help("Close")
+        .accessibilityLabel("Close")
         .transition(.opacity)
     }
 
@@ -715,6 +724,7 @@ private struct ScreenshotPreviewView: View {
         }
         .buttonStyle(.plain)
         .help("QR code found. Copy its contents.")
+        .accessibilityLabel("Copy QR code contents")
         .padding(Theme.Space.small)
         .transition(.opacity)
     }
@@ -726,7 +736,8 @@ private struct ScreenshotPreviewView: View {
                 if value.translation.width > 90 {
                     onDismiss() // keep the offset; the panel exit is seamless
                 } else {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { drag = .zero }
+                    withAnimation(Theme.motion(.spring(response: 0.3, dampingFraction: 0.7),
+                                               reduce: reduceMotion)) { drag = .zero }
                 }
             }
     }
@@ -753,6 +764,7 @@ private struct PreviewAction: View {
         .buttonStyle(.plain)
         .focusable(false)
         .help(help)
+        .accessibilityLabel(help)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
     }

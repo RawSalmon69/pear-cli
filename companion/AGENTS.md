@@ -196,7 +196,9 @@ check: the actions show in the Shortcuts app.
   `Prefs.recentCaptures`, which drops missing files once per open (the
   existence check is injected), hidden when empty and while searching, and
   hidden when no capture mode is enabled (the view passes none). Thumbnails come from `Thumbnail`
-  (240 px, decoded off-main per open) and stay out of the arrow-key order. The
+  (240 px, decoded off-main per open) and stay out of the arrow-key order (each is
+  a plain `Button` under the drag overlay, so it is a Tab stop and a VoiceOver
+  press; the overlay still takes every click). The
   shelf's `ShelfDragOverlay` carries click and drag, since SwiftUI `.onDrag`
   does not start in a non-activating panel. While the pointer is anywhere over
   the strip, a hit-transparent tracking view behind it (`WindowMoveBlocker`)
@@ -500,6 +502,27 @@ state until it next asks; `currentValue()` is then already off.
   `windowBackgroundColor` fill, not more glass. Window Shot's icon is
   `macwindow.and.cursorarrow` (SF Symbols 5, macOS 14), distinct from Windows'
   `macwindow.on.rectangle`.
+- **Accessibility: every control has a spoken name, and motion obeys Reduce
+  Motion.** Every tile, row, recent thumbnail, glyph button and card action gets
+  an `accessibilityLabel` — an icon-only button's `.help` string is not one.
+  `GlyphButton` and `PreviewAction` label themselves from their `help:`, so new
+  call sites get it free; a picker or toggle with a hidden label still passes a
+  real title (`Picker("Auto-hide after", …).labelsHidden()`, never `""`). The
+  preview card keeps its hover-only actions up while VoiceOver is on
+  (`accessibilityVoiceOverEnabled`), since VoiceOver cannot hover. **Every spring
+  goes through `Theme.motion(_:reduce:)`** with `@Environment(\.accessibilityReduceMotion)`
+  (a short ease under Reduce Motion); a view that slides in switches its
+  transition to `.opacity` there too (`NotesSection`). `grep -rn "\.spring(" Sources`
+  should hit only inside `Theme.motion(`. Under Reduce Motion the mascot does not
+  bounce and its blink loop (a `.task` keyed on mood and the setting) is never
+  started. AppKit surfaces read `NSWorkspace.shared.accessibilityDisplayShouldReduceMotion`
+  (the preview stack's `animate` already does). **Focus blockers**
+  (`.focusable(false)`, `.focusEffectDisabled()`) are allowed in the panel only on
+  `ToolRow` and `PinnedTile`, which the search field's ↑ ↓ ↩ already reach;
+  everything else there (Fix, Open Settings, the Pick-your-four close, the recent
+  thumbnails, the bottom bar's glyph buttons) is a Tab stop under Keyboard
+  navigation. Blockers outside the panel (preview-card actions, detail window,
+  Settings rows, tool popovers) predate this rule and are not keyboard-audited.
 - **HD background removal** is opt-in: default is Apple Vision (instant, no
   download). Turning on "High-quality mode" downloads a **BEN2 Base** Core ML
   fp16 model (~205MB) from the project's GitHub release (`ben2-bg-model-v1`,

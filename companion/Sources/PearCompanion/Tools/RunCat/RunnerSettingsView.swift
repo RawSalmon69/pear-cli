@@ -105,5 +105,6 @@ private struct RunnerCell: View {
         .buttonStyle(.plain)
         .focusable(false)
         .help(style.name)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

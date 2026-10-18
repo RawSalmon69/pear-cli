@@ -351,6 +351,8 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
                 .focusable(false)
                 .help("Custom color")
+                .accessibilityLabel("Custom color")
+                .accessibilityAddTraits(ThemeStore.shared.custom != nil ? .isSelected : [])
             }
             if showAccentWheel {
                 AccentWheel { ThemeStore.shared.custom = $0 }
@@ -718,6 +720,8 @@ struct SettingsView: View {
             .buttonStyle(.plain)
             .focusable(false)
             .help(preset.name)
+            .accessibilityLabel(preset.name)
+            .accessibilityAddTraits(selected ? .isSelected : [])
         }
     }
 

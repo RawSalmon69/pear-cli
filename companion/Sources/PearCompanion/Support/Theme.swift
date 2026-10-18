@@ -233,9 +233,18 @@ struct GlyphButton: View {
                 )
         }
         .buttonStyle(.plain)
-        .focusable(false)
         .help(help)
+        .accessibilityLabel(help)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.15), value: hovering)
+    }
+}
+
+extension Theme {
+    /// Every spring in the app goes through here. With Reduce Motion on it
+    /// becomes a short ease with no overshoot; a view that also slides in pairs
+    /// it with an `.opacity` transition.
+    static func motion(_ spring: Animation, reduce: Bool) -> Animation {
+        reduce ? .easeInOut(duration: 0.2) : spring
     }
 }
