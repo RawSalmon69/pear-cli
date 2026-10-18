@@ -7,20 +7,48 @@ extension Notification.Name {
     static let pearOpenSettings = Notification.Name("pearOpenSettings")
 }
 
-/// The Settings window's sidebar pages, in sidebar order. Tool pages slot in
-/// here (ticket 10).
-enum SettingsPage: String, CaseIterable, Identifiable {
-    case general, appearance, shortcuts, tools, licence, about
+/// The Settings window's sidebar pages: the fixed ones, plus one page per
+/// offered tool by tool id. Stored by `rawValue` ("menubar" is "tool.menubar").
+enum SettingsPage: Hashable, Identifiable {
+    case general, appearance, shortcuts, licence, about
+    case tool(String)
+
+    private static let toolPrefix = "tool."
+    private static let fixed: [SettingsPage] = [.general, .appearance, .shortcuts, .licence, .about]
+
+    var rawValue: String {
+        switch self {
+        case .general: "general"
+        case .appearance: "appearance"
+        case .shortcuts: "shortcuts"
+        case .licence: "licence"
+        case .about: "about"
+        case .tool(let id): Self.toolPrefix + id
+        }
+    }
+
+    init?(rawValue: String) {
+        if rawValue.hasPrefix(Self.toolPrefix) {
+            self = .tool(String(rawValue.dropFirst(Self.toolPrefix.count)))
+        } else if let page = Self.fixed.first(where: { $0.rawValue == rawValue }) {
+            self = page
+        } else {
+            return nil
+        }
+    }
+
     var id: String { rawValue }
 
+    /// Fixed pages only; the sidebar labels a tool page with the tool's own
+    /// title and icon.
     var title: String {
         switch self {
         case .general: "General"
         case .appearance: "Appearance"
         case .shortcuts: "Shortcuts"
-        case .tools: "Tools"
         case .licence: "Licence"
         case .about: "About"
+        case .tool(let id): id
         }
     }
 
@@ -29,26 +57,40 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general: "gearshape"
         case .appearance: "paintpalette"
         case .shortcuts: "keyboard"
-        case .tools: "square.grid.2x2"
         case .licence: "key"
         case .about: "info.circle"
+        case .tool: "square.grid.2x2"
         }
     }
 
-    /// The pages actually offered. Licence is hidden while the app is free:
-    /// with `FeatureFlags.paywall` off nothing locks and the trial clock
-    /// never starts, so the pane would sit there reporting "14 days left"
-    /// forever and inviting people to buy something that is not for sale.
-    static var visible: [SettingsPage] {
-        allCases.filter { FeatureFlags.paywall || $0 != .licence }
+    /// The sidebar: General, Appearance, Shortcuts, one page per offered tool
+    /// in offer order (enabled or not), then Licence and About. Licence is
+    /// hidden while the app is free: with `FeatureFlags.paywall` off nothing
+    /// locks and the trial clock never starts, so the pane would sit there
+    /// reporting "14 days left" forever and inviting people to buy something
+    /// that is not for sale.
+    static func visible(toolIDs: [String]) -> [SettingsPage] {
+        [.general, .appearance, .shortcuts] + toolIDs.map(SettingsPage.tool)
+            + [.licence, .about].filter { FeatureFlags.paywall || $0 != .licence }
     }
 
+    /// The fixed pages offered, without tool pages.
+    static var visible: [SettingsPage] { visible(toolIDs: []) }
+
     /// A stored page name, or General when it is unknown or not offered — a
-    /// caller asking for a hidden page gets General rather than a blank pane.
-    static func resolved(_ raw: String?) -> SettingsPage {
-        guard let page = raw.flatMap(SettingsPage.init(rawValue:)), visible.contains(page)
+    /// caller asking for a hidden page, or the page of a tool no longer
+    /// offered, gets General rather than a blank pane.
+    static func resolved(_ raw: String?, toolIDs: [String] = []) -> SettingsPage {
+        guard let page = raw.flatMap(SettingsPage.init(rawValue:)),
+              visible(toolIDs: toolIDs).contains(page)
         else { return .general }
         return page
+    }
+
+    /// The first tool page. "Open Settings" under "No tools match" lands here,
+    /// where the tool pages (and their on/off switches) begin.
+    @MainActor static var tools: SettingsPage {
+        .tool(ToolRegistry.live?.known.first?.id ?? "")
     }
 
     /// Opens Settings on `page`, or on the last page shown. The open itself is
@@ -61,9 +103,10 @@ enum SettingsPage: String, CaseIterable, Identifiable {
 }
 
 /// Settings, a standard window with a sidebar (`SettingsWindowController`).
-/// General = panel, capture and startup; Appearance = accent and the menu-bar
-/// runner; Shortcuts = every key combination; Tools = per-tool on/off; Licence
-/// (paid builds only); About.
+/// General = panel, pins, capture and startup; Appearance = accent and the
+/// menu-bar runner; Shortcuts = every key combination; then one page per tool
+/// (its on/off switch and every option it has); Licence (paid builds only);
+/// About.
 struct SettingsView: View {
     @Environment(AppEnvironment.self) private var env
     /// Raw, so a page written by `SettingsPage.open` while the window is up
@@ -86,8 +129,12 @@ struct SettingsView: View {
     @AppStorage(Prefs.panelClosesOnFocusLossKey) private var panelClosesOnFocusLoss = true
     @AppStorage(Prefs.hdBackgroundRemovalKey) private var hdEnabled = false
     @State private var hd = HDBackgroundModelManager.shared
+    /// Read once per open (the root view is rebuilt each open from closed).
+    @State private var pins = Prefs.pinnedTools()
 
-    private var page: SettingsPage { SettingsPage.resolved(storedPage) }
+    private var toolIDs: [String] { env.tools.known.map(\.id) }
+
+    private var page: SettingsPage { SettingsPage.resolved(storedPage, toolIDs: toolIDs) }
 
     private var selection: Binding<SettingsPage?> {
         Binding(
@@ -99,8 +146,12 @@ struct SettingsView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: selection) {
-                ForEach(SettingsPage.visible) { page in
-                    Label(page.title, systemImage: page.icon).tag(page)
+                ForEach(SettingsPage.visible(toolIDs: toolIDs)) { page in
+                    if case .tool(let id) = page, let tool = knownTool(id) {
+                        Label(tool.title, systemImage: tool.icon).tag(page)
+                    } else {
+                        Label(page.title, systemImage: page.icon).tag(page)
+                    }
                 }
             }
             .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
@@ -112,10 +163,9 @@ struct SettingsView: View {
                     case .general: generalPage
                     case .appearance: appearancePage
                     case .shortcuts: shortcutsPage
-                    // Temporary: ticket 10 replaces this page with one page per
-                    // tool. Until then it is the only home of the on/off toggles
-                    // and Clean Mode settings, carried over from the popover.
-                    case .tools: toolsPage
+                    case .tool(let id):
+                        // `resolved` only returns a tool page for a known id.
+                        if let tool = knownTool(id) { toolPage(tool) }
                     case .licence:
                         // Unreachable while free (`resolved` never returns it),
                         // kept as a second guard.
@@ -198,6 +248,8 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+
+        pinsSection
 
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             SectionLabel(text: "Startup")
@@ -316,24 +368,85 @@ struct SettingsView: View {
         Binding(get: { LoginItem.isEnabled }, set: { LoginItem.setEnabled($0) })
     }
 
-    private var toolsPage: some View {
+    private func knownTool(_ id: String) -> ToolRegistry.KnownTool? {
+        env.tools.known.first { $0.id == id }
+    }
+
+    /// One tool's page: its on/off switch, then every option it has. Options
+    /// live only here; the tool's popover or window keeps its working controls
+    /// and a "Settings…" link back (`ToolSettingsLink`).
+    @ViewBuilder private func toolPage(_ tool: ToolRegistry.KnownTool) -> some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
+            Toggle(isOn: toolBinding(tool.id)) {
+                Label(tool.title, systemImage: tool.icon)
+                    .font(Theme.emphasis)
+            }
+            .toggleStyle(.switch)
+            .tint(Theme.accent)
+            if !tool.summary.isEmpty {
+                Text(tool.summary)
+                    .font(Theme.body)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Text("A tool you turn off does not load at all. Changes apply immediately.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
-            ForEach(env.tools.known, id: \.id) { tool in
-                VStack(alignment: .leading, spacing: 2) {
-                    Toggle(isOn: toolBinding(tool.id)) {
-                        Label(tool.title, systemImage: tool.icon)
-                            .font(Theme.body)
+        }
+
+        // Ticket 12: the tool's status block (permission, shortcut registered,
+        // last error) goes here, between the switch and the options.
+
+        toolOptions(tool.id)
+    }
+
+    /// The options of the tools that have any; every other page is just the switch.
+    @ViewBuilder private func toolOptions(_ id: String) -> some View {
+        switch id {
+        case MenuBarTool.toolID:
+            // The live tool even while off, so a change made now is the one it
+            // starts with; its setters only touch a surface that is installed.
+            if let menuBar = env.tools.offeredTool(id) as? MenuBarTool {
+                MenuBarOptionsView(manager: menuBar.manager)
+            }
+        case SwitchesTool.toolID: SwitchesVisibilityView()
+        case ScratchpadTool.toolID: ScratchpadSettingsView()
+        case ColorPickerTool.toolID: ColorFormatPicker()
+        case CleanModeTool.toolID: CleanModeSettingsView()
+        default: EmptyView()
+        }
+    }
+
+    /// The panel's four pinned tiles, slot by slot, from the enabled tools that
+    /// have a tile. `PanelModel` decides what each slot shows and what a pick
+    /// stores, so this row is exactly the panel's. The panel closes when
+    /// Settings opens and reads pins on every open, so the next open shows it.
+    @ViewBuilder private var pinsSection: some View {
+        let model = PanelModel(
+            entries: env.tools.all.filter(\.showsTile).map {
+                PanelModel.Entry(id: $0.id, title: $0.title, icon: $0.icon, summary: $0.summary)
+            },
+            problems: [], pins: pins)
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Pinned tools")
+            Text("The big tiles at the top of the panel. Pick a tool already pinned to swap the two.")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(Array(model.pinned.enumerated()), id: \.offset) { slot, entry in
+                Picker("Tile \(slot + 1)", selection: Binding(
+                    get: { entry.id },
+                    set: { id in
+                        pins = model.pins(placing: id, inSlot: slot)
+                        Prefs.setPinnedTools(pins)
                     }
-                    .toggleStyle(.switch)
-                    .tint(Theme.accent)
-                    if tool.id == CleanModeTool.toolID {
-                        CleanModeSettingsView()
-                            .padding(.leading, 24)
+                )) {
+                    ForEach(model.entries, id: \.id) { tool in
+                        Label(tool.title, systemImage: tool.icon).tag(tool.id)
                     }
                 }
+                .font(Theme.body)
+                .frame(maxWidth: 320)
             }
         }
     }
@@ -567,5 +680,34 @@ struct SettingsView: View {
             UserDefaults.standard.set(url.path, forKey: "screenshotFolder")
             folder = url.path
         }
+    }
+}
+
+/// A tool popover's or window's link to that tool's Settings page, where its
+/// options live.
+struct ToolSettingsLink: View {
+    let toolID: String
+    let title: String
+
+    var body: some View {
+        Button("Settings…") { SettingsPage.open(.tool(toolID)) }
+            .buttonStyle(.link)
+            .font(Theme.caption)
+            .focusable(false)
+            .help("Open \(title) in Settings")
+            .accessibilityLabel("\(title) settings")
+    }
+}
+
+extension PanelModel {
+    /// The pins after the Settings picker puts `id` in `slot` of the pinned
+    /// row: the row as the panel shows it (so fill-in tiles become real pins),
+    /// with `id` swapped in from its old slot when it had one, then the stored
+    /// pins of tools that are off, kept so they are not lost.
+    func pins(placing id: String, inSlot slot: Int) -> [String] {
+        var row = pinned.map(\.id)
+        guard row.indices.contains(slot) else { return pins }
+        if let old = row.firstIndex(of: id) { row.swapAt(old, slot) } else { row[slot] = id }
+        return row + pins.filter { pin in !entries.contains { $0.id == pin } }
     }
 }

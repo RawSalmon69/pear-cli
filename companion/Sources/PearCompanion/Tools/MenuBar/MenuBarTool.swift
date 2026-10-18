@@ -4,12 +4,14 @@ import SwiftUI
 /// length toggles to hide/show the icons the user ⌘-drags between them, and an
 /// optional always-hidden zone further left. These status items are the tool's
 /// only always-on cost, so `start()` — which the registry only calls for
-/// enabled tools — creates them. The tile opens a popover for the toggle,
-/// auto-rehide interval, the always-hidden/⌥-reveal settings, and the ⌘-drag
-/// hint. Multi-item model ported from Hidden Bar (MIT).
+/// enabled tools — creates them. The tile opens a popover for the toggle and
+/// the ⌘-drag hint; the auto-rehide interval and the always-hidden/⌥-reveal
+/// settings are on its Settings page. Multi-item model ported from Hidden Bar (MIT).
 @MainActor
 final class MenuBarTool: Tool {
-    let id = "menubar"
+    static let toolID = "menubar"
+
+    let id = MenuBarTool.toolID
     let title = "Menu Bar"
     let icon = "menubar.rectangle"
     let category = ToolCategory.system

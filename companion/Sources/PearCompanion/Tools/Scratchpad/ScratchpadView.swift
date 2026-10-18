@@ -8,7 +8,6 @@ struct ScratchpadView: View {
     let onClose: () -> Void
 
     @State private var confirmingDelete = false
-    @State private var showingSettings = false
     /// Read here (not just at the controller) so flipping the toggle live
     /// re-renders the editor with detection on or off.
     @AppStorage(ScratchpadSettings.Key.linkDetection)
@@ -61,12 +60,11 @@ struct ScratchpadView: View {
                 deleteTapped()
             }
 
-            GlyphButton(symbol: "gearshape", help: "Scratchpad settings") {
-                showingSettings.toggle()
+            // Opens the tool's Settings page, where its options live.
+            GlyphButton(symbol: "gearshape", help: "Scratchpad settings…") {
+                SettingsPage.open(.tool(ScratchpadTool.toolID))
             }
-            .popover(isPresented: $showingSettings, arrowEdge: .bottom) {
-                ScratchpadSettingsView()
-            }
+            .accessibilityLabel("Scratchpad settings")
 
             GlyphButton(symbol: "xmark", help: "Close") {
                 onClose()
@@ -101,10 +99,10 @@ struct ScratchpadView: View {
     }
 }
 
-/// The header gear's popover: two live toggles, self-contained in the panel.
-/// Both write `scratchpad.*` keys the controller and editor read at use time,
-/// so changes apply with no relaunch.
-private struct ScratchpadSettingsView: View {
+/// The Scratchpad's options, on its Settings page (the header gear opens it).
+/// Each writes a `scratchpad.*` key the controller and editor read at use
+/// time, so changes apply with no relaunch.
+struct ScratchpadSettingsView: View {
     @AppStorage(ScratchpadSettings.Key.swipeEnabled)
     private var swipeEnabled = ScratchpadSettings.defaultSwipeEnabled
     @AppStorage(ScratchpadSettings.Key.linkDetection)
@@ -119,7 +117,7 @@ private struct ScratchpadSettingsView: View {
             Toggle("Reopen where I left it", isOn: $rememberPosition)
         }
         .font(Theme.body)
-        .padding(Theme.cardPadding)
-        .frame(width: 220)
+        .toggleStyle(.switch)
+        .tint(Theme.accent)
     }
 }

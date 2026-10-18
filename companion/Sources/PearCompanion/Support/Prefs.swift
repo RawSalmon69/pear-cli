@@ -63,9 +63,12 @@ enum Prefs {
     static let settingsPageKey = "settingsLastPage"
 
     /// The page Settings opens on: the last one shown, or General. A stored page
-    /// that is not offered (Licence in a free build) also gives General.
-    static func settingsPage(defaults: UserDefaults = .standard) -> SettingsPage {
-        SettingsPage.resolved(defaults.string(forKey: settingsPageKey))
+    /// that is not offered (Licence in a free build, a tool not in `toolIDs`)
+    /// also gives General.
+    static func settingsPage(
+        defaults: UserDefaults = .standard, toolIDs: [String] = []
+    ) -> SettingsPage {
+        SettingsPage.resolved(defaults.string(forKey: settingsPageKey), toolIDs: toolIDs)
     }
 
     static func setSettingsPage(_ page: SettingsPage, defaults: UserDefaults = .standard) {

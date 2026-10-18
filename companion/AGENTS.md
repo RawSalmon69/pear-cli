@@ -88,17 +88,39 @@ check: the actions show in the Shortcuts app.
 - **Settings is a window** (`Views/SettingsWindowController.swift` +
   `Views/SettingsView.swift`), not a popover: one standard titled window, reused,
   frame autosaved (`PearSettingsWindow`), a `NavigationSplitView` sidebar of
-  `SettingsPage`s — General, Appearance (accent + the runner, so "Menu Bar" now
-  means only the hider tool), **Shortcuts** (below), a temporary Tools page
-  (per-tool on/off, Clean Mode; ticket 10 replaces it), Licence (paid builds only),
-  About (version, Check for Updates…, every bundled licence/notice shown inline).
+  `SettingsPage`s — General (panel, **pins picker**, startup, sounds, screenshots,
+  preview stack, HD background removal), Appearance (accent + the runner, so
+  "Menu Bar" now means only the hider tool), **Shortcuts** (below), then **one
+  page per offered tool** in offer order, enabled or not (`SettingsPage.tool(id)`,
+  stored as `tool.<id>`; `SettingsPage.visible(toolIDs:)` builds the sidebar and
+  `resolved(_:toolIDs:)` turns an unknown or removed tool's page into General),
+  Licence (paid builds only), About (version, Check for Updates…, every bundled
+  licence/notice shown inline). **A tool page is the single home of that tool's
+  options**: its on/off switch (`ToolRegistry.setEnabled`, live: off unloads it),
+  then its options view — `MenuBarOptionsView` (auto-hide, zones),
+  `SwitchesVisibilityView` (which switches show), `ScratchpadSettingsView`,
+  `ColorFormatPicker`, `CleanModeSettingsView` — chosen by tool id in
+  `SettingsView.toolOptions`. Ticket 12's status block slots in between the two.
+  No option lives in a popover or an in-window gear: the Menu Bar, Switches and
+  Color Picker popovers keep their working controls plus a `ToolSettingsLink`
+  ("Settings…" → `SettingsPage.open(.tool(id))`), and the Scratchpad header gear
+  opens its page. A new tool option goes on the tool page, never back in a popover.
+  The Menu Bar page edits the tool's live manager even while off
+  (`ToolRegistry.offeredTool`), so it starts with what was chosen. The **pins
+  picker** is four slot menus over the enabled tools with a tile; `PanelModel`
+  decides each slot and what a pick stores (`pins(placing:inSlot:)`, in
+  `SettingsView.swift`: the row as shown with the pick swapped in, plus the
+  stored pins of tools that are off), saved with `Prefs.setPinnedTools`. "Live"
+  means the next panel open: the panel closes when Settings opens and reads pins
+  on every open.
   Everything opens it through `SettingsPage.open(_:)` → `pearOpenSettings` →
   `PanelController.openSettings()`, which closes the panel first (it floats at
   status-bar level, over the window): the panel's gear, ⌘, while the panel is key
   (`PearPanel.performKeyEquivalent`, ahead of the search field), the status-item
   menu, the app menu (`CommandGroup(replacing: .appSettings)` in `PearApp`, or the
   empty `Settings` scene would open), and "Open Settings" under "No tools match"
-  (lands on Tools). The last page is `Prefs.settingsPage` (`settingsLastPage`),
+  (lands on the first tool page, `SettingsPage.tools`). The last page is
+  `Prefs.settingsPage` (`settingsLastPage`),
   read through `@AppStorage`, so `open(.licence)` switches a window already up.
   While it is open Pear is `.regular` (Dock icon, ⌘-Tab, menu bar), back to
   `.accessory` on `windowWillClose` unless another titled window (Disk, detail,
@@ -147,8 +169,8 @@ check: the actions show in the Shortcuts app.
   Pin. The selection follows the toggled tool. While searching the tiles and
   card hide and results span every tool. Arrows walk tiles left to right, then
   the list, so Return on open runs the first pin. Pins and the card live in
-  `Prefs` (`pinnedTools` / `setPinnedTools`, which the Settings pins picker in
-  ticket 10 will call; any pin change retires the card for good, as does closing it).
+  `Prefs` (`pinnedTools` / `setPinnedTools`, which the General pins picker also
+  calls; any pin change retires the card for good, as does closing it).
   **Recent captures:** `PanelModel.recents` is the newest three of
   `Prefs.recentCaptures`, which drops missing files once per open (the
   existence check is injected), hidden when empty and while searching, and

@@ -210,6 +210,12 @@ final class ToolRegistry {
         return entry.tool
     }
 
+    /// The offered tool instance, enabled or not, for a Settings page that edits
+    /// a tool's own options (the menu-bar hider's manager). Never runs it.
+    func offeredTool(_ id: String) -> (any Tool)? {
+        catalog.first { $0.id == id }?.tool
+    }
+
     /// The app's registry, set once at launch so App Intents (which the system
     /// constructs itself) can reach it. Nil in tests and before launch.
     static var live: ToolRegistry?

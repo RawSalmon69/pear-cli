@@ -6,7 +6,9 @@ import Carbon.HIToolbox
 /// both toggle the same panel open/closed.
 @MainActor
 final class ScratchpadTool: Tool {
-    let id = "scratchpad"
+    static let toolID = "scratchpad"
+
+    let id = ScratchpadTool.toolID
     let title = "Scratchpad"
     let icon = "note.text"
     let category = ToolCategory.utilities

@@ -1,13 +1,11 @@
 import SwiftUI
 
-/// The Switches popover: a grid of quick system toggles, plus a gear that flips
-/// to a per-switch show/hide list (Rule B). State is read live on open; the
-/// visibility list is `@AppStorage`, so hiding a switch drops its tile with no
-/// relaunch.
+/// The Switches popover: a grid of quick system toggles and a link to the
+/// tool's Settings page, which holds the per-switch show/hide list (Rule B,
+/// `SwitchesVisibilityView`). State is read live on open; visibility is
+/// `@AppStorage`, so hiding a switch drops its tile with no relaunch.
 struct SwitchesView: View {
     @Bindable var model: SwitchesModel
-
-    @State private var editingVisibility = false
 
     // Per-switch visibility, live via @AppStorage.
     @AppStorage(SwitchesSettings.showKey(.keepAwake))
@@ -28,11 +26,7 @@ struct SwitchesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemGap) {
             header
-            if editingVisibility {
-                visibilityList
-            } else {
-                grid
-            }
+            grid
         }
         .padding(14)
         .frame(width: 300)
@@ -45,15 +39,10 @@ struct SwitchesView: View {
 
     private var header: some View {
         HStack {
-            Text(editingVisibility ? "Show in grid" : "Switches")
+            Text("Switches")
                 .font(Theme.emphasis)
             Spacer()
-            GlyphButton(
-                symbol: editingVisibility ? "checkmark" : "gearshape",
-                help: editingVisibility ? "Done" : "Choose which switches show"
-            ) {
-                editingVisibility.toggle()
-            }
+            ToolSettingsLink(toolID: SwitchesTool.toolID, title: "Switches")
         }
     }
 
@@ -62,7 +51,7 @@ struct SwitchesView: View {
     @ViewBuilder private var grid: some View {
         let shown = SystemSwitch.allCases.filter(isShown)
         if shown.isEmpty {
-            Text("No switches shown. Tap the gear to add some.")
+            Text("No switches shown. Choose some in Settings.")
                 .font(Theme.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -79,25 +68,6 @@ struct SwitchesView: View {
         }
     }
 
-    // MARK: - Visibility editor
-
-    private var visibilityList: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
-            Text("System-changing switches start hidden. Turn on the ones you want.")
-                .font(Theme.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            ForEach(SystemSwitch.allCases) { toggle in
-                Toggle(isOn: visibilityBinding(toggle)) {
-                    Label(toggle.title, systemImage: toggle.icon)
-                        .font(Theme.body)
-                }
-                .toggleStyle(.switch)
-                .tint(Theme.accent)
-            }
-        }
-    }
-
     private func isShown(_ toggle: SystemSwitch) -> Bool {
         switch toggle {
         case .keepAwake: showKeepAwake
@@ -108,15 +78,38 @@ struct SwitchesView: View {
         case .showHidden: showShowHidden
         }
     }
+}
 
-    private func visibilityBinding(_ toggle: SystemSwitch) -> Binding<Bool> {
-        switch toggle {
-        case .keepAwake: $showKeepAwake
-        case .lidClosed: $showLidClosed
-        case .screenSaver: $showScreenSaver
-        case .lockScreen: $showLockScreen
-        case .hideDesktop: $showHideDesktop
-        case .showHidden: $showShowHidden
+/// Which switches show in the grid, on the tool's Settings page. Each row owns
+/// its `switches.show.*` key through `@AppStorage`, so the grid follows live.
+struct SwitchesVisibilityView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.itemGap) {
+            SectionLabel(text: "Show in grid")
+            Text("System-changing switches start hidden. Turn on the ones you want.")
+                .font(Theme.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(SystemSwitch.allCases) { VisibilityRow(toggle: $0) }
+        }
+    }
+
+    private struct VisibilityRow: View {
+        let toggle: SystemSwitch
+        @AppStorage private var shown: Bool
+
+        init(toggle: SystemSwitch) {
+            self.toggle = toggle
+            _shown = AppStorage(wrappedValue: toggle.defaultVisible, SwitchesSettings.showKey(toggle))
+        }
+
+        var body: some View {
+            Toggle(isOn: $shown) {
+                Label(toggle.title, systemImage: toggle.icon)
+                    .font(Theme.body)
+            }
+            .toggleStyle(.switch)
+            .tint(Theme.accent)
         }
     }
 }

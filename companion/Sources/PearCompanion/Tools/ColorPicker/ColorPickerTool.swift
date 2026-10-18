@@ -6,7 +6,9 @@ import SwiftUI
 /// nothing is constructed until the popover first opens.
 @MainActor
 final class ColorPickerTool: Tool {
-    let id = "colorPicker"
+    static let toolID = "colorPicker"
+
+    let id = ColorPickerTool.toolID
     let title = "Color Picker"
     let icon = "eyedropper"
     let category = ToolCategory.utilities

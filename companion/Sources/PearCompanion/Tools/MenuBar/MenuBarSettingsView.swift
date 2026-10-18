@@ -1,9 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// Menu-bar hider popover: reveal/hide toggle, the auto-rehide interval, the
-/// always-hidden zone and ⌥-reveal switches, and a short explanation of the
-/// ⌘-drag arrangement the tool can't do for you.
+/// Menu-bar hider popover: the reveal/hide toggle, a short explanation of the
+/// ⌘-drag arrangement the tool can't do for you, and a link to its Settings
+/// page, where the options live (`MenuBarOptionsView`).
 struct MenuBarSettingsView: View {
     let manager: MenuBarManager
 
@@ -18,9 +18,8 @@ struct MenuBarSettingsView: View {
         VStack(alignment: .leading, spacing: Theme.sectionGap) {
             SectionLabel(text: "Menu Bar")
             toggleButton
-            rehideCard
-            zonesCard
             howToCard
+            ToolSettingsLink(toolID: MenuBarTool.toolID, title: "Menu Bar")
         }
         .padding(Theme.heroPadding)
         .frame(width: 300)
@@ -93,8 +92,22 @@ struct MenuBarSettingsView: View {
         .buttonStyle(.borderedProminent)
         .tint(Theme.accent)
     }
+}
 
-    private var rehideCard: some View {
+/// The menu-bar hider's options, on its Settings page: the auto-rehide
+/// interval, the always-hidden zone, ⌥-reveal and the divider line. Bound to
+/// the tool's live manager, so each applies at once.
+struct MenuBarOptionsView: View {
+    let manager: MenuBarManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.sectionGap) {
+            rehideSection
+            zonesSection
+        }
+    }
+
+    private var rehideSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionLabel(text: "Auto-hide after")
             Picker("", selection: rehideBinding) {
@@ -104,19 +117,18 @@ struct MenuBarSettingsView: View {
             }
             .labelsHidden()
             .pickerStyle(.segmented)
+            .frame(maxWidth: 320)
         }
-        .padding(Theme.cardPadding)
-        .glassCard()
     }
 
-    private var zonesCard: some View {
+    private var zonesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
+            SectionLabel(text: "Zones")
             switchRow("Always-hidden zone", alwaysHiddenBinding)
             switchRow("Reveal all with ⌥-click", optionRevealBinding)
             switchRow("Show divider line", dividerLineBinding)
         }
-        .padding(Theme.cardPadding)
-        .glassCard()
+        .frame(maxWidth: 320)
     }
 
     /// A switch whose whole row toggles — a plain `Toggle("text", isOn:)` leaves

@@ -19,7 +19,7 @@ struct HelpView: View {
     // Features that aren't registry tools (no tile of their own).
     private let extras: [Extra] = [
         Extra(icon: "hare", title: "Menu-bar runner", hotkey: nil,
-              summary: "25 runners that speed up as the CPU gets busier. Pick one in Settings › Menu Bar.",
+              summary: "25 runners that speed up as the CPU gets busier. Pick one in Settings › Appearance.",
               category: .system),
         Extra(icon: "keyboard", title: "Custom shortcuts", hotkey: nil,
               summary: "Change any shortcut, including the Windows snaps, in Settings › Shortcuts. Click it and press the new keys; Esc cancels, Delete removes it. Changes apply immediately.",

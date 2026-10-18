@@ -8,7 +8,9 @@ import WidgetKit
 /// by default. `stop()` releases any held power assertion.
 @MainActor
 final class SwitchesTool: Tool {
-    let id = "switches"
+    static let toolID = "switches"
+
+    let id = SwitchesTool.toolID
     let title = "Switches"
     let icon = "switch.2"
     let category = ToolCategory.system

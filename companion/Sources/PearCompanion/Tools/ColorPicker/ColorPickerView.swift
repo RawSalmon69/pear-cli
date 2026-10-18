@@ -4,16 +4,15 @@ import SwiftUI
 /// Color picker popover: native eyedropper button, the picked color as a
 /// swatch with one-click-copy formats, WCAG contrast against white/black,
 /// and a small history strip. The store is created here (`@State`), so
-/// nothing about the tool exists until this view is first built.
+/// nothing about the tool exists until this view is first built. The format
+/// a pick copies is chosen on the tool's Settings page (`ColorFormatPicker`).
 struct ColorPickerView: View {
     @State private var store = ColorStore()
-    @AppStorage(Prefs.colorFormatKey) private var copyFormat = ColorFormat.hex.rawValue
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.sectionGap) {
             SectionLabel(text: "Color Picker")
             pickButton
-            copyFormatPicker
 
             if let current = store.current {
                 swatch(for: current)
@@ -28,6 +27,8 @@ struct ColorPickerView: View {
             if !store.history.isEmpty {
                 historySection
             }
+
+            ToolSettingsLink(toolID: ColorPickerTool.toolID, title: "Color Picker")
         }
         .padding(Theme.heroPadding)
         .frame(width: 300)
@@ -43,19 +44,6 @@ struct ColorPickerView: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(Theme.accent)
-    }
-
-    /// Which format the eyedropper copies to the clipboard. Live — the pick
-    /// button and the global hotkey both read `Prefs.colorFormat`.
-    private var copyFormatPicker: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            SectionLabel(text: "Pick copies")
-            Picker("", selection: $copyFormat) {
-                ForEach(ColorFormat.allCases) { Text($0.label).tag($0.rawValue) }
-            }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-        }
     }
 
     private func swatch(for color: PickedColor) -> some View {
@@ -110,6 +98,24 @@ struct ColorPickerView: View {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         SoundEffects.play(.copy)
+    }
+}
+
+/// Which format the eyedropper copies to the clipboard, on the tool's Settings
+/// page. Live — the pick button and the global hotkey both read `Prefs.colorFormat`.
+struct ColorFormatPicker: View {
+    @AppStorage(Prefs.colorFormatKey) private var copyFormat = ColorFormat.hex.rawValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SectionLabel(text: "Pick copies")
+            Picker("", selection: $copyFormat) {
+                ForEach(ColorFormat.allCases) { Text($0.label).tag($0.rawValue) }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 320)
+        }
     }
 }
 

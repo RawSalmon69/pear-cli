@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Clean Mode's live settings, shown under its row in the Tools tab. The
+/// Clean Mode's live settings, shown on its Settings page. The
 /// control persists under a `cleanmode.*` key and is read at use time (on the
 /// next entry), so a change applies with no relaunch.
 struct CleanModeSettingsView: View {
