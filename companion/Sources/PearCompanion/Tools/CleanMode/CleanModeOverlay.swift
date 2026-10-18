@@ -75,7 +75,7 @@ final class CleanModeScreenBlanker: CleanModeScreenBlanking {
 
         let hint = Self.makeLabel(
             string: "Clean Mode. Click Done when you are finished.",
-            size: 15,
+            size: Theme.Typography.Size.large,
             color: NSColor(white: 0.42, alpha: 1)
         )
         hint.frame = NSRect(x: centerX - 320, y: centerY + 36, width: 640, height: 24)
@@ -120,7 +120,7 @@ private final class ClosureButton: NSButton {
         self.title = title
         bezelStyle = .rounded
         setButtonType(.momentaryPushIn)
-        font = .systemFont(ofSize: 18, weight: .semibold)
+        font = .systemFont(ofSize: Theme.Typography.Size.title, weight: .semibold)
         target = self
         action = #selector(fire)
     }

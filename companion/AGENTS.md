@@ -129,7 +129,7 @@ check: the actions show in the Shortcuts app.
   (`PearPanel.performKeyEquivalent`, ahead of the search field), the status-item
   menu, the app menu (`CommandGroup(replacing: .appSettings)` in `PearApp`, or the
   empty `Settings` scene would open), and "Open Settings" under "No tools match"
-  (lands on the first tool page, `SettingsPage.tools`). The last page is
+  (lands on the first tool page, or General with none). The last page is
   `Prefs.settingsPage` (`settingsLastPage`),
   read through `@AppStorage`, so `open(.licence)` switches a window already up.
   While it is open Pear is `.regular` (Dock icon, ⌘-Tab, menu bar), back to
@@ -475,19 +475,28 @@ state until it next asks; `currentValue()` is then already off.
   edge). `glassCard` and `clipToCard` both default to `Theme.Radius.large` (16),
   so a borderless panel that takes both defaults cannot drift into a ghost
   border. Sibling glass cards go in a `GlassGroup` (`GlassEffectContainer` on
-  macOS 26+, pass-through on 14–15); never glass inside glass. Call sites still
-  carry literals while the migration is in progress; new code uses the tokens.
-  The capture surfaces (preview cards, detail, Markup, Remove Background, Disk)
-  are migrated; their remaining literals are commented exceptions (Markup's
-  image-pixel text, treemap tile corners, the card toolbar's 2 pt gaps). So are
-  the tool popovers and tool windows (Switches, Windows, Highlight Copy,
-  Clipboard, Menu Bar, Color Picker, QR, Scratchpad, Shelf, KeyClu, Clean Mode
-  settings): **every tool popover opens with `PopoverHeader`** (`Support/Theme.swift`:
+  macOS 26+, pass-through on 14–15); never glass inside glass. **The migration
+  is complete and the old names are gone** (`sectionGap`, `itemGap`,
+  `cardPadding`, `heroPadding`, and the fonts `caption`/`body`/`emphasis`/
+  `title`/`hero`); `Theme.rounded` is private, so fonts come from
+  `Theme.Typography` (or `Typography.Size` with `.system(size:design:)` /
+  `Theme.roundedNSFont` where the face must stay monospaced, plain or AppKit).
+  **The grep rule:** from `companion/`,
+  `grep -rnE "cornerRadius: *[0-9]|cornerRadius *= *[0-9]|\.system\(size: *[0-9]|systemFont\(ofSize: *[0-9]|NSFont\([^)]*size: *[0-9]|Theme\.rounded\([0-9]|\.padding\([^)]*[1-9]|spacing: *[1-9]|Path\(roundedRect:[^)]*cornerRadius: *[0-9]" Sources | grep -v Support/Theme.swift`
+  must hit only **commented exceptions**: a comment on the line itself or in
+  the two lines above, saying why (Markup's image-pixel text and its draft box,
+  treemap tile corners, the card toolbar's 2 pt gaps, the 1–2 pt hugs of a
+  label on its value, illustration glyphs). Zero (`spacing: 0`, `.padding(0)`)
+  is not a scale value and needs no comment. Window, thumbnail and popover
+  `.frame` sizes, shadow radii, chart and ring geometry, and window-placement
+  margins are layout, not tokens.
+  **Every tool popover opens with `PopoverHeader`** (`Support/Theme.swift`:
   the name at 15 pt semibold, then any popover controls, then the
-  `ToolSettingsLink` when the tool has options), and tiles or cards inside a
-  popover (Switches tiles, the Menu Bar how-to, Color Picker's format and
-  contrast cards) take a flat `.quaternary.opacity(0.5)` fill, since the
-  popover chrome is already the glass.
+  `ToolSettingsLink` when the tool has options). A tile or card that sits on
+  glass (Switches tiles, the Menu Bar how-to, Color Picker's format and
+  contrast cards, the panel's note and setup cards) takes `.flatSurface()`
+  (`Views/Materials.swift`, the `.quaternary.opacity(0.5)` fill), never
+  another `glassCard`, since the popover or panel chrome is already the glass.
   The AppKit HUDs (copy toast, window ring, snap preview) are migrated too:
   they take `Theme.Typography.Size` (the same 10/11/13/15/20 as `CGFloat`) via
   `Theme.roundedNSFont`, since AppKit has no SwiftUI `Font`; the ring's radii

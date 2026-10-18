@@ -150,28 +150,28 @@ private struct WindowsPopover: View {
     @State private var trusted = Permissions.accessibilityTrusted
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             PopoverHeader(title: "Windows")
             SectionLabel(text: "Snap the front window")
             ForEach(WindowSettings.chords()) { binding in
-                HStack(spacing: Theme.itemGap) {
+                HStack(spacing: Theme.Space.small) {
                     Text(RingLabel.text(for: binding.action))
-                        .font(Theme.body)
-                    Spacer(minLength: Theme.sectionGap)
+                        .font(Theme.Typography.body())
+                    Spacer(minLength: Theme.Space.large)
                     Text(binding.chord.label)
-                        .font(Theme.caption)
+                        .font(Theme.Typography.small(.semibold))
                         .foregroundStyle(.secondary)
                 }
             }
             Divider()
             Text("Hold Fn for the ring, then flick at a zone.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
 
             if !trusted {
                 Divider()
                 Text("Needs Accessibility to move windows.")
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(Theme.warn)
                 Button("Grant Accessibility") { Permissions.requestAccessibility() }
                 .controlSize(.small)

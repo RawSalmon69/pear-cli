@@ -193,11 +193,13 @@ struct PanelView: View {
                 Text("No tools match")
                     .font(Theme.Typography.body())
                     .foregroundStyle(.secondary)
-                // A tool that is switched off does not show here; Tools is
-                // where it is switched back on.
-                Button("Open Settings") { SettingsPage.open(.tools) }
-                    .font(Theme.Typography.small())
-                    .controlSize(.small)
+                // A tool that is switched off does not show here; its page is
+                // where it is switched back on, so land on the first tool page.
+                Button("Open Settings") {
+                    SettingsPage.open(env.tools.known.first.map { .tool($0.id) } ?? .general)
+                }
+                .font(Theme.Typography.small())
+                .controlSize(.small)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, Theme.Space.large)
@@ -277,10 +279,7 @@ struct PanelHeader: View {
                 }
                 .padding(.horizontal, Theme.Space.small)
                 .padding(.vertical, Theme.Space.xSmall)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.Radius.small)
-                        .fill(.quaternary.opacity(0.5))
-                )
+                .flatSurface(cornerRadius: Theme.Radius.small)
                 if !model.catLine.isEmpty {
                     HStack(spacing: Theme.Space.small) {
                         Text(model.catLine)
@@ -377,24 +376,25 @@ struct ConnectionBanner: View {
     var body: some View {
         switch env.messaging.connectionState {
         case .needsSetup:
-            VStack(alignment: .leading, spacing: Theme.itemGap) {
+            VStack(alignment: .leading, spacing: Theme.Space.small) {
                 Label("Two Macs, one key", systemImage: "key.horizontal.fill")
-                    .font(Theme.emphasis)
+                    .font(Theme.Typography.large(.medium))
                     .foregroundStyle(Theme.accent)
                 Text("Notes are end-to-end encrypted with a key only the two of you hold. Set it up once.")
-                    .font(Theme.body)
+                    .font(Theme.Typography.body())
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Set up the key…") { SettingsPage.open(.general) }
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.accent)
             }
-            .padding(Theme.heroPadding)
+            .padding(Theme.edgePadding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassCard(cornerRadius: 16)
+            // A flat fill, not glass: the card sits on the panel's own glass.
+            .flatSurface(cornerRadius: Theme.Radius.large)
         case .offline(let reason):
             Label(reason, systemImage: "icloud.slash")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(Theme.warn)
         case .connecting, .online:
             EmptyView()
@@ -422,7 +422,7 @@ struct NotesSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Notes")
 
             if let hero {
@@ -435,14 +435,14 @@ struct NotesSection: View {
 
             if thread.isEmpty {
                 Text("No notes yet.")
-                    .font(Theme.body)
+                    .font(Theme.Typography.body())
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 48)
             } else if !rest.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: Theme.Space.small) {
                     ForEach(rest) { CompactNoteRow(message: $0) }
                 }
-                .padding(.leading, 2)
+                .padding(.leading, Theme.Space.xSmall)
             }
 
             Composer(draft: $draft)
@@ -458,9 +458,9 @@ struct HeroNoteCard: View {
     @State private var copied = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            MessageBody(message: message, font: Theme.emphasis, imageHeight: 140)
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
+            MessageBody(message: message, font: Theme.Typography.large(.medium), imageHeight: 140)
+            HStack(spacing: Theme.Space.small) {
                 Text(message.sentAt, style: .time)
                 if message.seenAt != nil { Text("· seen 🍐") }
                 Spacer()
@@ -470,20 +470,21 @@ struct HeroNoteCard: View {
                     } label: {
                         Label(copied ? "Copied" : "Copy",
                               systemImage: copied ? "checkmark" : "doc.on.doc")
-                            .font(Theme.caption)
+                            .font(Theme.Typography.small(.semibold))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(copied ? Theme.accent : .secondary)
                 }
             }
-            .font(Theme.caption)
+            .font(Theme.Typography.small(.semibold))
             .foregroundStyle(.tertiary)
         }
-        .padding(Theme.heroPadding)
+        .padding(Theme.edgePadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard(cornerRadius: 16)
+        // A flat fill, not glass: the card sits on the panel's own glass.
+        .flatSurface(cornerRadius: Theme.Radius.large)
         .overlay(alignment: .topTrailing) {
-            Text("🍐").font(.system(size: 12)).padding(8).opacity(0.6)
+            Text("🍐").font(Theme.Typography.small()).padding(Theme.Space.small).opacity(0.6)
         }
     }
 
@@ -501,12 +502,12 @@ struct CompactNoteRow: View {
     private var mine: Bool { message.senderDevice == CoupleKey.deviceRole }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.small) {
             Text(mine ? "you" : "🍐")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.tertiary)
                 .frame(width: 24, alignment: .trailing)
-            MessageBody(message: message, font: Theme.body, imageHeight: 60)
+            MessageBody(message: message, font: Theme.Typography.body(), imageHeight: 60)
                 .foregroundStyle(mine ? .secondary : .primary)
             Spacer(minLength: 0)
             if hovering, message.kind == .text, let text = message.text {
@@ -514,14 +515,14 @@ struct CompactNoteRow: View {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(text, forType: .string)
                 } label: {
-                    Image(systemName: "doc.on.doc").font(.system(size: 10))
+                    Image(systemName: "doc.on.doc").font(.system(size: Theme.Typography.Size.tiny))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Copy")
                 .foregroundStyle(.secondary)
             } else {
                 Text(message.sentAt, style: .time)
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(.quaternary)
             }
         }
@@ -548,7 +549,7 @@ struct MessageBody: View {
                     .resizable()
                     .scaledToFit()
                     .frame(maxHeight: imageHeight)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small))
             } else {
                 Label(message.text ?? "photo", systemImage: "photo").font(font)
             }
@@ -566,14 +567,14 @@ struct Composer: View {
     private var empty: Bool { draft.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: Theme.Space.xSmall) {
             TextField("Write a note…", text: $draft)
                 .textFieldStyle(.plain)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .focused($focused)
                 .onSubmit(send)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
+                .padding(.horizontal, Theme.Space.medium)
+                .padding(.vertical, Theme.Space.small)
                 .background(Capsule().fill(.quaternary.opacity(0.5)))
             GlyphButton(symbol: "paperplane.fill", help: "Send",
                         tint: empty ? .secondary : Theme.accent) { send() }
@@ -898,7 +899,7 @@ struct BottomBar: View {
     @State private var showHelp = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             buttonRow
             trialNotice
         }
@@ -912,29 +913,29 @@ struct BottomBar: View {
     @ViewBuilder private var trialNotice: some View {
         if case .trial(let days) = env.entitlement.entitlement,
             let notice = LockedCopy.trialNotice(daysRemaining: days) {
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.Space.xSmall) {
                 Text(notice)
                     .foregroundStyle(.tertiary)
                 Link("Buy a licence", destination: LockedCopy.pricingURL)
                     .buttonStyle(.plain)
                     .foregroundStyle(Theme.accent)
             }
-            .font(Theme.caption)
+            .font(Theme.Typography.small(.semibold))
         }
     }
 
     private var buttonRow: some View {
-        HStack(spacing: Theme.itemGap) {
+        HStack(spacing: Theme.Space.small) {
             Spacer()
             if let updater = env.updater {
                 Button("v\(updater.versionString)") { updater.checkForUpdates() }
                     .buttonStyle(.plain)
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(.secondary)
                     .help("Check for updates")
             } else {
                 Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev")")
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(.quaternary)
             }
             GlyphButton(symbol: "questionmark", help: "What can Pear do?", tint: .secondary) {

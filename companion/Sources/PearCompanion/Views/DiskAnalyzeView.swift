@@ -21,7 +21,7 @@ struct DiskAnalyzeView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             Picker("View", selection: $mode) {
                 ForEach(DiskViewMode.allCases) { mode in
                     Text(mode.title).tag(mode)
@@ -73,12 +73,12 @@ private struct PendingDeletionSection: View {
     let staging: DiskStagingModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             HStack(spacing: Theme.Space.xSmall) {
                 SectionLabel(text: "Pending deletion")
                 Spacer(minLength: Theme.Space.xSmall)
                 Text("\(staging.count) · \(ByteFormat.si(staging.totalSize))")
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
@@ -103,7 +103,7 @@ private struct PendingDeletionSection: View {
             .tint(Theme.warn)
             .focusable(false)
         }
-        .padding(Theme.cardPadding)
+        .padding(Theme.Space.medium)
         .glassCard(cornerRadius: Theme.Radius.medium)
     }
 
@@ -134,13 +134,13 @@ private struct PendingRow: View {
                 .font(Theme.Typography.tiny())
                 .foregroundStyle(Theme.warn)
             Text(item.name)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .strikethrough(true, color: .secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: Theme.Space.xSmall)
             Text(ByteFormat.si(item.size))
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
             GlyphButton(symbol: "magnifyingglass", help: "Reveal in Finder", tint: .secondary) {

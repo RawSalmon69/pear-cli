@@ -11,14 +11,14 @@ struct RunnerSettingsView: View {
     @Bindable var runner: RunnerModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Runner")
             Text("A runner in the menu bar. It speeds up as the CPU gets busier.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
 
             Toggle("Show a runner in the menu bar", isOn: $runner.isEnabled)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
                 .focusable(false)
@@ -28,7 +28,7 @@ struct RunnerSettingsView: View {
                 .opacity(runner.isEnabled ? 1 : 0.5)
 
             Toggle("Show CPU %", isOn: $runner.showsCPU)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
                 .focusable(false)
@@ -47,18 +47,18 @@ private struct RunnerGrid: View {
 
     /// Discovered once; the list is stable for the app's lifetime.
     private let styles = RunnerStyle.all
-    private let columns = [GridItem(.adaptive(minimum: 76), spacing: 8)]
+    private let columns = [GridItem(.adaptive(minimum: 76), spacing: Theme.Space.small)]
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 8) {
+            LazyVGrid(columns: columns, spacing: Theme.Space.small) {
                 ForEach(styles) { style in
                     RunnerCell(style: style, selected: style == selection) {
                         onSelect(style)
                     }
                 }
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, Theme.Space.xSmall)
         }
         .frame(maxHeight: 180)
     }
@@ -74,7 +74,7 @@ private struct RunnerCell: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 4) {
+            VStack(spacing: Theme.Space.xSmall) {
                 Image(nsImage: style.previewFrame())
                     .renderingMode(.template)
                     .interpolation(.none)
@@ -83,7 +83,7 @@ private struct RunnerCell: View {
                     .frame(maxWidth: 56, maxHeight: 22)
                     .foregroundStyle(.primary)
                 Text(style.name)
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(selected ? Theme.accent : .secondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
@@ -91,16 +91,16 @@ private struct RunnerCell: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 56)
-            .padding(.horizontal, 4)
+            .padding(.horizontal, Theme.Space.xSmall)
             .background(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: Theme.Radius.medium)
                     .fill(selected ? Theme.accentSoft : .clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: Theme.Radius.medium)
                     .strokeBorder(selected ? Theme.accent : .clear, lineWidth: 1.5)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.medium))
         }
         .buttonStyle(.plain)
         .focusable(false)

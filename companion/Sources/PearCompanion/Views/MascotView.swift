@@ -33,7 +33,7 @@ struct MascotView: View {
 
     var body: some View {
         Text(mood.frame(blinking: blinking))
-            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .font(.system(size: Theme.Typography.Size.tiny, weight: .semibold, design: .monospaced))
             .foregroundStyle(Theme.accent)
             .lineSpacing(1)
             .fixedSize()

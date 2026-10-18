@@ -100,8 +100,8 @@ enum AccentWheelMath {
 /// Design tokens. The shared set every surface should use is `Radius`
 /// (6 · 10 · 16), `Typography` (10 · 11 · 13 · 15 · 20, rounded, nothing below
 /// 10 pt), `Space` (4 · 8 · 12 · 16 · 24) and `edgePadding` (14, the one inset
-/// for every popover and panel edge). The older values below (type 11 · 13 ·
-/// 15 · 17 · 22, section gap 20) still compile while call sites move over.
+/// for every popover and panel edge). There are no other values: a literal
+/// radius, font size or padding outside this file carries a comment saying why.
 enum Theme {
     /// Corner radii. `large` is the panel/card radius that `glassCard` and
     /// `clipToCard` share by default.
@@ -150,12 +150,7 @@ enum Theme {
     /// accent, which the user may have set to any colour, including amber.
     static let danger = Color(red: 0.93, green: 0.36, blue: 0.36)
 
-    static let sectionGap: CGFloat = 20
-    static let itemGap: CGFloat = 8
-    static let cardPadding: CGFloat = 12
-    static let heroPadding: CGFloat = 14
-
-    static func rounded(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
+    private static func rounded(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .rounded)
     }
 
@@ -166,12 +161,6 @@ enum Theme {
         guard let rounded = base.fontDescriptor.withDesign(.rounded) else { return base }
         return NSFont(descriptor: rounded, size: size) ?? base
     }
-
-    static let caption = rounded(11, .semibold)
-    static let body = rounded(13)
-    static let emphasis = rounded(15, .medium)
-    static let title = rounded(17, .semibold)
-    static let hero = rounded(22, .bold)
 }
 
 /// Section label: small caps feel without fighting the notes for attention.
@@ -180,7 +169,7 @@ struct SectionLabel: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(Theme.caption)
+            .font(Theme.Typography.small(.semibold))
             .kerning(0.8)
             .foregroundStyle(.secondary)
     }
@@ -225,7 +214,7 @@ struct GlyphButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: Theme.Typography.Size.body, weight: .medium))
                 .foregroundStyle(hovering ? Theme.accent : tint)
                 .frame(width: 26, height: 26)
                 .background(

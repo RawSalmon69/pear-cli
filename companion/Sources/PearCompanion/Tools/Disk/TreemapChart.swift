@@ -545,11 +545,11 @@ private struct TreemapTooltipView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
             Text(name)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .lineLimit(1)
                 .truncationMode(.middle)
             Text(ByteFormat.si(size))
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }

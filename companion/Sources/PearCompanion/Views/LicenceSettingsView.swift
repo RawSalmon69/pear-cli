@@ -35,7 +35,7 @@ struct LicenceSettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.sectionGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.xLarge) {
             currentState
             entrySection
             if case .licensed = env.entitlement.entitlement { removalSection }
@@ -45,7 +45,7 @@ struct LicenceSettingsView: View {
         // licence file is the thing the buyer has in their hand, and hunting for
         // a rectangle to aim at is the part people get wrong.
         .overlay {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: Theme.Radius.medium)
                 .strokeBorder(Theme.accent, lineWidth: 2)
                 .opacity(targeted ? 1 : 0)
                 .animation(.easeOut(duration: 0.12), value: targeted)
@@ -59,43 +59,43 @@ struct LicenceSettingsView: View {
     @ViewBuilder private var currentState: some View {
         switch env.entitlement.entitlement {
         case .licensed(let email):
-            VStack(alignment: .leading, spacing: Theme.itemGap) {
+            VStack(alignment: .leading, spacing: Theme.Space.small) {
                 SectionLabel(text: "License")
                 Label("Licensed to \(email)", systemImage: "checkmark.seal.fill")
-                    .font(Theme.emphasis)
+                    .font(Theme.Typography.large(.medium))
                     .foregroundStyle(Theme.accent)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                 Text("Every Pear 3.x update is included. Nothing expires and nothing checks in. "
                     + "Pear keeps working offline.")
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         case .trial(let daysRemaining):
-            VStack(alignment: .leading, spacing: Theme.itemGap) {
+            VStack(alignment: .leading, spacing: Theme.Space.small) {
                 SectionLabel(text: "Trial")
                 Label(LockedCopy.trialStatus(daysRemaining: daysRemaining), systemImage: "hourglass")
-                    .font(Theme.emphasis)
+                    .font(Theme.Typography.large(.medium))
                 Text("Every feature is on, with no account and no card. When the fourteen days are "
                     + "up the tools pause; your scratchpad notes and shelf items stay.")
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 buyLink
             }
         case .expired(let reason):
             let copy = LockedCopy.of(reason)
-            VStack(alignment: .leading, spacing: Theme.itemGap) {
+            VStack(alignment: .leading, spacing: Theme.Space.small) {
                 SectionLabel(text: "License")
                 Label(copy.headline, systemImage: copy.symbol)
-                    .font(Theme.emphasis)
+                    .font(Theme.Typography.large(.medium))
                 Text(copy.detail)
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(copy.price)
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
                 buyLink
             }
@@ -104,7 +104,7 @@ struct LicenceSettingsView: View {
 
     private var buyLink: some View {
         Link("Buy a license", destination: LockedCopy.pricingURL)
-            .font(Theme.caption)
+            .font(Theme.Typography.small(.semibold))
             .buttonStyle(.bordered)
             .controlSize(.small)
             .tint(Theme.accent)
@@ -113,29 +113,29 @@ struct LicenceSettingsView: View {
     // MARK: - Entering one
 
     private var entrySection: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Enter a license")
             Text("Paste the key from your receipt, or drop the "
                 + ".\(LicenceVerifier.fileExtension) file anywhere in this pane.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             TextField("License key", text: $pasted, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(3...5)
-                .font(.system(size: 10, design: .monospaced))
+                .font(.system(size: Theme.Typography.Size.tiny, design: .monospaced))
 
-            HStack(spacing: 6) {
+            HStack(spacing: Theme.Space.small) {
                 Button("Activate") { submit(pasted) }
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .disabled(pasted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Spacer(minLength: 0)
             }
 
             if let attempt {
                 Text(attempt.text)
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(attempt.accepted ? Theme.accent : Theme.warn)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -201,16 +201,16 @@ struct LicenceSettingsView: View {
     // MARK: - Removing one
 
     private var removalSection: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Remove")
             Text("Deletes the license file from this Mac. Pear goes back to the trial, or locks if "
                 + "the trial has already ended. Your key keeps working: you can paste it "
                 + "back any time, here or on another Mac.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button("Remove license from this Mac") { env.entitlement.removeLicence() }
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
         }
     }
 }

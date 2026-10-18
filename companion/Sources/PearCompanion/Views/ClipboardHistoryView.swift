@@ -11,12 +11,12 @@ struct ClipboardHistoryView: View {
     private var shown: [ClipItem] { clipboard.display(matching: query) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             PopoverHeader(title: "Clipboard") {
                 if !clipboard.items.isEmpty {
                     Button("Clear") { clipboard.clear() }
                         .buttonStyle(.plain)
-                        .font(Theme.caption)
+                        .font(Theme.Typography.small(.semibold))
                         .foregroundStyle(.secondary)
                         .help("Clears history; pinned items stay")
                 }
@@ -29,7 +29,7 @@ struct ClipboardHistoryView: View {
                         .foregroundStyle(.tertiary)
                     TextField("Search…", text: $query)
                         .textFieldStyle(.plain)
-                        .font(Theme.body)
+                        .font(Theme.Typography.body())
                 }
                 .padding(.horizontal, Theme.Space.medium)
                 .padding(.vertical, Theme.Space.xSmall)
@@ -38,12 +38,12 @@ struct ClipboardHistoryView: View {
 
             if clipboard.items.isEmpty {
                 Text("Nothing copied yet. Anything you copy shows up here.")
-                    .font(Theme.body)
+                    .font(Theme.Typography.body())
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 60)
             } else if shown.isEmpty {
                 Text("No matches.")
-                    .font(Theme.body)
+                    .font(Theme.Typography.body())
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 40)
             } else {
@@ -108,14 +108,14 @@ private struct ClipRow: View {
                             .resizable().scaledToFill()
                             .frame(width: 30, height: 30)
                             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small))
-                        Text("Image").font(Theme.body).foregroundStyle(.secondary)
+                        Text("Image").font(Theme.Typography.body()).foregroundStyle(.secondary)
                     } else {
                         Image(systemName: "text.alignleft")
                             .font(Theme.Typography.small())
                             .foregroundStyle(.tertiary)
                             .frame(width: 30)
                         Text(item.text ?? "")
-                            .font(Theme.body)
+                            .font(Theme.Typography.body())
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                     }

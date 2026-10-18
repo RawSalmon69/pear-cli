@@ -31,7 +31,7 @@ struct KeyCluOverlayView: View {
             header
             if groups.isEmpty {
                 Text("No shortcuts found")
-                    .font(Theme.body)
+                    .font(Theme.Typography.body())
                     .foregroundStyle(.secondary)
             } else if scrollable {
                 ScrollView(.vertical) { grid }
@@ -49,7 +49,7 @@ struct KeyCluOverlayView: View {
             if let appIcon {
                 Image(nsImage: appIcon).resizable().frame(width: 24, height: 24)
             }
-            Text(appName).font(Theme.title)
+            Text(appName).font(Theme.Typography.title(.semibold))
             Spacer(minLength: Theme.Space.xLarge)
             Text("esc to close").font(Theme.Typography.small()).foregroundStyle(.tertiary)
         }
@@ -94,12 +94,12 @@ struct KeyCluOverlayView: View {
                 let destructive = shortcut.title.lowercased().hasPrefix("quit")
                 HStack(spacing: Theme.Space.large) {
                     Text(shortcut.title)
-                        .font(Theme.body)
+                        .font(Theme.Typography.body())
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text(shortcut.glyph)
-                        .font(Theme.body)
+                        .font(Theme.Typography.body())
                         .tracking(2)
                         .foregroundStyle(destructive ? Self.destructiveTint : Color.secondary)
                 }

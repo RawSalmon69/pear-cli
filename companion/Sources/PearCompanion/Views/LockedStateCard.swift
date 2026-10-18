@@ -94,37 +94,38 @@ struct LockedStateCard: View {
     private var copy: LockedCopy { LockedCopy.of(reason) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             Label(copy.headline, systemImage: copy.symbol)
-                .font(Theme.emphasis)
+                .font(Theme.Typography.large(.medium))
 
             Text(copy.detail)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text(copy.price)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: Theme.itemGap) {
+            HStack(spacing: Theme.Space.small) {
                 Link("Buy a license", destination: LockedCopy.pricingURL)
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.accent)
                 Button("I have a license") { SettingsPage.open(.licence) }
                     .buttonStyle(.bordered)
             }
-            .font(Theme.body)
+            .font(Theme.Typography.body())
             .controlSize(.regular)
             .focusable(false)
 
             Text(LockedCopy.contentPromise)
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Theme.heroPadding)
-        .glassCard(cornerRadius: 16)
+        .padding(Theme.edgePadding)
+        // A flat fill, not glass: the card sits on the panel's own glass.
+        .flatSurface(cornerRadius: Theme.Radius.large)
     }
 }

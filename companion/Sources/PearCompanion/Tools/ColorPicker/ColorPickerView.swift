@@ -10,7 +10,7 @@ struct ColorPickerView: View {
     @State private var store = ColorStore()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.sectionGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.large) {
             PopoverHeader(title: "Color Picker", settingsToolID: ColorPickerTool.toolID)
             pickButton
 
@@ -20,7 +20,7 @@ struct ColorPickerView: View {
                 contrastCard(for: current)
             } else {
                 Text("Pick a color to see its formats and contrast.")
-                    .font(Theme.body)
+                    .font(Theme.Typography.body())
                     .foregroundStyle(.secondary)
             }
 
@@ -37,7 +37,7 @@ struct ColorPickerView: View {
             store.pickColor(copy: true)
         } label: {
             Label("Pick color", systemImage: "eyedropper")
-                .font(Theme.emphasis)
+                .font(Theme.Typography.large(.medium))
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
@@ -63,10 +63,7 @@ struct ColorPickerView: View {
         }
         .padding(Theme.Space.medium)
         // A flat fill, not glass: the card sits on the popover's own glass.
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.medium)
-                .fill(.quaternary.opacity(0.5))
-        )
+        .flatSurface()
     }
 
     private func contrastCard(for color: PickedColor) -> some View {
@@ -77,10 +74,7 @@ struct ColorPickerView: View {
         }
         .padding(Theme.Space.medium)
         // A flat fill, not glass: the card sits on the popover's own glass.
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.medium)
-                .fill(.quaternary.opacity(0.5))
-        )
+        .flatSurface()
     }
 
     private var historySection: some View {
@@ -135,10 +129,10 @@ private struct FormatRow: View {
         HStack {
             VStack(alignment: .leading, spacing: 1) {  // 1 pt: the label sits on its value, below the 4 pt step
                 Text(label)
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(.secondary)
                 Text(value)
-                    .font(Theme.body)
+                    .font(Theme.Typography.body())
                     .monospaced()
             }
             Spacer(minLength: Theme.Space.small)
@@ -155,11 +149,11 @@ private struct ContrastRow: View {
     var body: some View {
         HStack(spacing: Theme.Space.small) {
             Text(label)
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
             Spacer()
             Text(String(format: "%.2f", result.ratio))
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .monospaced()
             badge("AA", pass: result.passesAA)
             badge("AAA", pass: result.passesAAA)
@@ -168,7 +162,7 @@ private struct ContrastRow: View {
 
     private func badge(_ text: String, pass: Bool) -> some View {
         Text(text)
-            .font(Theme.caption)
+            .font(Theme.Typography.small(.semibold))
             .padding(.horizontal, Theme.Space.small)
             .padding(.vertical, 2)  // 2 pt: the badge hugs its text, below the 4 pt step
             .background(

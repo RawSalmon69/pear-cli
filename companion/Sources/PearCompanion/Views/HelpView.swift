@@ -30,31 +30,31 @@ struct HelpView: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             HStack {
                 Text("What Pear can do")
-                    .font(Theme.title)
+                    .font(Theme.Typography.large(.semibold))
                 Spacer()
                 GlyphButton(symbol: "xmark", help: "Close", tint: .secondary, action: onClose)
             }
 
             ScrollView {
-                VStack(alignment: .leading, spacing: Theme.sectionGap) {
+                VStack(alignment: .leading, spacing: Theme.Space.large) {
                     ForEach(ToolCategory.allCases, id: \.self) { category in
                         let rows = entries(in: category)
                         if !rows.isEmpty {
-                            VStack(alignment: .leading, spacing: 6) {
+                            VStack(alignment: .leading, spacing: Theme.Space.small) {
                                 SectionLabel(text: category.title)
                                 ForEach(rows.indices, id: \.self) { HelpRow(entry: rows[$0]) }
                             }
                         }
                     }
                 }
-                .padding(.bottom, 4)
+                .padding(.bottom, Theme.Space.xSmall)
             }
             .frame(maxHeight: 380)
         }
-        .padding(16)
+        .padding(Theme.edgePadding)
         .frame(width: 340)
     }
 
@@ -82,40 +82,40 @@ private struct HelpRow: View {
     let entry: HelpView.Row
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: Theme.Space.small) {
             Image(systemName: entry.icon)
-                .font(.system(size: 14))
+                .font(.system(size: Theme.Typography.Size.large))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 22, height: 20)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    Text(entry.title).font(Theme.emphasis)
+            VStack(alignment: .leading, spacing: 1) {  // 1 pt: the summary sits on its title, below the 4 pt step
+                HStack(spacing: Theme.Space.small) {
+                    Text(entry.title).font(Theme.Typography.large(.medium))
                     if let hotkey = entry.hotkey {
                         Text(hotkey)
-                            .font(.system(size: 10, design: .rounded))
+                            .font(Theme.Typography.tiny())
                             .foregroundStyle(.secondary)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
+                            .padding(.horizontal, Theme.Space.xSmall)
+                            .padding(.vertical, 1)  // 1 pt: the key label hugs its text, below the 4 pt step
                             .background(Capsule().fill(.quaternary.opacity(0.5)))
                     }
                 }
                 if !entry.summary.isEmpty {
                     Text(entry.summary)
-                        .font(Theme.caption)
+                        .font(Theme.Typography.small(.semibold))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(10)
+        .padding(Theme.Space.medium)
         .frame(maxWidth: .infinity, alignment: .leading)
         // A flat fill, not `.glassCard`: a translucent material per row samples
         // whatever sits behind the popover (desktop, windows), so stacked rows
         // rendered at visibly different "blackness". A solid fill is identical
         // for every row and matches the app's list-row idiom (ZoneButton, ClipRow).
         .background(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: Theme.Radius.medium)
                 .fill(Color.secondary.opacity(0.08))
         )
     }

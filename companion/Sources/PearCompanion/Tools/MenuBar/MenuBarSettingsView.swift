@@ -15,7 +15,7 @@ struct MenuBarSettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.sectionGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.large) {
             PopoverHeader(title: "Menu Bar", settingsToolID: MenuBarTool.toolID)
             toggleButton
             howToCard
@@ -37,12 +37,12 @@ struct MenuBarSettingsView: View {
                 step("4.", "Past the second divider stays hidden until ⌥-click.")
             }
             Text("macOS does not let apps move each other's icons, so you drag this one yourself. Once is enough.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, Theme.Space.xSmall)
             Label("Can't see the Pear icon? Press ⌃⇧P to open this panel anytime.", systemImage: "keyboard")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(Theme.accent)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, Theme.Space.xSmall)
@@ -51,10 +51,7 @@ struct MenuBarSettingsView: View {
         .padding(Theme.Space.medium)
         .frame(maxWidth: .infinity, alignment: .leading)
         // A flat fill, not glass: the card sits on the popover's own glass.
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.medium)
-                .fill(.quaternary.opacity(0.5))
-        )
+        .flatSurface()
     }
 
     /// An icon overflowing behind the notch can't be grabbed to drag it across
@@ -64,10 +61,10 @@ struct MenuBarSettingsView: View {
     private var notchTip: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
             Label("Stuck under the notch?", systemImage: "lightbulb")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
             Text("Pear can't reach an icon hidden by the notch. Click the desktop or an app with fewer menus (like Finder) so the bar reflows and the icon clears the notch, then ⌘-drag it across the chevron.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -76,8 +73,8 @@ struct MenuBarSettingsView: View {
 
     private func step(_ n: String, _ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: Theme.Space.small) {
-            Text(n).font(Theme.caption).foregroundStyle(Theme.accent).monospacedDigit()
-            Text(text).font(Theme.caption).foregroundStyle(.secondary)
+            Text(n).font(Theme.Typography.small(.semibold)).foregroundStyle(Theme.accent).monospacedDigit()
+            Text(text).font(Theme.Typography.small(.semibold)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -89,7 +86,7 @@ struct MenuBarSettingsView: View {
             Label(
                 manager.isCollapsed ? "Reveal icons" : "Hide icons",
                 systemImage: manager.isCollapsed ? "eye" : "eye.slash")
-                .font(Theme.emphasis)
+                .font(Theme.Typography.large(.medium))
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
@@ -104,7 +101,7 @@ struct MenuBarOptionsView: View {
     let manager: MenuBarManager
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.sectionGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.large) {
             rehideSection
             zonesSection
         }
@@ -141,7 +138,7 @@ struct MenuBarOptionsView: View {
     private func switchRow(_ title: String, _ binding: Binding<Bool>) -> some View {
         Toggle(isOn: binding) {
             Text(title)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
         }

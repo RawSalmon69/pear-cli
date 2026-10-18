@@ -178,7 +178,7 @@ struct HotkeyRecorderRow: View {
                     model.toggle(registry: env.tools, owner: owner)
                 } label: {
                     Text(buttonLabel)
-                        .font(Theme.caption)
+                        .font(Theme.Typography.small(.semibold))
                         .frame(minWidth: 96, alignment: .leading)
                 }
                 .buttonStyle(.bordered)
@@ -215,7 +215,7 @@ struct HotkeyRecorderRow: View {
             }
             if let message = model.message {
                 Text(message)
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(Theme.warn)
             }
         }

@@ -14,7 +14,7 @@ struct ScratchpadView: View {
     private var linkDetection = ScratchpadSettings.defaultLinkDetection
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             header
             editor
         }
@@ -33,7 +33,7 @@ struct ScratchpadView: View {
             .disabled(store.notes.count < 2)
 
             Text("\(store.currentIndex + 1)/\(store.notes.count)")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
                 .frame(minWidth: 28)
@@ -111,12 +111,12 @@ struct ScratchpadSettingsView: View {
     private var rememberPosition = ScratchpadSettings.defaultRememberPosition
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             Toggle("Swipe to switch notes", isOn: $swipeEnabled)
             Toggle("Detect links", isOn: $linkDetection)
             Toggle("Reopen where I left it", isOn: $rememberPosition)
         }
-        .font(Theme.body)
+        .font(Theme.Typography.body())
         .toggleStyle(.switch)
         .tint(Theme.accent)
     }

@@ -138,16 +138,16 @@ struct BackgroundRemoverView: View {
                 .font(.system(size: 40, weight: .light))
                 .foregroundStyle(.secondary)
             Text("Drop an image here")
-                .font(Theme.emphasis)
+                .font(Theme.Typography.large(.medium))
             Text("or")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.tertiary)
             Button("Choose Image…") { model.choose() }
                 .buttonStyle(.borderedProminent)
                 .tint(Theme.accent)
             if case .failed(let message) = model.state {
                 Text(message)
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(Theme.warn)
             }
             Spacer()
@@ -162,10 +162,10 @@ struct BackgroundRemoverView: View {
             Spacer()
             ProgressView()
             Text("Removing background…")
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .foregroundStyle(.secondary)
             Text(model.usedHD ? "High quality" : "Fast")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.tertiary)
             Spacer()
         }
@@ -186,7 +186,7 @@ struct BackgroundRemoverView: View {
             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.medium))
             .overlay(alignment: .topLeading) {
                 Text(model.usedHD ? "High quality" : "Fast")
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .padding(.horizontal, Theme.Space.small).padding(.vertical, Theme.Space.xSmall)
                     .glassCard()
                     .padding(Theme.Space.small)
@@ -201,7 +201,7 @@ struct BackgroundRemoverView: View {
                 Spacer()
                 Button { model.reset() } label: { Label("New Image", systemImage: "photo.badge.plus") }
             }
-            .font(Theme.body)
+            .font(Theme.Typography.body())
             qualityFootnote
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -210,7 +210,7 @@ struct BackgroundRemoverView: View {
     @ViewBuilder private var qualityFootnote: some View {
         if !Prefs.hdBackgroundRemoval {
             Text("Using the built-in cutout. High-quality mode in Settings handles hair and fine edges better.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)

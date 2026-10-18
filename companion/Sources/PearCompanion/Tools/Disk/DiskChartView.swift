@@ -33,7 +33,7 @@ struct DiskChartView: View {
     private var displayedRoot: DiskNode? { stack.last ?? model.root }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             header
             chartArea
             if let focused, focused.path != nil {
@@ -49,17 +49,17 @@ struct DiskChartView: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .center, spacing: Theme.itemGap) {
+        HStack(alignment: .center, spacing: Theme.Space.small) {
             if !stack.isEmpty {
                 GlyphButton(symbol: "chevron.left", help: "Back", tint: .secondary) { goUp() }
             }
             VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
                 Text(title)
-                    .font(Theme.title)
+                    .font(Theme.Typography.title(.semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(subtitle)
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(hover == nil ? Color.secondary : Theme.accent)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -67,7 +67,7 @@ struct DiskChartView: View {
             Spacer(minLength: 0)
             if let scannedAt = model.scannedAt, !model.isScanning {
                 Text(DiskScanCache.ageLabel(scannedAt: scannedAt))
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(DiskScanCache.isStale(scannedAt: scannedAt)
                                      ? Theme.warn : Color.secondary)
                     .lineLimit(1)
@@ -133,10 +133,10 @@ struct DiskChartView: View {
     }
 
     private var loadingCard: some View {
-        VStack(spacing: Theme.itemGap) {
+        VStack(spacing: Theme.Space.small) {
             ProgressView().controlSize(.small)
             Text("Scanning your home folder…")
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: Self.chartHeight)
@@ -144,12 +144,12 @@ struct DiskChartView: View {
     }
 
     private func errorCard(_ message: String) -> some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             Label("Can't scan right now", systemImage: "exclamationmark.triangle.fill")
-                .font(Theme.emphasis)
+                .font(Theme.Typography.large(.medium))
                 .foregroundStyle(Theme.warn)
             Text(message)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button("Try again") { rescan() }
@@ -159,7 +159,7 @@ struct DiskChartView: View {
                 .focusable(false)
         }
         .frame(maxWidth: .infinity, minHeight: Self.chartHeight, alignment: .topLeading)
-        .padding(Theme.heroPadding)
+        .padding(Theme.edgePadding)
         .glassCard()
     }
 
@@ -170,17 +170,17 @@ struct DiskChartView: View {
     @ViewBuilder
     private func actionRow(for item: DiskChartHover) -> some View {
         if let path = item.path {
-            HStack(spacing: Theme.itemGap) {
+            HStack(spacing: Theme.Space.small) {
                 Image(systemName: "scope")
                     .font(Theme.Typography.small())
                     .foregroundStyle(Theme.accent)
                 VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
                     Text(item.name)
-                        .font(Theme.body)
+                        .font(Theme.Typography.body())
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Text(ByteFormat.si(item.size))
-                        .font(Theme.caption)
+                        .font(Theme.Typography.small(.semibold))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
@@ -200,11 +200,11 @@ struct DiskChartView: View {
                     }
                 } else {
                     Text("outside Home")
-                        .font(Theme.caption)
+                        .font(Theme.Typography.small(.semibold))
                         .foregroundStyle(.tertiary)
                 }
             }
-            .padding(Theme.cardPadding)
+            .padding(Theme.Space.medium)
             .glassCard(cornerRadius: Theme.Radius.medium)
         }
     }

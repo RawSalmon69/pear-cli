@@ -53,7 +53,7 @@ private struct QRPopoverView: View {
     let onGenerate: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             PopoverHeader(title: "QR Code")
             scanButton
             generateButton
@@ -65,7 +65,7 @@ private struct QRPopoverView: View {
     private var scanButton: some View {
         Button(action: onScan) {
             Label("Scan screen", systemImage: "qrcode.viewfinder")
-                .font(Theme.emphasis)
+                .font(Theme.Typography.large(.medium))
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
@@ -75,7 +75,7 @@ private struct QRPopoverView: View {
     private var generateButton: some View {
         Button(action: onGenerate) {
             Label("QR from clipboard", systemImage: "qrcode")
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)

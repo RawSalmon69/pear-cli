@@ -8,14 +8,14 @@ struct CleanModeSettingsView: View {
     private var lockKeyboard = CleanModeSettings.defaultLockKeyboard
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             Toggle("Lock keyboard", isOn: $lockKeyboard)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
 
             Text("The mouse stays live. Click Done to exit.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

@@ -153,7 +153,7 @@ struct ScreenshotDetailView: View {
             ZoomButton(symbol: "minus.magnifyingglass", help: "Zoom out", action: zoom.zoomOut)
                 .keyboardShortcut("-", modifiers: .command)
             Text("\(zoom.percent)%")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .monospacedDigit()
                 .frame(width: 46)
             ZoomButton(symbol: "plus.magnifyingglass", help: "Zoom in", action: zoom.zoomIn)
@@ -189,7 +189,7 @@ struct ScreenshotDetailView: View {
 
     private var sidebar: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.sectionGap) {
+            VStack(alignment: .leading, spacing: Theme.Space.xLarge) {
                 // Text always has a section, even mid-scan or empty, so the
                 // window is readable the instant it opens and the reader can
                 // see that recognition is still running rather than missing.
@@ -217,13 +217,13 @@ struct ScreenshotDetailView: View {
             if !insights.text.isEmpty {
                 ScrollView {
                     Text(insights.text)
-                        .font(Theme.body)
+                        .font(Theme.Typography.body())
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(Theme.Space.small)
                 }
                 .frame(height: 190)
-                .background(RoundedRectangle(cornerRadius: Theme.Radius.medium).fill(.quaternary.opacity(0.5)))
+                .flatSurface()
                 .overlay {
                     RoundedRectangle(cornerRadius: Theme.Radius.medium)
                         .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
@@ -231,10 +231,10 @@ struct ScreenshotDetailView: View {
             } else if insights.isScanning {
                 HStack(spacing: Theme.Space.small) {
                     ProgressView().controlSize(.small)
-                    Text("Reading text…").font(Theme.body).foregroundStyle(.secondary)
+                    Text("Reading text…").font(Theme.Typography.body()).foregroundStyle(.secondary)
                 }
             } else {
-                Text("No text found").font(Theme.body).foregroundStyle(.secondary)
+                Text("No text found").font(Theme.Typography.body()).foregroundStyle(.secondary)
             }
         }
     }
@@ -254,11 +254,11 @@ struct ScreenshotDetailView: View {
                 ForEach(insights.payloads, id: \.self) { payload in
                     if let url = QRCode.openableURL(in: [payload]) {
                         Link(payload, destination: url)
-                            .font(Theme.body)
+                            .font(Theme.Typography.body())
                             .lineLimit(2)
                     } else {
                         Text(payload)
-                            .font(Theme.body)
+                            .font(Theme.Typography.body())
                             .textSelection(.enabled)
                             .lineLimit(3)
                     }
@@ -289,14 +289,14 @@ struct ScreenshotDetailView: View {
                             copy(picked)
                         }
                         Text(Prefs.colorFormat.value(for: picked))
-                            .font(Theme.body)
+                            .font(Theme.Typography.body())
                             .monospacedDigit()
                             .textSelection(.enabled)
                     }
                 }
                 if insights.colors.isEmpty {
                     if insights.isScanning {
-                        Text("Reading colors…").font(Theme.body).foregroundStyle(.secondary)
+                        Text("Reading colors…").font(Theme.Typography.body()).foregroundStyle(.secondary)
                     }
                 } else {
                     HStack(spacing: Theme.Space.small) {
@@ -344,7 +344,7 @@ struct ScreenshotDetailView: View {
                 if let path = insights.details.path {
                     Button(action: onReveal) {
                         Text(path)
-                            .font(Theme.caption)
+                            .font(Theme.Typography.small(.semibold))
                             .foregroundStyle(Theme.accent)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
@@ -715,11 +715,11 @@ private struct DetailSection<Content: View>: View {
         VStack(alignment: .leading, spacing: Theme.Space.small) {
             HStack(spacing: Theme.Space.small) {
                 Text(title.uppercased())
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(.secondary)
                 if let subtitle {
                     Text(subtitle)
-                        .font(Theme.caption)
+                        .font(Theme.Typography.small(.semibold))
                         .foregroundStyle(.tertiary)
                 }
                 Spacer()
@@ -744,10 +744,10 @@ private struct DetailRow: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(label).font(Theme.caption).foregroundStyle(.secondary)
+            Text(label).font(Theme.Typography.small(.semibold)).foregroundStyle(.secondary)
             Spacer(minLength: Theme.Space.small)
             Text(value)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .textSelection(.enabled)
@@ -833,7 +833,7 @@ private struct DetailAction: View {
         Button(action: action) {
             HStack(spacing: Theme.Space.xSmall) {
                 Image(systemName: symbol).font(Theme.Typography.body(.medium))
-                Text(title).font(Theme.body)
+                Text(title).font(Theme.Typography.body())
             }
             .foregroundStyle(hovering ? Theme.accent : tint)
             .padding(.horizontal, Theme.Space.small)

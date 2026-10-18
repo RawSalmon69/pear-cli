@@ -57,12 +57,8 @@ struct LinkTextView: NSViewRepresentable {
         }
     }
 
-    /// The 13pt rounded system font that matches `Theme.body`.
-    private static let editorFont: NSFont = {
-        let base = NSFont.systemFont(ofSize: 13)
-        guard let descriptor = base.fontDescriptor.withDesign(.rounded) else { return base }
-        return NSFont(descriptor: descriptor, size: 13) ?? base
-    }()
+    /// The rounded body font that matches `Theme.Typography.body()`.
+    private static let editorFont = Theme.roundedNSFont(Theme.Typography.Size.body)
 
     private func applyDetection(to textView: NSTextView) {
         textView.isAutomaticLinkDetectionEnabled = detectLinks

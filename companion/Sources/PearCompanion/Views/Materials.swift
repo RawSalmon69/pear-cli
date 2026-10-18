@@ -52,4 +52,10 @@ extension View {
     func glassCard(cornerRadius: CGFloat = Theme.Radius.large) -> some View {
         modifier(GlassBackground(cornerRadius: cornerRadius))
     }
+
+    /// The flat fill for a tile or card that sits on glass, so it never layers
+    /// glass on glass.
+    func flatSurface(cornerRadius: CGFloat = Theme.Radius.medium) -> some View {
+        background(RoundedRectangle(cornerRadius: cornerRadius).fill(.quaternary.opacity(0.5)))
+    }
 }

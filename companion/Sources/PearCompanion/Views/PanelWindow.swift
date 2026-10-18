@@ -229,7 +229,7 @@ final class PanelController: NSObject {
         env.stats.refresh()
         let root = PanelView(close: { [weak self] in self?.hide() })
             .environment(env)
-            .glassCard(cornerRadius: 16)
+            .glassCard()
             // The panel hangs from the menu bar, so on a notched Mac its safe-
             // area insets change every time it's repositioned. Left in, that
             // fed a constraint-invalidation loop: reposition → insets recompute
@@ -237,7 +237,7 @@ final class PanelController: NSObject {
             // Ignoring the safe area breaks that arm of the loop.
             .ignoresSafeArea()
         let host = PanelHostingView(rootView: AnyView(root))
-        host.clipToCard(radius: 16)
+        host.clipToCard()
         // Deferred one runloop turn: `layout()` is inside AppKit's constraint
         // pass, and calling `setFrame` from there re-enters the layout engine —
         // an exception AppKit escalates to a crash. The accent color well's

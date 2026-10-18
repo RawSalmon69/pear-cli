@@ -87,13 +87,13 @@ private struct HighlightCopyPopover: View {
     @State private var trusted = Permissions.accessibilityTrusted
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             PopoverHeader(title: "Highlight to Copy")
             Text("Select text with the mouse and it goes on the clipboard. Paste it with ⌘V, no ⌘C first.")
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .fixedSize(horizontal: false, vertical: true)
             Text("Password fields are never copied. These copies are marked as auto-generated, so they stay out of your clipboard history.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             // Named because the silence is otherwise unreadable: the first real
@@ -105,14 +105,14 @@ private struct HighlightCopyPopover: View {
             // AXSelectedTextMarkerRange. Nothing to read at any depth, so this
             // is a statement of fact, not a setting the user can go fix.
             Text("Firefox-based browsers, including Zen, do not publish text selections to Accessibility, so this cannot see them. Native apps and other browsers work.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if !trusted {
                 Divider()
                 Text("Needs Accessibility to read the selection.")
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(Theme.warn)
                 Button("Grant Accessibility") { Permissions.requestAccessibility() }
                 .controlSize(.small)

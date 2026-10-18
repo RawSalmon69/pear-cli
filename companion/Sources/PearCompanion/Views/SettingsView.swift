@@ -87,13 +87,6 @@ enum SettingsPage: Hashable, Identifiable {
         return page
     }
 
-    /// The first tool page. "Open Settings" under "No tools match" lands here,
-    /// where the tool pages (and their on/off switches) begin.
-    // TODO(ticket 21): remove; PanelView should open a real page
-    @MainActor static var tools: SettingsPage {
-        .tool(ToolRegistry.live?.known.first?.id ?? "")
-    }
-
     /// Opens Settings on `page`, or on the last page shown. The open itself is
     /// deferred by the observer, so a caller inside the panel is never torn
     /// down mid-action.
@@ -159,7 +152,7 @@ struct SettingsView: View {
             .toolbar(removing: .sidebarToggle)
         } detail: {
             ScrollView {
-                VStack(alignment: .leading, spacing: Theme.sectionGap) {
+                VStack(alignment: .leading, spacing: Theme.Space.xLarge) {
                     switch page {
                     case .general: generalPage
                     case .appearance: appearancePage
@@ -182,17 +175,17 @@ struct SettingsView: View {
     }
 
     @ViewBuilder private var backgroundRemovalSection: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Background removal")
             Toggle("High-quality mode", isOn: $hdEnabled)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
                 .onChange(of: hdEnabled) { _, _ in hd.prepare() }
             Text(hdEnabled
                 ? "On-device AI model for remove.bg-class cutouts (hair, fine edges). One-time \(HDBackgroundModelManager.downloadSizeText) download; fully offline after."
                 : "Apple's built-in cutout is instant and needs no download. Turn this on for sharper edges, after a one-time \(HDBackgroundModelManager.downloadSizeText) download.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if hdEnabled { hdStatusRow }
@@ -203,32 +196,32 @@ struct SettingsView: View {
         switch hd.state {
         case .absent:
             Button("Download model (\(HDBackgroundModelManager.downloadSizeText))") { hd.download() }
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
         case .downloading(let fraction):
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
                 ProgressView(value: fraction).tint(Theme.accent)
                 Text(hd.progressText ?? "Downloading…")
-                    .font(Theme.caption).foregroundStyle(.secondary).monospacedDigit()
+                    .font(Theme.Typography.small(.semibold)).foregroundStyle(.secondary).monospacedDigit()
             }
         case .preparing:
-            HStack(spacing: 6) {
+            HStack(spacing: Theme.Space.small) {
                 ProgressView().controlSize(.small)
-                Text("Preparing…").font(Theme.caption).foregroundStyle(.secondary)
+                Text("Preparing…").font(Theme.Typography.small(.semibold)).foregroundStyle(.secondary)
             }
         case .ready:
-            HStack(spacing: 6) {
+            HStack(spacing: Theme.Space.small) {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                Text("Ready · high quality").font(Theme.caption).foregroundStyle(.secondary)
+                Text("Ready · high quality").font(Theme.Typography.small(.semibold)).foregroundStyle(.secondary)
                 Spacer()
                 Button("Remove") { hd.remove() }
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .help("Delete the model and its compiled copy")
             }
         case .failed(let message):
-            VStack(alignment: .leading, spacing: 4) {
-                Text(message).font(Theme.caption).foregroundStyle(Theme.warn)
+            VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
+                Text(message).font(Theme.Typography.small(.semibold)).foregroundStyle(Theme.warn)
                     .fixedSize(horizontal: false, vertical: true)
-                Button("Try again") { hd.download() }.font(Theme.caption)
+                Button("Try again") { hd.download() }.font(Theme.Typography.small(.semibold))
             }
         }
     }
@@ -238,74 +231,74 @@ struct SettingsView: View {
             coupleKeySection
         }
 
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Panel")
             Toggle("Close when it loses focus", isOn: $panelClosesOnFocusLoss)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
             Text("When off, the panel stays open until you click the menu-bar icon or press Esc. Drag it by any empty area.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
 
         pinsSection
 
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Startup")
             Toggle("Open at login", isOn: loginItemBinding)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
         }
 
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Feedback")
             Toggle("Sound effects", isOn: $soundsEnabled)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
         }
 
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Screenshots")
             Text("Captures are copied to the clipboard and saved here.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
             Toggle("Save a copy to this folder", isOn: $autoSave)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
-            HStack(spacing: 6) {
+            HStack(spacing: Theme.Space.small) {
                 Text(folder)
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .foregroundStyle(autoSave ? .secondary : .quaternary)
                 Spacer()
                 Button("Change…") { pickFolder() }
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .disabled(!autoSave)
             }
         }
 
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Preview stack")
             Text("Previews stack in the corner and stay until you swipe them away.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
             Stepper(value: $previewMaxStack, in: 1...10) {
                 Text("Keep up to \(previewMaxStack) previews")
-                    .font(Theme.body)
+                    .font(Theme.Typography.body())
             }
             Toggle("Auto-dismiss after a delay", isOn: $previewAutoDismiss)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
             Stepper(value: $previewAutoDismissSeconds, in: 2...60, step: 1) {
                 Text("Dismiss after \(Int(previewAutoDismissSeconds))s")
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(previewAutoDismiss ? .secondary : .quaternary)
             }
             .disabled(!previewAutoDismiss)
@@ -317,9 +310,9 @@ struct SettingsView: View {
     /// Accent colour and the menu-bar runner. Named Appearance so "Menu Bar"
     /// means only the menu-bar hider tool.
     @ViewBuilder private var appearancePage: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Accent")
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.small) {
                 ForEach(AccentPreset.allCases) { preset in
                     AccentSwatch(
                         preset: preset,
@@ -343,7 +336,7 @@ struct SettingsView: View {
                         .overlay {
                             if ThemeStore.shared.custom != nil {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 9, weight: .bold))
+                                    .font(.system(size: Theme.Typography.Size.tiny, weight: .bold))
                                     .foregroundStyle(.white)
                             }
                         }
@@ -357,7 +350,7 @@ struct SettingsView: View {
             if showAccentWheel {
                 AccentWheel { ThemeStore.shared.custom = $0 }
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 4)
+                    .padding(.top, Theme.Space.xSmall)
             }
         }
 
@@ -379,21 +372,21 @@ struct SettingsView: View {
     /// live only here; the tool's popover or window keeps its working controls
     /// and a "Settings…" link back (`ToolSettingsLink`).
     @ViewBuilder private func toolPage(_ tool: ToolRegistry.KnownTool) -> some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             Toggle(isOn: toolBinding(tool.id)) {
                 Label(tool.title, systemImage: tool.icon)
-                    .font(Theme.emphasis)
+                    .font(Theme.Typography.large(.medium))
             }
             .toggleStyle(.switch)
             .tint(Theme.accent)
             if !tool.summary.isEmpty {
                 Text(tool.summary)
-                    .font(Theme.body)
+                    .font(Theme.Typography.body())
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Text("A tool you turn off does not load at all. Changes apply immediately.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
         }
 
@@ -407,7 +400,7 @@ struct SettingsView: View {
     /// none). The error redraws live; the permission is read on each render and
     /// so is current every time the window opens.
     @ViewBuilder private func toolStatus(_ tool: ToolRegistry.KnownTool) -> some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Status")
             statusRow("Permission", permissionStatus(tool.id))
             statusRow("Shortcut", shortcutStatus(tool.id))
@@ -420,10 +413,10 @@ struct SettingsView: View {
     private func statusRow(_ label: String, _ value: (text: String, problem: Bool)) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: Theme.Space.small) {
             Text(label)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .frame(width: 120, alignment: .leading)
             Text(value.text)
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .foregroundStyle(value.problem ? Theme.warn : .secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
@@ -480,10 +473,10 @@ struct SettingsView: View {
                 PanelModel.Entry(id: $0.id, title: $0.title, icon: $0.icon, summary: $0.summary)
             },
             problems: [], pins: pins)
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Pinned tools")
             Text("The big tiles at the top of the panel. Pick a tool already pinned to swap the two.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             ForEach(Array(model.pinned.enumerated()), id: \.offset) { slot, entry in
@@ -498,7 +491,7 @@ struct SettingsView: View {
                         Label(tool.title, systemImage: tool.icon).tag(tool.id)
                     }
                 }
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .frame(maxWidth: 320)
             }
         }
@@ -508,10 +501,10 @@ struct SettingsView: View {
     /// (`acceptsHotkey`; Switches, Windows and Highlight Copy get no recorder),
     /// then each Windows snap chord by action name.
     @ViewBuilder private var shortcutsPage: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Tools")
             Text("Click a shortcut, then press the new keys with at least one of ⌃ ⌥ ⇧ ⌘. Esc cancels; Delete on its own removes the shortcut. Changes apply immediately.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             ForEach(env.tools.known.filter(\.acceptsHotkey), id: \.id) { tool in
@@ -521,10 +514,10 @@ struct SettingsView: View {
             }
         }
 
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Windows")
             Text("Snap the front window. These work while the Windows tool is on.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             ForEach(WindowSettings.chordDefaults) { binding in
@@ -534,7 +527,7 @@ struct SettingsView: View {
         }
 
         Button("Reset All Shortcuts…") { confirmResetShortcuts = true }
-            .font(Theme.body)
+            .font(Theme.Typography.body())
             .help("Put every tool and Windows shortcut back to its default")
             .confirmationDialog(
                 "Reset all shortcuts to their defaults?", isPresented: $confirmResetShortcuts
@@ -550,7 +543,7 @@ struct SettingsView: View {
     ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: Theme.Space.small) {
             label()
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .frame(width: 200, alignment: .leading)
             HotkeyRecorderRow(owner: owner, name: name)
         }
@@ -565,21 +558,21 @@ struct SettingsView: View {
     }
 
     @ViewBuilder private var aboutPage: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Pear")
             Text("Version \(Self.version)")
-                .font(Theme.body)
+                .font(Theme.Typography.body())
                 .textSelection(.enabled)
             if let updater = env.updater {
                 Button("Check for Updates…") { updater.checkForUpdates() }
-                    .font(Theme.body)
+                    .font(Theme.Typography.body())
             }
         }
 
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Licences and notices")
             Text("Pear includes work from these projects.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
             // Shown inline, not opened in a text editor: the files live inside
             // the signed app bundle, and saving an edit there breaks the seal.
@@ -593,7 +586,7 @@ struct SettingsView: View {
                     }
                     .frame(height: 180)
                 }
-                .font(Theme.body)
+                .font(Theme.Typography.body())
             }
         }
     }
@@ -623,15 +616,15 @@ struct SettingsView: View {
     }()
 
     private var coupleKeySection: some View {
-            VStack(alignment: .leading, spacing: Theme.itemGap) {
+            VStack(alignment: .leading, spacing: Theme.Space.small) {
                 SectionLabel(text: "Couple key")
                 Text("Generate on one Mac, paste it on the other, then relaunch.")
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(.secondary)
-                HStack(spacing: 6) {
+                HStack(spacing: Theme.Space.small) {
                     SecureField("Paste key…", text: $keyField)
                         .textFieldStyle(.roundedBorder)
-                        .font(Theme.body)
+                        .font(Theme.Typography.body())
                     Button("Save") {
                         if CoupleKey.store(base64Key: keyField.trimmingCharacters(in: .whitespacesAndNewlines)) {
                             keyStatus = "Saved. Relaunch Pear to connect."
@@ -650,10 +643,10 @@ struct SettingsView: View {
                         keyStatus = "Generated + saved here. Paste it on the other Mac."
                     }
                 }
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 if let keyStatus {
                     Text(keyStatus)
-                        .font(Theme.caption)
+                        .font(Theme.Typography.small(.semibold))
                         .foregroundStyle(Theme.accent)
                 }
                 Picker("I am", selection: $role) {
@@ -712,7 +705,7 @@ struct SettingsView: View {
                     .overlay {
                         if selected {
                             Image(systemName: "checkmark")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: Theme.Typography.Size.tiny, weight: .bold))
                                 .foregroundStyle(.white)
                         }
                     }
@@ -747,7 +740,7 @@ struct ToolSettingsLink: View {
     var body: some View {
         Button("Settings…") { SettingsPage.open(.tool(toolID)) }
             .buttonStyle(.link)
-            .font(Theme.caption)
+            .font(Theme.Typography.small(.semibold))
             .focusable(false)
             .help("Open \(title) in Settings")
             .accessibilityLabel("\(title) settings")

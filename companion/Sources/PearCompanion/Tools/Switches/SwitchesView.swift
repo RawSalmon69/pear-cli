@@ -25,7 +25,7 @@ struct SwitchesView: View {
                            GridItem(.flexible(), spacing: Theme.Space.medium)]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             PopoverHeader(title: "Switches", settingsToolID: SwitchesTool.toolID)
             grid
         }
@@ -44,7 +44,7 @@ struct SwitchesView: View {
         let shown = SystemSwitch.allCases.filter(isShown)
         if shown.isEmpty {
             Text("No switches shown. Choose some in Settings.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, Theme.Space.medium)
@@ -76,10 +76,10 @@ struct SwitchesView: View {
 /// its `switches.show.*` key through `@AppStorage`, so the grid follows live.
 struct SwitchesVisibilityView: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             SectionLabel(text: "Show in grid")
             Text("System-changing switches start hidden. Turn on the ones you want.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             ForEach(SystemSwitch.allCases) { VisibilityRow(toggle: $0) }
@@ -98,7 +98,7 @@ struct SwitchesVisibilityView: View {
         var body: some View {
             Toggle(isOn: $shown) {
                 Label(toggle.title, systemImage: toggle.icon)
-                    .font(Theme.body)
+                    .font(Theme.Typography.body())
             }
             .toggleStyle(.switch)
             .tint(Theme.accent)
@@ -115,23 +115,23 @@ private struct LidClosedPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.small) {
             Text(warning)
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(Theme.warn)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let end = model.lidSessionEnd {
                 HStack(spacing: Theme.Space.small) {
                     Text("Sleeps at \(end.formatted(date: .omitted, time: .shortened))")
-                        .font(Theme.caption)
+                        .font(Theme.Typography.small(.semibold))
                     Spacer()
                     Button("Cancel timer") { model.cancelLidSession() }
-                        .font(Theme.caption)
+                        .font(Theme.Typography.small(.semibold))
                         .buttonStyle(.link)
                 }
             } else {
                 HStack(spacing: Theme.Space.small) {
                     Text("Sleep after")
-                        .font(Theme.caption)
+                        .font(Theme.Typography.small(.semibold))
                         .foregroundStyle(.secondary)
                     Button("5 hours") { Task { await model.startLidSession(hours: 5) } }
                         .controlSize(.mini)
@@ -145,13 +145,13 @@ private struct LidClosedPanel: View {
                 Button("Remove password-free permission") {
                     Task { await model.removeLidPermission() }
                 }
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .buttonStyle(.link)
             } else {
                 Button("Grant permission once, skip the prompts") {
                     Task { await model.installLidPermission() }
                 }
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .buttonStyle(.link)
             }
         }
@@ -185,7 +185,7 @@ private struct SwitchTile: View {
                 .foregroundStyle(isOn ? Theme.accent : .secondary)
                 .frame(height: 24)
             Text(toggle.title)
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
             control
@@ -193,10 +193,7 @@ private struct SwitchTile: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, Theme.Space.medium)
         // A flat fill, not glass: the tile sits on the popover's own glass.
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.medium)
-                .fill(.quaternary.opacity(0.5))
-        )
+        .flatSurface()
     }
 
     @ViewBuilder private var control: some View {
@@ -210,7 +207,7 @@ private struct SwitchTile: View {
                 .focusable(false)
         case .momentary:
             Button(toggle.actionLabel) { activate() }
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .focusable(false)

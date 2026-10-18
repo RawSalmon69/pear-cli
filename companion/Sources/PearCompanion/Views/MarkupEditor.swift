@@ -169,7 +169,7 @@ struct MarkupEditorView: View {
     // MARK: Toolbar
 
     private var toolbar: some View {
-        HStack(spacing: Theme.itemGap) {
+        HStack(spacing: Theme.Space.small) {
             HStack(spacing: Theme.Space.xSmall) {
                 ForEach(MarkupTool.allCases) { candidate in
                     ToolButton(
@@ -222,9 +222,9 @@ struct MarkupEditorView: View {
             .buttonStyle(.borderedProminent)
             .tint(Theme.accent)
         }
-        .padding(.horizontal, Theme.cardPadding)
-        .padding(.vertical, Theme.itemGap)
-        .font(Theme.body)
+        .padding(.horizontal, Theme.Space.medium)
+        .padding(.vertical, Theme.Space.small)
+        .font(Theme.Typography.body())
     }
 
     // MARK: Canvas
@@ -280,17 +280,17 @@ struct MarkupEditorView: View {
             .gesture(canvasGesture(scale: scale))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .bottom) {
-                if isCropping { cropConfirmBar.padding(.bottom, Theme.sectionGap) }
+                if isCropping { cropConfirmBar.padding(.bottom, Theme.Space.xLarge) }
             }
         }
-        .padding(Theme.sectionGap)
+        .padding(Theme.Space.xLarge)
     }
 
     private var cropConfirmBar: some View {
         HStack(spacing: Theme.Space.medium) {
             if let cropRect {
                 Text("\(Int(cropRect.width.rounded())) × \(Int(cropRect.height.rounded()))")
-                    .font(Theme.caption.monospacedDigit())
+                    .font(Theme.Typography.small(.semibold).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             Button { cancelCrop() } label: {

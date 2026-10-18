@@ -16,7 +16,7 @@ struct ShelfView: View {
     @State private var isTargeted = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemGap) {
+        VStack(alignment: .leading, spacing: Theme.Space.small) {
             header
             if store.items.isEmpty {
                 emptyState
@@ -45,7 +45,7 @@ struct ShelfView: View {
             SectionLabel(text: "Shelf")
             if !store.items.isEmpty {
                 Text("\(store.items.count)")
-                    .font(Theme.caption)
+                    .font(Theme.Typography.small(.semibold))
                     .foregroundStyle(.tertiary)
             }
             Spacer()
@@ -62,10 +62,10 @@ struct ShelfView: View {
                 .font(.system(size: 30, weight: .light))  // 30 pt: an illustration glyph, not text
                 .foregroundStyle(.secondary)
             Text("Drop files here")
-                .font(Theme.emphasis)
+                .font(Theme.Typography.large(.medium))
                 .foregroundStyle(.secondary)
             Text("They stay put until you drag them out.")
-                .font(Theme.caption)
+                .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
         }
@@ -131,7 +131,7 @@ private struct ShelfRow: View {
             HStack(spacing: Theme.Space.small) {
                 thumbnail
                 Text(entry.originalName)
-                    .font(Theme.body)
+                    .font(Theme.Typography.body())
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 0)
