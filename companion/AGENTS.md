@@ -99,12 +99,14 @@ check: the actions show in the Shortcuts app.
   (lands on Tools). The last page is `Prefs.settingsPage` (`settingsLastPage`),
   read through `@AppStorage`, so `open(.licence)` switches a window already up.
   While it is open Pear is `.regular` (Dock icon, ⌘-Tab, menu bar), back to
-  `.accessory` on `windowWillClose` unless another visible titled window (Disk,
-  detail, Markup, Remove Background) remains, and whichever closes last drops
-  Pear back: all five call `StandardWindow.didClose` (`Views/StandardWindow.swift`,
-  tested) from `windowWillClose`. Only Settings ever switches to `.regular`. It
-  is not miniaturizable, since a minimised window never fires `windowWillClose`. Activation runs one turn after the policy change
-  so the first open gets focus. The panel stays non-activating and the
+  `.accessory` on `windowWillClose` unless another titled window (Disk, detail,
+  Markup, Remove Background) is still visible or minimised, and whichever closes
+  last drops Pear back: all five call `StandardWindow.didClose`
+  (`Views/StandardWindow.swift`, tested) from `windowWillClose`. Only Settings
+  ever switches to `.regular`. Settings itself is not miniaturizable, since a
+  minimised Settings never fires `windowWillClose`; the other four keep minimise
+  and count as open while minimised. Activation runs one turn after the policy
+  change so the first open gets focus. The panel stays non-activating and the
   capture-hides-panel observer is untouched. Each open from closed rebuilds the
   root view (`.id(UUID())`), standing in for the popover's per-open rebuild.
 - **Panel structure** (`Views/PanelView.swift`, `Views/PanelModel.swift`): the
@@ -346,8 +348,11 @@ every one of these tools already runs from the background, as a hotkey does.
   **Four standard windows** besides Settings: the screenshot detail, Markup,
   Remove Background and Disk are plain titled windows (titled, closable,
   miniaturizable, resizable, standard title bar and background, normal level),
-  shown with `makeKeyAndOrderFront` + `NSApp.activate`. Preview cards stay
-  non-activating borderless panels. Window Shot's icon is
+  shown with `makeKeyAndOrderFront` + `NSApp.activate`. The detail window opens
+  centred on its card's screen, so focusing it does not move the preview stack.
+  Preview cards stay non-activating borderless panels; their action bar (and the
+  Disk treemap tooltip) sits on glass, so it takes a flat
+  `windowBackgroundColor` fill, not more glass. Window Shot's icon is
   `macwindow.and.cursorarrow` (SF Symbols 5, macOS 14), distinct from Windows'
   `macwindow.on.rectangle`.
 - **HD background removal** is opt-in: default is Apple Vision (instant, no

@@ -14,9 +14,12 @@ enum StandardWindow {
         NSApp.setActivationPolicy(.accessory)
     }
 
-    /// Whether any titled window other than `closing` is still on screen.
-    /// Borderless panels (the companion panel, preview cards, pins) never count.
+    /// Whether any titled window other than `closing` is still on screen or
+    /// minimised (it needs the Dock icon to come back). Borderless panels (the
+    /// companion panel, preview cards, pins) never count.
     static func othersOpen(besides closing: NSWindow?, in windows: [NSWindow]) -> Bool {
-        windows.contains { $0 !== closing && $0.isVisible && $0.styleMask.contains(.titled) }
+        windows.contains {
+            $0 !== closing && ($0.isVisible || $0.isMiniaturized) && $0.styleMask.contains(.titled)
+        }
     }
 }

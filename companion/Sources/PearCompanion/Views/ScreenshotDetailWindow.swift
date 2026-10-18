@@ -38,11 +38,15 @@ final class ScreenshotDetailWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private let content: ScreenshotDetailView
     private let imageSize: NSSize
+    private let screen: NSScreen?
     var onClosed: (() -> Void)?
 
-    init(content: ScreenshotDetailView, imageSize: NSSize) {
+    /// `screen` is the card's: the window opens centred there, so activating
+    /// Pear does not pull the preview stack to another display.
+    init(content: ScreenshotDetailView, imageSize: NSSize, screen: NSScreen?) {
         self.content = content
         self.imageSize = imageSize
+        self.screen = screen
     }
 
     /// Shows the window, or brings an already-open one forward. Activates Pear,
@@ -55,7 +59,7 @@ final class ScreenshotDetailWindowController: NSObject, NSWindowDelegate {
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        let visible = (NSScreen.screens.first ?? NSScreen.main)?.visibleFrame ?? .zero
+        let visible = (screen ?? NSScreen.main)?.visibleFrame ?? .zero
         let size = ScreenshotDetailLayout.windowSize(image: imageSize, visible: visible)
         let window = DetailWindow(
             contentRect: NSRect(origin: .zero, size: size),
@@ -67,7 +71,10 @@ final class ScreenshotDetailWindowController: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.contentView = NSHostingView(rootView: content)
-        window.center()
+        // `center()` would use whichever screen the zero origin lands on.
+        let frame = window.frame
+        window.setFrameOrigin(NSPoint(x: visible.midX - frame.width / 2,
+                                      y: visible.midY - frame.height / 2))
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = window

@@ -271,7 +271,9 @@ final class ScreenshotPreviewController {
         let pixelSize = NSSize(width: details.pixelWidth, height: details.pixelHeight)
         let controller = ScreenshotDetailWindowController(
             content: content,
-            imageSize: pixelSize.width > 0 ? pixelSize : image.size
+            imageSize: pixelSize.width > 0 ? pixelSize : image.size,
+            // The card's screen: focusing the window there leaves the stack put.
+            screen: entry.panel.screen
         )
         controller.onClosed = { [weak self, weak entry] in
             guard let entry else { return }
@@ -675,8 +677,10 @@ private struct ScreenshotPreviewView: View {
             }
         }
         .padding(Theme.Space.xSmall)
-        // 24 + 2 × 4 = 32 pt tall, so the default 16 pt radius is a capsule.
-        .glassCard()
+        // A flat fill, not glass: the card is already glass. 24 + 2 × 4 = 32 pt
+        // tall, so the large radius is a capsule.
+        .background(Color(nsColor: .windowBackgroundColor),
+                    in: RoundedRectangle(cornerRadius: Theme.Radius.large))
         .padding(.bottom, Theme.Space.small)
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     }

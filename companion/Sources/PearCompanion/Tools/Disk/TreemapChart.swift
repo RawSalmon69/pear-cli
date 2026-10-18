@@ -556,7 +556,9 @@ private struct TreemapTooltipView: View {
         .padding(.horizontal, Theme.Space.medium)
         // xSmall, not small: `tooltipSize` budgets 48 pt of height for this.
         .padding(.vertical, Theme.Space.xSmall)
-        .glassCard(cornerRadius: Theme.Radius.medium)
+        // A flat fill, not glass: the treemap under it is a glass card.
+        .background(Color(nsColor: .windowBackgroundColor),
+                    in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
         .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
     }
 }

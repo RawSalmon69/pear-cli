@@ -9,7 +9,9 @@ final class StandardWindowTests: XCTestCase {
     /// Stands in for an on-screen window without ordering one in.
     private final class FakeWindow: NSWindow {
         var shown = true
+        var minimised = false
         override var isVisible: Bool { shown }
+        override var isMiniaturized: Bool { minimised }
     }
 
     private func window(_ style: NSWindow.StyleMask, visible: Bool = true) -> FakeWindow {
@@ -27,6 +29,15 @@ final class StandardWindowTests: XCTestCase {
     func testAnotherVisibleTitledWindowKeepsPearRegular() {
         let closing = window([.titled, .closable])
         let disk = window([.titled, .closable, .miniaturizable, .resizable])
+        XCTAssertTrue(StandardWindow.othersOpen(besides: closing, in: [closing, disk]))
+    }
+
+    /// A minimised window is not visible, but dropping to accessory would take
+    /// the Dock icon it is restored from.
+    func testAMinimisedTitledWindowKeepsPearRegular() {
+        let closing = window([.titled, .closable])
+        let disk = window([.titled, .closable, .miniaturizable], visible: false)
+        disk.minimised = true
         XCTAssertTrue(StandardWindow.othersOpen(besides: closing, in: [closing, disk]))
     }
 
