@@ -12,25 +12,28 @@ APP="build/Pear.app"
 
 echo "Building Pear ${VERSION}..."
 swift build -c release
+# Ask SwiftPM where the products went: `.build/<triple>/release` under the native
+# backend, `.build/out/Products/Release` under SwiftBuild (Swift 6.4's default).
+BIN="$(swift build -c release --show-bin-path)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 # SPM still builds the binary as "PearCompanion" (the module name is unchanged);
 # only the on-disk executable is renamed to Pear, matching CFBundleExecutable.
-cp .build/release/PearCompanion "$APP/Contents/MacOS/Pear"
+cp "$BIN/PearCompanion" "$APP/Contents/MacOS/Pear"
 
 # SPM emits the executable's resources as PearCompanion_PearCompanion.bundle next
 # to the binary. Bundle.module resolves it via Bundle.main.resourceURL, so copy
 # it into Contents/Resources (this is what ships the RunCat runner frames).
-RESOURCE_BUNDLE="$(find .build -maxdepth 3 -type d -name 'PearCompanion_PearCompanion.bundle' -path '*release*' | head -1)"
-if [[ -n "$RESOURCE_BUNDLE" ]]; then
+RESOURCE_BUNDLE="$BIN/PearCompanion_PearCompanion.bundle"
+if [[ -d "$RESOURCE_BUNDLE" ]]; then
     cp -R "$RESOURCE_BUNDLE" "$APP/Contents/Resources/"
 fi
 
 # Sparkle ships as a framework; bundle it and point the binary at it.
-SPARKLE_FRAMEWORK="$(find .build -maxdepth 3 -type d -name Sparkle.framework -path '*release*' | head -1)"
-if [[ -n "$SPARKLE_FRAMEWORK" ]]; then
+SPARKLE_FRAMEWORK="$BIN/Sparkle.framework"
+if [[ -d "$SPARKLE_FRAMEWORK" ]]; then
     mkdir -p "$APP/Contents/Frameworks"
     cp -R "$SPARKLE_FRAMEWORK" "$APP/Contents/Frameworks/"
     install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/Pear"
