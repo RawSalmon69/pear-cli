@@ -148,9 +148,11 @@ final class ShelfStore {
             }
         }.value
         guard let temp else { SoundEffects.play(.discard); return }
+        let topBefore = items.first?.id
         await add(temp)
         try? FileManager.default.removeItem(at: temp.deletingLastPathComponent())
-        SoundEffects.play(.copy)
+        // `add` inserts at the top on success, so an unchanged top means it failed.
+        SoundEffects.play(items.first?.id == topBefore ? .discard : .copy)
     }
 
     /// Removes an item and moves its stored copy to the Trash (recoverable —

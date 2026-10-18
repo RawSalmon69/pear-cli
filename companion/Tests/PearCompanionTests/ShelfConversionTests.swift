@@ -58,6 +58,39 @@ final class ShelfConversionTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: input), before, "the original is byte-identical")
     }
 
+    func testTransparentPNGToJPEGComesOutWhite() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        // Fully transparent except an opaque square in the middle.
+        let ctx = try XCTUnwrap(CGContext(
+            data: nil, width: 20, height: 20, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.clear(CGRect(x: 0, y: 0, width: 20, height: 20))
+        ctx.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+        ctx.fill(CGRect(x: 8, y: 8, width: 4, height: 4))
+        let input = dir.appendingPathComponent("cutout.png")
+        let dest = try XCTUnwrap(CGImageDestinationCreateWithURL(
+            input as CFURL, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(dest, try XCTUnwrap(ctx.makeImage()), nil)
+        XCTAssertTrue(CGImageDestinationFinalize(dest))
+
+        let output = try ShelfConverter.convert(input, to: .jpeg, in: dir)
+
+        // Decode into a known RGBA layout and read the corner pixel.
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(output as CFURL, nil))
+        let decoded = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        var pixels = [UInt8](repeating: 0, count: 20 * 20 * 4)
+        let readCtx = try XCTUnwrap(CGContext(
+            data: &pixels, width: 20, height: 20, bitsPerComponent: 8, bytesPerRow: 80,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        readCtx.draw(decoded, in: CGRect(x: 0, y: 0, width: 20, height: 20))
+        for channel in 0..<3 {
+            XCTAssertGreaterThanOrEqual(pixels[channel], 250, "corner channel \(channel) is white")
+        }
+    }
+
     func testJPEGToPNG() throws {
         let dir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
