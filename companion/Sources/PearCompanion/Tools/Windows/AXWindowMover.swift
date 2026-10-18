@@ -661,20 +661,14 @@ struct WindowPreviewLookCache {
 /// window-server round trip per highlight.
 @MainActor
 private final class ZonePreviewOverlay {
-    private static let cornerRadius: CGFloat = 10
     /// Breathing room either side of the caption before it truncates: a preview
     /// laid over a narrow window still has to say which action it is.
-    private static let captionInset: CGFloat = 12
+    private static let captionInset = Theme.Space.medium
 
-    /// `Theme.emphasis` — 15pt medium rounded — reached through AppKit, since
-    /// there is no SwiftUI here to hand a `Font` to. The ring's labels use the
-    /// same idiom one step down the type scale; this text sits alone in a large
+    /// `Theme.Typography.large(.medium)`, reached through AppKit. The ring's
+    /// labels sit two steps down the scale; this text sits alone in a large
     /// rectangle rather than inside a wedge.
-    private static let captionFont: NSFont = {
-        let base = NSFont.systemFont(ofSize: 15, weight: .medium)
-        guard let rounded = base.fontDescriptor.withDesign(.rounded) else { return base }
-        return NSFont(descriptor: rounded, size: 15) ?? base
-    }()
+    private static let captionFont = Theme.roundedNSFont(Theme.Typography.Size.large, .medium)
 
     private var panel: NSPanel?
     private var wash: NSView?
@@ -743,7 +737,7 @@ private final class ZonePreviewOverlay {
         card.blendingMode = .behindWindow
         card.state = .active
         card.wantsLayer = true
-        card.layer?.cornerRadius = Self.cornerRadius
+        card.layer?.cornerRadius = Theme.Radius.medium
         card.layer?.masksToBounds = true
         panel.contentView = card
 

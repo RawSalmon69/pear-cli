@@ -113,11 +113,21 @@ enum Theme {
 
     /// Type sizes, rounded design. Nothing in the app goes below `tiny` (10 pt).
     enum Typography {
-        static func tiny(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(10, weight) }
-        static func small(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(11, weight) }
-        static func body(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(13, weight) }
-        static func large(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(15, weight) }
-        static func title(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(20, weight) }
+        static func tiny(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(Size.tiny, weight) }
+        static func small(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(Size.small, weight) }
+        static func body(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(Size.body, weight) }
+        static func large(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(Size.large, weight) }
+        static func title(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(Size.title, weight) }
+
+        /// The point sizes behind the fonts above, for the AppKit HUDs that have
+        /// no SwiftUI to hand a `Font` to — pair with `Theme.roundedNSFont`.
+        enum Size {
+            static let tiny: CGFloat = 10
+            static let small: CGFloat = 11
+            static let body: CGFloat = 13
+            static let large: CGFloat = 15
+            static let title: CGFloat = 20
+        }
     }
 
     /// Spacing scale, 4-based.
@@ -147,6 +157,14 @@ enum Theme {
 
     static func rounded(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .rounded)
+    }
+
+    /// `rounded` for AppKit: the system font in the rounded design, falling
+    /// back to the plain system font if the design is unavailable.
+    static func roundedNSFont(_ size: CGFloat, _ weight: NSFont.Weight = .regular) -> NSFont {
+        let base = NSFont.systemFont(ofSize: size, weight: weight)
+        guard let rounded = base.fontDescriptor.withDesign(.rounded) else { return base }
+        return NSFont(descriptor: rounded, size: size) ?? base
     }
 
     static let caption = rounded(11, .semibold)

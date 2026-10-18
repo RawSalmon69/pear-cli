@@ -29,13 +29,16 @@ enum CopyToast {
     }
 
     static func show(text: String, swatch: NSColor? = nil) {
+        // Monospaced rather than rounded: copied values (hex codes) read as data.
         present(makeToast(swatch: swatch, caption: "Copied", text: text,
-                          font: .monospacedSystemFont(ofSize: 12, weight: .regular)))
+                          font: .monospacedSystemFont(
+                              ofSize: Theme.Typography.Size.body, weight: .regular)))
     }
 
     /// A plain one-line notice, no "Copied" caption.
     static func show(message: String) {
-        present(makeToast(swatch: nil, caption: nil, text: message, font: .systemFont(ofSize: 12)))
+        present(makeToast(swatch: nil, caption: nil, text: message,
+                          font: Theme.roundedNSFont(Theme.Typography.Size.body)))
     }
 
     private static func present(_ content: NSView) {
@@ -89,15 +92,17 @@ enum CopyToast {
     /// text sits against the same left padding.
     private static func makeToast(swatch: NSColor?, caption: String?, text: String,
                                   font: NSFont) -> NSView {
-        let hPad: CGFloat = 12, vPad: CGFloat = 8
-        let gap: CGFloat = swatch == nil ? 0 : 8
+        let hPad = Theme.Space.medium, vPad = Theme.Space.small
+        let gap: CGFloat = swatch == nil ? 0 : Theme.Space.small
+        // Swatch size, not a spacing token: about two lines of text tall.
         let chip: CGFloat = swatch == nil ? 0 : 22
 
         let copied = NSTextField(labelWithString: caption ?? "")
-        copied.font = .systemFont(ofSize: 10)
+        copied.font = Theme.roundedNSFont(Theme.Typography.Size.tiny)
         copied.textColor = .secondaryLabelColor
         copied.sizeToFit()
-        // No caption: it and its 1 pt gap collapse, centring the one line.
+        // A 1 pt gap (hairline, below the spacing scale) separates caption and
+        // value. No caption: it and its gap collapse, centring the one line.
         let captionH = caption == nil ? 0 : copied.frame.height + 1
 
         let value = NSTextField(labelWithString: text)
@@ -116,7 +121,7 @@ enum CopyToast {
         card.blendingMode = .behindWindow
         card.state = .active
         card.wantsLayer = true
-        card.layer?.cornerRadius = 12
+        card.layer?.cornerRadius = Theme.Radius.medium
         card.layer?.masksToBounds = true
 
         let chipView = swatch.map { colour -> NSView in
@@ -124,7 +129,7 @@ enum CopyToast {
                 frame: NSRect(x: hPad, y: (height - chip) / 2, width: chip, height: chip))
             view.wantsLayer = true
             view.layer?.backgroundColor = colour.cgColor
-            view.layer?.cornerRadius = 5
+            view.layer?.cornerRadius = Theme.Radius.small
             view.layer?.borderWidth = 1
             view.layer?.borderColor = NSColor.black.withAlphaComponent(0.12).cgColor
             return view
@@ -147,11 +152,13 @@ enum CopyToast {
     private static func origin(for size: NSSize) -> NSPoint {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
+        // Clears the cursor arrow, not a spacing token.
         var x = mouse.x + 14
         var y = mouse.y + 14
         if let visible = screen?.visibleFrame {
-            x = min(max(x, visible.minX + 8), visible.maxX - size.width - 8)
-            y = min(max(y, visible.minY + 8), visible.maxY - size.height - 8)
+            let margin = Theme.Space.small
+            x = min(max(x, visible.minX + margin), visible.maxX - size.width - margin)
+            y = min(max(y, visible.minY + margin), visible.maxY - size.height - margin)
         }
         return NSPoint(x: x, y: y)
     }

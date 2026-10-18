@@ -69,12 +69,13 @@ enum RingGeometry {
     // MARK: - Drawn shapes
 
     /// Drawn radii, all derived from the hit-test radii above so the two cannot
-    /// drift apart. The `itemGap` either side of `hubRadius` is the moat between
-    /// the hub and the band; the hit test hands that moat to whichever side the
-    /// pointer is nearer, so there is no sliver of ring where nothing selects.
-    /// The 6pt inside `outerRadius` leaves the rim a margin of bare glass.
-    static let hubDiscRadius = hubRadius - Theme.itemGap
-    static let bandInner = hubRadius + Theme.itemGap
+    /// drift apart. The `Theme.Space.small` either side of `hubRadius` is the
+    /// moat between the hub and the band; the hit test hands that moat to
+    /// whichever side the pointer is nearer, so there is no sliver of ring where
+    /// nothing selects. The 6pt inside `outerRadius` leaves the rim a margin of
+    /// bare glass — functional ring geometry, like the radii above, not tokens.
+    static let hubDiscRadius = hubRadius - Theme.Space.small
+    static let bandInner = hubRadius + Theme.Space.small
     static let bandOuter = outerRadius - 6
     static let rimRadius = outerRadius - 1
     static var labelRadius: CGFloat { (bandInner + bandOuter) / 2 }

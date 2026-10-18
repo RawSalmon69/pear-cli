@@ -22,13 +22,8 @@ final class RingOverlayView: NSVisualEffectView {
     private static let labelWidth: CGFloat = 72
     private static let crossfade: CFTimeInterval = 0.09
 
-    /// `Theme.caption` — 11pt semibold rounded — reached through AppKit, since
-    /// there is no SwiftUI here to hand a `Font` to.
-    private static let labelFont: NSFont = {
-        let base = NSFont.systemFont(ofSize: 11, weight: .semibold)
-        guard let rounded = base.fontDescriptor.withDesign(.rounded) else { return base }
-        return NSFont(descriptor: rounded, size: 11) ?? base
-    }()
+    /// `Theme.Typography.small(.semibold)`, reached through AppKit.
+    private static let labelFont = Theme.roundedNSFont(Theme.Typography.Size.small, .semibold)
 
     /// Black or white on a lit segment, whichever WCAG prefers. The seven accent
     /// presets run from pale olive to graphite, so a fixed white label would
@@ -58,6 +53,7 @@ final class RingOverlayView: NSVisualEffectView {
         // glass to the circle is what stops a 1px rectangular ghost border
         // leaking past the rounded edge. Same `clipToCard` idiom every
         // borderless panel here uses, at the radius that makes it a full circle.
+        // Functional geometry, not a `Theme.Radius` token: the disc is the hit area.
         clipToCard(radius: frameRect.width / 2)
 
         marks.frame = bounds

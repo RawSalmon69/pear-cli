@@ -466,6 +466,10 @@ state until it next asks; `currentValue()` is then already off.
   popover (Switches tiles, the Menu Bar how-to, Color Picker's format and
   contrast cards) take a flat `.quaternary.opacity(0.5)` fill, since the
   popover chrome is already the glass.
+  The AppKit HUDs (copy toast, window ring, snap preview) are migrated too:
+  they take `Theme.Typography.Size` (the same 10/11/13/15/20 as `CGFloat`) via
+  `Theme.roundedNSFont`, since AppKit has no SwiftUI `Font`; the ring's radii
+  and its circular clip are hit-test geometry, not radius tokens.
   **Four standard windows** besides Settings: the screenshot detail, Markup,
   Remove Background and Disk are plain titled windows (titled, closable,
   miniaturizable, resizable, standard title bar and background, normal level),
