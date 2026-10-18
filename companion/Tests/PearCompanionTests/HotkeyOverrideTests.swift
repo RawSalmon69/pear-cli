@@ -1,4 +1,5 @@
 import Carbon.HIToolbox
+import SwiftUI
 import XCTest
 @testable import PearCompanion
 
@@ -125,6 +126,31 @@ final class HotkeyOverrideTests: XCTestCase {
         // Same key, different modifiers → free.
         let other = HotKeyChord(keyCode: kVK_ANSI_9, modifiers: cmdKey | optionKey, label: "⌘⌥9")
         XCTAssertNil(registry.conflictingTool(for: other, excluding: "fake.b"))
+    }
+
+    /// A popover tool with nothing for a shortcut to do (Switches, Windows,
+    /// Highlight Copy). A chord saved for it by an older build must neither show
+    /// as its shortcut nor block another tool from taking that chord.
+    func testToolThatRefusesHotkeysIgnoresSavedChord() {
+        final class PopoverOnlyTool: Tool {
+            let id = "fake.a"
+            let title = "Alpha"
+            let icon = "star"
+            let hotkey: HotKeyChord? = nil
+            var acceptsHotkey: Bool { false }
+            var entry: ToolEntry { .popover { AnyView(EmptyView()) } }
+        }
+        scrub()
+        defer { scrub() }
+        let chord = HotKeyChord(keyCode: kVK_ANSI_9, modifiers: cmdKey | shiftKey, label: "⌘⇧9")
+        Prefs.setHotkeyOverride("fake.a", chord)
+
+        let registry = ToolRegistry()
+        registry.offer(PopoverOnlyTool())
+
+        XCTAssertEqual(registry.known.first?.acceptsHotkey, false)
+        XCTAssertNil(registry.hotkeyLabel(for: "fake.a"))
+        XCTAssertNil(registry.conflictingTool(for: chord, excluding: "fake.b"))
     }
 
     /// A tool that registers its own set of chords (the Windows tool and its

@@ -519,6 +519,9 @@ struct BottomBar: View {
                 showSettings = true
             }
             .popover(isPresented: $showSettings) { SettingsPopover() }
+            GlyphButton(symbol: "power", help: "Quit Pear", tint: .secondary) {
+                NSApp.terminate(nil)
+            }
         }
         .buttonStyle(.bordered)
         .controlSize(.small)

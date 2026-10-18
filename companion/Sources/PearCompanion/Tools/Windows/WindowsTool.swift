@@ -48,6 +48,8 @@ final class WindowsTool: Tool, WindowTriggerDelegate {
     /// knows what to apply without asking the ring again.
     private var pending: WindowAction?
 
+    var acceptsHotkey: Bool { false }
+
     var entry: ToolEntry {
         .popover { AnyView(WindowsPopover()) }
     }

@@ -15,6 +15,8 @@ final class SwitchesTool: Tool {
 
     private let model = SwitchesModel()
 
+    var acceptsHotkey: Bool { false }
+
     var entry: ToolEntry {
         .popover { [model] in AnyView(SwitchesView(model: model)) }
     }

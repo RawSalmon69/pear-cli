@@ -265,8 +265,10 @@ struct SettingsPopover: View {
                     }
                     .toggleStyle(.switch)
                     .tint(Theme.accent)
-                    HotkeyRecorderRow(id: tool.id)
-                        .padding(.leading, 24)
+                    if tool.acceptsHotkey {
+                        HotkeyRecorderRow(id: tool.id)
+                            .padding(.leading, 24)
+                    }
                     if tool.id == CleanModeTool.toolID {
                         CleanModeSettingsView()
                             .padding(.leading, 24)

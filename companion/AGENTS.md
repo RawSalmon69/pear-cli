@@ -27,7 +27,7 @@ native Apple primitives over custom imitations. See root memory / `[[owner-quali
 ```bash
 cd companion
 swift build            # compile
-swift test             # full suite (741 tests, must stay green)
+swift test             # full suite, must stay green
 ./build.sh [version]   # assemble build/Pear.app (unsigned dev bundle); `open build/Pear.app`
 ```
 
@@ -101,8 +101,8 @@ never reaches the clipboard history that every stray highlight would bury. Each
 write raises the shared `CopyToast` at the pointer for ~1.5 s with an elided
 snippet: an X11-style silent copy is indistinguishable from the feature having
 done nothing, which is exactly how it read in use).
-System: **Disk** (sunburst/treemap + safe Trash delete), **Monitor** (CPU/mem/net/
-battery/SMC), **Menu Bar hider** (Hidden Bar-style, default OFF), **Switches**
+System: **Disk** (sunburst/treemap + safe Trash delete), **Menu Bar
+hider** (Hidden Bar-style, default OFF), **Switches**
 (6 toggles — three removals at the owner's order: Screen Test after it hard-locked
 a machine, **Mute** in 2.25.0 (`kAudioDevicePropertyMute` is advisory on many
 outputs and the volume-zeroing replacement was not worth keeping), and **Big
@@ -306,7 +306,7 @@ maintainer before tagging.
   started in `.onAppear` stays stopped after a reopen and one cancelled in
   `.onDisappear` is *never* cancelled on close. Any window with a running engine
   owns that engine on the **controller** and drives it from `show()` /
-  `windowWillClose` (see `MonitorWindowController`, `DiskWindowController`).
+  `windowWillClose` (see `DiskWindowController`).
   Measured, not assumed — a probe printed one `onAppear` across close/reopen and
   no `onDisappear` at all.
 - **Never store a closure on a `@State`-owned object if the closure writes that

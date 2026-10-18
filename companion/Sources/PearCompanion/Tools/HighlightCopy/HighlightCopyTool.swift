@@ -48,6 +48,8 @@ final class HighlightCopyTool: Tool {
         self.monitor = monitor
     }
 
+    var acceptsHotkey: Bool { false }
+
     var entry: ToolEntry {
         .popover { AnyView(HighlightCopyPopover()) }
     }

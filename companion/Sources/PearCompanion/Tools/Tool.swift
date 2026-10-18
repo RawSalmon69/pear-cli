@@ -53,6 +53,10 @@ protocol Tool: AnyObject {
     /// the `panel` pseudo-tool opts out — you don't open the panel from inside
     /// it — while still registering a rebindable hotkey through the registry.
     var showsTile: Bool { get }
+    /// Whether a shortcut can do anything for this tool. Defaults true; a
+    /// popover tool with no `hotkeyFired` of its own opts out, so Settings
+    /// doesn't offer a recorder whose chord would fire into nothing.
+    var acceptsHotkey: Bool { get }
     /// Whether the tool keeps working when the trial has ended and there is no
     /// licence. Defaults false: an expired app registers nothing, exactly as a
     /// user-disabled tool does.
@@ -84,6 +88,7 @@ extension Tool {
     var summary: String { "" }
     var defaultEnabled: Bool { true }
     var showsTile: Bool { true }
+    var acceptsHotkey: Bool { true }
     var survivesExpiry: Bool { false }
     var extraChords: [HotKeyChord] { [] }
 
@@ -116,6 +121,7 @@ final class ToolRegistry {
         let category: ToolCategory
         let summary: String
         let defaultEnabled: Bool
+        let acceptsHotkey: Bool
         /// Whether the user has this tool switched on. Held here rather than
         /// read from `Prefs` at the point of use because `UserDefaults` is not
         /// observable: a settings toggle bound straight to `Prefs` writes fine
@@ -157,6 +163,7 @@ final class ToolRegistry {
             id: tool.id, title: tool.title, icon: tool.icon,
             hotkeyLabel: effectiveChord(for: tool)?.label, category: tool.category,
             summary: tool.summary, defaultEnabled: tool.defaultEnabled,
+            acceptsHotkey: tool.acceptsHotkey,
             isEnabled: Prefs.isToolEnabled(tool.id, default: tool.defaultEnabled)))
         catalog.append((id: tool.id, tool: tool))
         guard shouldRun(tool) else { return }
@@ -294,6 +301,7 @@ final class ToolRegistry {
     }
 
     private func effectiveChord(for tool: any Tool) -> HotKeyChord? {
+        guard tool.acceptsHotkey else { return nil }
         if Prefs.isHotkeyRemoved(tool.id) { return nil }
         return Prefs.hotkeyOverride(tool.id) ?? tool.hotkey
     }
@@ -305,6 +313,7 @@ final class ToolRegistry {
             id: existing.id, title: existing.title, icon: existing.icon,
             hotkeyLabel: effectiveChord(for: tool)?.label, category: existing.category,
             summary: existing.summary, defaultEnabled: existing.defaultEnabled,
+            acceptsHotkey: existing.acceptsHotkey,
             isEnabled: existing.isEnabled)
     }
 
@@ -317,6 +326,7 @@ final class ToolRegistry {
             id: existing.id, title: existing.title, icon: existing.icon,
             hotkeyLabel: existing.hotkeyLabel, category: existing.category,
             summary: existing.summary, defaultEnabled: existing.defaultEnabled,
+            acceptsHotkey: existing.acceptsHotkey,
             isEnabled: enabled)
     }
 
