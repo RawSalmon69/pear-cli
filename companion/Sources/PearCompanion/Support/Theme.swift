@@ -97,10 +97,41 @@ enum AccentWheelMath {
     }
 }
 
-/// Design tokens. Type scale is 3:4 (11 · 13 · 15 · 17 · 22); spacing is a
-/// 4-based scale where section gaps (20) dominate intra-section gaps (8) so
-/// whitespace, not rules, carries the hierarchy.
+/// Design tokens. The shared set every surface should use is `Radius`
+/// (6 · 10 · 16), `Typography` (10 · 11 · 13 · 15 · 20, rounded, nothing below
+/// 10 pt), `Space` (4 · 8 · 12 · 16 · 24) and `edgePadding` (14, the one inset
+/// for every popover and panel edge). The older values below (type 11 · 13 ·
+/// 15 · 17 · 22, section gap 20) still compile while call sites move over.
 enum Theme {
+    /// Corner radii. `large` is the panel/card radius that `glassCard` and
+    /// `clipToCard` share by default.
+    enum Radius {
+        static let small: CGFloat = 6
+        static let medium: CGFloat = 10
+        static let large: CGFloat = 16
+    }
+
+    /// Type sizes, rounded design. Nothing in the app goes below `tiny` (10 pt).
+    enum Typography {
+        static func tiny(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(10, weight) }
+        static func small(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(11, weight) }
+        static func body(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(13, weight) }
+        static func large(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(15, weight) }
+        static func title(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(20, weight) }
+    }
+
+    /// Spacing scale, 4-based.
+    enum Space {
+        static let xSmall: CGFloat = 4
+        static let small: CGFloat = 8
+        static let medium: CGFloat = 12
+        static let large: CGFloat = 16
+        static let xLarge: CGFloat = 24
+    }
+
+    /// The single edge inset for every popover and panel.
+    static let edgePadding: CGFloat = 14
+
     @MainActor static var accent: Color { ThemeStore.shared.color }
     @MainActor static var accentSoft: Color { ThemeStore.shared.color.opacity(0.16) }
     static let warn = Color(red: 0.86, green: 0.62, blue: 0.22)

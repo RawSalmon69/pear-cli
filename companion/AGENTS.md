@@ -220,6 +220,14 @@ alone at quit. Four tests hold that line. Prior art:
 - **Native primitives over custom.** Vision for OCR/segmentation, NSColorSampler,
   ScreenCaptureKit for thumbnails, `screencapture -i` for region capture. Don't
   replace a bulletproof system path with custom code for a nice-to-have.
+- **Visual values come from `Theme`** (`Support/Theme.swift`): `Theme.Radius`
+  (6/10/16), `Theme.Typography` (10/11/13/15/20, rounded, nothing below 10 pt),
+  `Theme.Space` (4/8/12/16/24) and `Theme.edgePadding` (14, every popover/panel
+  edge). `glassCard` and `clipToCard` both default to `Theme.Radius.large` (16),
+  so a borderless panel that takes both defaults cannot drift into a ghost
+  border. Sibling glass cards go in a `GlassGroup` (`GlassEffectContainer` on
+  macOS 26+, pass-through on 14–15); never glass inside glass. Call sites still
+  carry literals while the migration is in progress; new code uses the tokens.
 - **HD background removal** is opt-in: default is Apple Vision (instant, no
   download). Turning on "High-quality mode" downloads a **BEN2 Base** Core ML
   fp16 model (~205MB) from the project's GitHub release (`ben2-bg-model-v1`,

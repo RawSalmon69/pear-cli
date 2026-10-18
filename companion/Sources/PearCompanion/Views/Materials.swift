@@ -4,7 +4,8 @@ import AppKit
 extension NSView {
     /// Clip a borderless panel's hosting view to its card corner radius so the
     /// rectangular backing never shows a hairline past the rounded glass.
-    func clipToCard(radius: CGFloat = 16) {
+    /// Defaults to the same radius as `glassCard`.
+    func clipToCard(radius: CGFloat = Theme.Radius.large) {
         wantsLayer = true
         layer?.cornerRadius = radius
         layer?.masksToBounds = true
@@ -15,7 +16,7 @@ extension NSView {
 /// macOS 26+, ultra-thin material below. Views use `.glassCard()` and
 /// never touch materials directly, so the fallback stays in one place.
 struct GlassBackground: ViewModifier {
-    var cornerRadius: CGFloat = 14
+    var cornerRadius: CGFloat = Theme.Radius.large
 
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
@@ -31,8 +32,24 @@ struct GlassBackground: ViewModifier {
     }
 }
 
+/// Wraps sibling `.glassCard()`s so Liquid Glass renders them as one group
+/// (`GlassEffectContainer`, macOS 26+). Below 26 it passes the content
+/// through and each card keeps its own material. Wrap siblings only — never
+/// put glass inside glass.
+struct GlassGroup<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer { content }
+        } else {
+            content
+        }
+    }
+}
+
 extension View {
-    func glassCard(cornerRadius: CGFloat = 14) -> some View {
+    func glassCard(cornerRadius: CGFloat = Theme.Radius.large) -> some View {
         modifier(GlassBackground(cornerRadius: cornerRadius))
     }
 }
