@@ -98,8 +98,8 @@ enum AccentWheelMath {
 }
 
 /// Design tokens. The shared set every surface should use is `Radius`
-/// (6 · 10 · 16), `Typography` (10 · 11 · 13 · 15 · 20, rounded, nothing below
-/// 10 pt), `Space` (4 · 8 · 12 · 16 · 24) and `edgePadding` (14, the one inset
+/// (6 · 10 · 16), `Typography` (10 · 11 · 12 · 13 · 15 · 20, rounded, nothing
+/// below 10 pt; 12 is `callout`, Apple's macOS callout size), `Space` (4 · 8 · 12 · 16 · 24) and `edgePadding` (14, the one inset
 /// for every popover and panel edge). There are no other values: a literal
 /// radius, font size or padding outside this file carries a comment saying why.
 enum Theme {
@@ -115,6 +115,7 @@ enum Theme {
     enum Typography {
         static func tiny(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(Size.tiny, weight) }
         static func small(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(Size.small, weight) }
+        static func callout(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(Size.callout, weight) }
         static func body(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(Size.body, weight) }
         static func large(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(Size.large, weight) }
         static func title(_ weight: Font.Weight = .regular) -> Font { Theme.rounded(Size.title, weight) }
@@ -124,6 +125,7 @@ enum Theme {
         enum Size {
             static let tiny: CGFloat = 10
             static let small: CGFloat = 11
+            static let callout: CGFloat = 12
             static let body: CGFloat = 13
             static let large: CGFloat = 15
             static let title: CGFloat = 20

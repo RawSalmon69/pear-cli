@@ -177,10 +177,15 @@ check: the actions show in the Shortcuts app.
   Tests: `ToolStatusTests`, `WindowsSnapPermissionTests`.
 - **Panel structure** (`Views/PanelView.swift`, `Views/PanelModel.swift`): the
   cat + a search field (focused on open) on top, the cat's line under it, the
-  one-time "Pick your four" card, four big pinned tiles (icon, name, shortcut in
-  a key label), the recent-captures strip, then one compact list of every other
-  enabled tool (icon, name, optional live `Tool.status` such as Switches "2 on",
-  shortcut label or "no shortcut"), then the bottom bar. **Pin fill rule:** the user's pins in order
+  one-time "Pick your four" card, four big pinned tiles (icon, name, shortcut as
+  plain text under it), the "Recent" captures strip, then one compact "All
+  tools" list of every other enabled tool (icon, name, optional live
+  `Tool.status` such as Switches "2 on", shortcut label or "no shortcut"), then
+  a hairline and the bottom bar. **Density is owner-approved (2026-10)**: 16 pt
+  panel inset (wider than `edgePadding`), 20 pt between sections, 12 pt
+  `callout` for the search field, row titles and the card title, 28 pt minimum
+  rows; the off-scale values live once in `PanelDensity` at the top of
+  `PanelView.swift`. Don't grow the panel's type back without an ask. **Pin fill rule:** the user's pins in order
   that are enabled, then enabled unpinned tools in offer order, up to four;
   fewer enabled tools give fewer tiles, never placeholders. Defaults are
   Screenshot, Grab Text, Clipboard, Shelf (`Prefs.defaultPinnedTools`). Right-click
@@ -471,7 +476,8 @@ state until it next asks; `currentValue()` is then already off.
   ScreenCaptureKit for thumbnails, `screencapture -i` for region capture. Don't
   replace a bulletproof system path with custom code for a nice-to-have.
 - **Visual values come from `Theme`** (`Support/Theme.swift`): `Theme.Radius`
-  (6/10/16), `Theme.Typography` (10/11/13/15/20, rounded, nothing below 10 pt),
+  (6/10/16), `Theme.Typography` (10/11/12/13/15/20, rounded, nothing below 10 pt; 12 is
+  `callout`, Apple's macOS callout size),
   `Theme.Space` (4/8/12/16/24) and `Theme.edgePadding` (14, every popover/panel
   edge). `glassCard` and `clipToCard` both default to `Theme.Radius.large` (16),
   so a borderless panel that takes both defaults cannot drift into a ghost
@@ -499,7 +505,7 @@ state until it next asks; `currentValue()` is then already off.
   (`Views/Materials.swift`, the `.quaternary.opacity(0.5)` fill), never
   another `glassCard`, since the popover or panel chrome is already the glass.
   The AppKit HUDs (copy toast, window ring, snap preview) are migrated too:
-  they take `Theme.Typography.Size` (the same 10/11/13/15/20 as `CGFloat`) via
+  they take `Theme.Typography.Size` (the same 10/11/12/13/15/20 as `CGFloat`) via
   `Theme.roundedNSFont`, since AppKit has no SwiftUI `Font`; the ring's radii
   and its circular clip are hit-test geometry, not radius tokens.
   **Four standard windows** besides Settings: the screenshot detail, Markup,

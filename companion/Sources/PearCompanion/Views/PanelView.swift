@@ -1,6 +1,18 @@
 import SwiftUI
 import AppKit
 
+/// The panel's owner-approved density (2026-10, "too big and cramped"): values
+/// between the `Theme.Space` steps that the approved prototype calls for, kept
+/// here because nothing outside the panel uses them.
+private enum PanelDensity {
+    /// The gap between the panel's sections, wider than any `Space` step.
+    static let sectionGap: CGFloat = 20
+    /// The search field's and list rows' side inset, and a row's icon-to-title gap.
+    static let inset: CGFloat = 10
+    /// The search field's and a list row's minimum height: a size, not padding.
+    static let rowHeight: CGFloat = 28
+}
+
 /// The panel: the cat and a search field on top, the four pinned tiles, the
 /// recent captures, then one compact list of every other enabled tool.
 /// `PanelModel` makes every decision (tiles, rows, selection, what a key does,
@@ -55,7 +67,7 @@ struct PanelView: View {
 
     var body: some View {
         let model = model
-        VStack(alignment: .leading, spacing: Theme.Space.large) {
+        VStack(alignment: .leading, spacing: PanelDensity.sectionGap) {
             PanelHeader(model: model, onKey: send, onFix: fix)
             if FeatureFlags.coupleNote {
                 ConnectionBanner()
@@ -77,7 +89,8 @@ struct PanelView: View {
             toolList(model)
             BottomBar()
         }
-        .padding(Theme.edgePadding)
+        // The panel's own inset, approved wider than `edgePadding`.
+        .padding(Theme.Space.large)
         .frame(width: 360)
         .fixedSize(horizontal: false, vertical: true)
         // The panel can be torn down with a popover still up, skipping the
@@ -170,17 +183,20 @@ struct PanelView: View {
     private func recentStrip(_ model: PanelModel) -> some View {
         if !model.recents.isEmpty {
             let tool = captureTool
-            HStack(spacing: Theme.Space.small) {
-                ForEach(model.recents, id: \.self) { url in
-                    RecentCaptureTile(url: url) {
-                        Task { @MainActor in
-                            close()
-                            tool?.openCapture(url)
+            VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
+                PanelSectionLabel(text: "Recent")
+                HStack(spacing: Theme.Space.small) {
+                    ForEach(model.recents, id: \.self) { url in
+                        RecentCaptureTile(url: url) {
+                            Task { @MainActor in
+                                close()
+                                tool?.openCapture(url)
+                            }
                         }
                     }
                 }
+                .background(WindowMoveBlocker())
             }
-            .background(WindowMoveBlocker())
         }
     }
 
@@ -191,7 +207,7 @@ struct PanelView: View {
         if model.showsNoMatch {
             VStack(spacing: Theme.Space.small) {
                 Text("No tools match")
-                    .font(Theme.Typography.body())
+                    .font(Theme.Typography.callout())
                     .foregroundStyle(.secondary)
                 // A tool that is switched off does not show here; its page is
                 // where it is switched back on, so land on the first tool page.
@@ -203,15 +219,19 @@ struct PanelView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, Theme.Space.large)
-        } else {
-            VStack(spacing: 0) {
-                ForEach(model.rows, id: \.id) { entry in
-                    if let tool = tools.first(where: { $0.id == entry.id }) {
-                        anchored(tool, pinned: model.isPinned(tool.id)) {
-                            ToolRow(entry: entry, status: tool.status,
-                                    selected: entry.id == model.selectedID,
-                                    needsPermission: model.needsPermission(entry.id)) {
-                                activate(tool)
+        } else if !model.rows.isEmpty {
+            VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
+                PanelSectionLabel(text: "All tools")
+                // 2 pt between rows: below the 4 pt step, the rows' own fill reads as the gap.
+                VStack(spacing: 2) {
+                    ForEach(model.rows, id: \.id) { entry in
+                        if let tool = tools.first(where: { $0.id == entry.id }) {
+                            anchored(tool, pinned: model.isPinned(tool.id)) {
+                                ToolRow(entry: entry, status: tool.status,
+                                        selected: entry.id == model.selectedID,
+                                        needsPermission: model.needsPermission(entry.id)) {
+                                    activate(tool)
+                                }
                             }
                         }
                     }
@@ -271,19 +291,21 @@ struct PanelHeader: View {
             VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
                 HStack(spacing: Theme.Space.small) {
                     Image(systemName: "magnifyingglass")
-                        .font(Theme.Typography.body())
+                        .font(Theme.Typography.callout())
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
                     PanelSearchField(text: model.query, onKey: onKey)
                         .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, Theme.Space.small)
-                .padding(.vertical, Theme.Space.xSmall)
-                .flatSurface(cornerRadius: Theme.Radius.small)
+                .padding(.horizontal, PanelDensity.inset)
+                .frame(minHeight: PanelDensity.rowHeight)
+                // A touch lighter than `flatSurface`'s 0.5, as approved.
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.small)
+                    .fill(.quaternary.opacity(0.35)))
                 if !model.catLine.isEmpty {
                     HStack(spacing: Theme.Space.small) {
                         Text(model.catLine)
-                            .font(Theme.Typography.small(.semibold))
+                            .font(Theme.Typography.small(.medium))
                             .foregroundStyle(Theme.warn)
                             .lineLimit(1)
                         if let permission = model.fix {
@@ -316,9 +338,7 @@ struct PanelSearchField: NSViewRepresentable {
         field.focusRingType = .none
         field.usesSingleLineMode = true
         field.lineBreakMode = .byTruncatingTail
-        let base = NSFont.systemFont(ofSize: NSFont.systemFontSize)
-        field.font = base.fontDescriptor.withDesign(.rounded)
-            .flatMap { NSFont(descriptor: $0, size: base.pointSize) } ?? base
+        field.font = Theme.roundedNSFont(Theme.Typography.Size.callout)
         field.delegate = context.coordinator
         return field
     }
@@ -665,13 +685,13 @@ struct ToolRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: Theme.Space.small) {
+            HStack(spacing: PanelDensity.inset) {
                 Image(systemName: entry.icon)
-                    .font(Theme.Typography.body(.medium))
+                    .font(Theme.Typography.callout(.medium))
                     .foregroundStyle(selected ? Theme.accent : .secondary)
                     .frame(width: Theme.Space.large)
                 Text(entry.title)
-                    .font(Theme.Typography.body())
+                    .font(Theme.Typography.callout())
                 Spacer(minLength: Theme.Space.small)
                 if let status {
                     Text(status)
@@ -684,12 +704,12 @@ struct ToolRow: View {
                         .foregroundStyle(Theme.warn)
                 } else {
                     Text(entry.shortcutText)
-                        .font(Theme.Typography.small())
-                        .foregroundStyle(.tertiary)
+                        .font(Theme.Typography.tiny())
+                        .foregroundStyle(entry.shortcut == nil ? HierarchicalShapeStyle.quaternary : .secondary)
                 }
             }
-            .padding(.horizontal, Theme.Space.small)
-            .padding(.vertical, Theme.Space.xSmall)
+            .padding(.horizontal, PanelDensity.inset)
+            .frame(minHeight: PanelDensity.rowHeight)
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.small)
@@ -708,8 +728,8 @@ struct ToolRow: View {
     }
 }
 
-/// One pinned tool: big icon, name, and its shortcut in a key label so it is
-/// learned by sight. Flat fill, never glass: it sits on the panel's own glass.
+/// One pinned tool: big icon, name, and its shortcut under it so it is learned
+/// by sight. Flat fill, never glass: it sits on the panel's own glass.
 /// Not focusable, like `ToolRow`: the search field's arrows walk the tiles.
 struct PinnedTile: View {
     let entry: PanelModel.Entry
@@ -720,13 +740,14 @@ struct PinnedTile: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: Theme.Space.xSmall) {
+            VStack(spacing: Theme.Space.small) {
                 Image(systemName: entry.icon)
-                    .font(Theme.Typography.title(.medium))
+                    // 18 pt: a glyph size between the 15 and 20 type steps, as approved.
+                    .font(.system(size: 18, weight: .medium, design: .rounded))
                     .foregroundStyle(selected ? Theme.accent : .primary)
                     .frame(height: Theme.Space.xLarge)
                 Text(entry.title)
-                    .font(Theme.Typography.small(.medium))
+                    .font(Theme.Typography.small())
                     .lineLimit(1)
                 if needsPermission {
                     Text("needs permission")
@@ -735,13 +756,8 @@ struct PinnedTile: View {
                         .lineLimit(1)
                 } else if let shortcut = entry.shortcut {
                     Text(shortcut)
-                        .font(Theme.Typography.tiny(.semibold))
+                        .font(Theme.Typography.tiny())
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, Theme.Space.xSmall)
-                        .background(
-                            RoundedRectangle(cornerRadius: Theme.Radius.small)
-                                .strokeBorder(.tertiary)
-                        )
                 } else {
                     Text(entry.shortcutText)
                         .font(Theme.Typography.tiny())
@@ -749,7 +765,8 @@ struct PinnedTile: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, Theme.Space.small)
+            .padding(.top, Theme.Space.medium)
+            .padding(.bottom, PanelDensity.inset)
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.medium)
@@ -778,7 +795,7 @@ struct RecentCaptureTile: View {
     let open: () -> Void
     @State private var thumbnail: NSImage?
 
-    /// Three tiles share the 332 pt row, so ~105 pt wide: 240 px stays crisp
+    /// Three tiles share the 328 pt row, so ~104 pt wide: 240 px stays crisp
     /// at 2x and costs ~150 KB per tile.
     private static let maxPixel = 240
 
@@ -786,7 +803,7 @@ struct RecentCaptureTile: View {
         Button(action: open) {
             RoundedRectangle(cornerRadius: Theme.Radius.small)
                 .fill(Color.primary.opacity(0.05))
-                .frame(height: 64)
+                .frame(height: 56)
                 .overlay {
                     if let thumbnail {
                         Image(nsImage: thumbnail).resizable().scaledToFill()
@@ -862,13 +879,14 @@ struct PickYourFourCard: View {
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Space.small) {
             Image(systemName: "pin.fill")
-                .font(Theme.Typography.body())
+                .font(Theme.Typography.callout())
                 .foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: Theme.Space.xSmall) {
                 Text("Pick your four")
-                    .font(Theme.Typography.body(.semibold))
+                    .font(Theme.Typography.callout(.semibold))
                 Text("Right-click any tool to pin it to the top, or unpin one you don't use.")
                     .font(Theme.Typography.small())
+                    .lineSpacing(2) // 2 pt: a little looser than the default leading, as approved
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -882,10 +900,11 @@ struct PickYourFourCard: View {
             .help("Dismiss")
             .accessibilityLabel("Dismiss")
         }
-        .padding(Theme.Space.medium)
+        .padding(.horizontal, Theme.Space.medium)
+        .padding(.vertical, PanelDensity.inset)
         .background(
             RoundedRectangle(cornerRadius: Theme.Radius.medium)
-                .fill(Theme.accentSoft)
+                .fill(Theme.accentSoft.opacity(0.75))
         )
     }
 }
@@ -900,6 +919,7 @@ struct BottomBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.small) {
+            Divider()
             buttonRow
             trialNotice
         }
@@ -930,12 +950,12 @@ struct BottomBar: View {
             if let updater = env.updater {
                 Button("v\(updater.versionString)") { updater.checkForUpdates() }
                     .buttonStyle(.plain)
-                    .font(Theme.Typography.small(.semibold))
+                    .font(Theme.Typography.tiny())
                     .foregroundStyle(.secondary)
                     .help("Check for updates")
             } else {
                 Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev")")
-                    .font(Theme.Typography.small(.semibold))
+                    .font(Theme.Typography.tiny())
                     .foregroundStyle(.quaternary)
             }
             GlyphButton(symbol: "questionmark", help: "What can Pear do?", tint: .secondary) {
@@ -951,8 +971,18 @@ struct BottomBar: View {
                 NSApp.terminate(nil)
             }
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .tint(Theme.accent)
+    }
+}
+
+/// A small heading over a panel section ("Recent", "All tools").
+private struct PanelSectionLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(Theme.Typography.tiny(.semibold))
+            .foregroundStyle(.tertiary)
+            .padding(.leading, 2) // 2 pt: the approved inset, below the 4 pt step
+            .accessibilityAddTraits(.isHeader)
     }
 }
