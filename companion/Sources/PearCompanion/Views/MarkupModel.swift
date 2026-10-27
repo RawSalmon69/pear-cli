@@ -214,6 +214,13 @@ struct MarkupHistory {
     }
 }
 
+/// Whether closing Markup without Done would throw work away: anything
+/// undoable, or text typed into an open draft. Undone all the way back is the
+/// capture as it came in, so it closes without asking.
+func markupNeedsDiscardConfirmation(canUndo: Bool, draftText: String) -> Bool {
+    canUndo || !draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+}
+
 // MARK: - Image helpers
 
 extension NSImage {

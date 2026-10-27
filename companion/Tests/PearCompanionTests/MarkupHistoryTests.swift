@@ -52,6 +52,24 @@ final class MarkupHistoryTests: XCTestCase {
         XCTAssertNil(history.redo(from: snapshot([])))
     }
 
+    // MARK: Discard confirmation
+
+    func testDiscardAsksOnlyWhenSomethingWouldBeLost() {
+        XCTAssertFalse(markupNeedsDiscardConfirmation(canUndo: false, draftText: ""))
+        XCTAssertFalse(markupNeedsDiscardConfirmation(canUndo: false, draftText: "  \n"))
+        XCTAssertTrue(markupNeedsDiscardConfirmation(canUndo: true, draftText: ""))
+        XCTAssertTrue(markupNeedsDiscardConfirmation(canUndo: false, draftText: "typed"))
+    }
+
+    func testEverythingUndoneCloses() {
+        // Undone back to the original image: redo holds work, but the canvas
+        // is the capture as it came in, so closing loses nothing visible.
+        var history = MarkupHistory()
+        history.record(snapshot([]))
+        _ = history.undo(from: snapshot([arrow(10)]))
+        XCTAssertFalse(markupNeedsDiscardConfirmation(canUndo: history.canUndo, draftText: ""))
+    }
+
     func testCropUndoRedoRestoresImageAndAnnotations() throws {
         let rep = try XCTUnwrap(NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: 100, pixelsHigh: 80, bitsPerSample: 8,

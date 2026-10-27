@@ -31,6 +31,8 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
 
     private var window: NSWindow?
     private var didComplete = false
+    /// Mirrors the editor: closing without Done would lose work.
+    private var hasUnsavedChanges = false
 
     init(image: NSImage, onComplete: @escaping (NSImage?) -> Void) {
         self.image = image
@@ -38,9 +40,13 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
     }
 
     func show() {
-        let root = MarkupEditorView(image: image) { [weak self] result in
-            self?.finish(with: result)
-        }
+        let root = MarkupEditorView(
+            image: image,
+            onFinish: { [weak self] result in self?.finish(with: result) },
+            // Esc and Cancel take the close button's path, so all of them ask.
+            onCancel: { [weak self] in self?.window?.performClose(nil) },
+            onUnsavedChanges: { [weak self] in self?.hasUnsavedChanges = $0 }
+        )
 
         // The screen under the pointer, where the Markup click just happened.
         // Not the key window first: the card and the detail window close
@@ -51,7 +57,7 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
             ?? NSApp.keyWindow?.screen
             ?? NSScreen.main
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let window = NSWindow(
+        let window = MarkupNSWindow(
             contentRect: NSRect(origin: .zero,
                                 size: Self.initialContentSize(pixels: image.pixelSize, visible: visible.size)),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -97,6 +103,25 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
         window?.close()
     }
 
+    /// The close button, ⌘W, Esc and Cancel all land here. With work at stake
+    /// it asks first; Discard then cancels through `finish`, exactly once.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard !didComplete, hasUnsavedChanges else { return true }
+        guard sender.attachedSheet == nil else { return false }
+        let alert = NSAlert()
+        alert.messageText = "Discard your markup?"
+        alert.informativeText = "Your annotations will be lost."
+        // NSAlert gives a button one key: Keep Editing takes Esc, and Discard
+        // has none, so no keystroke can throw the work away.
+        alert.addButton(withTitle: "Keep Editing").keyEquivalent = "\u{1b}"
+        alert.addButton(withTitle: "Discard").hasDestructiveAction = true
+        alert.beginSheetModal(for: sender) { [weak self] response in
+            guard response == .alertSecondButtonReturn else { return }
+            self?.finish(with: nil)
+        }
+        return false
+    }
+
     func windowWillClose(_ notification: Notification) {
         // Closing via the title-bar button (or any path we didn't drive) is a
         // cancel; guarded so Done doesn't double-report.
@@ -111,10 +136,28 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
     }
 }
 
+/// An agent app has no File menu to supply ⌘W, so the window takes it and
+/// routes it through `performClose`, the close button's path.
+private final class MarkupNSWindow: NSWindow {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // Caps Lock is in the device-independent mask; it must not block ⌘W.
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            .subtracting(.capsLock) == .command,
+           event.charactersIgnoringModifiers == "w" {
+            performClose(nil)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+}
+
 // MARK: - Editor view
 
 struct MarkupEditorView: View {
     let onFinish: (NSImage?) -> Void
+    /// Esc and Cancel: the window decides whether to ask first.
+    let onCancel: () -> Void
+    let onUnsavedChanges: (Bool) -> Void
 
     /// Base image, its pixel size, and its pixelated copy are mutable so a
     /// committed crop can replace them in place.
@@ -154,8 +197,11 @@ struct MarkupEditorView: View {
     private let sourcePixels: CGSize
     private let sourcePoints: CGSize
 
-    init(image: NSImage, onFinish: @escaping (NSImage?) -> Void) {
+    init(image: NSImage, onFinish: @escaping (NSImage?) -> Void,
+         onCancel: @escaping () -> Void, onUnsavedChanges: @escaping (Bool) -> Void) {
         self.onFinish = onFinish
+        self.onCancel = onCancel
+        self.onUnsavedChanges = onUnsavedChanges
         sourcePixels = image.pixelSize
         sourcePoints = image.size
         _image = State(initialValue: image)
@@ -164,6 +210,11 @@ struct MarkupEditorView: View {
     }
 
     private var isCropping: Bool { tool == .crop && cropRect != nil }
+
+    private var hasUnsavedChanges: Bool {
+        markupNeedsDiscardConfirmation(canUndo: history.canUndo,
+                                       draftText: draftOrigin == nil ? "" : draftText)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -174,8 +225,9 @@ struct MarkupEditorView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         // One Esc owner: cancel the pending crop first, otherwise the editor.
         .onExitCommand {
-            if isCropping { cancelCrop() } else { onFinish(nil) }
+            if isCropping { cancelCrop() } else { onCancel() }
         }
+        .onChange(of: hasUnsavedChanges) { _, unsaved in onUnsavedChanges(unsaved) }
     }
 
     // MARK: Toolbar
@@ -230,7 +282,7 @@ struct MarkupEditorView: View {
 
             // Esc is handled by the view's onExitCommand so it can cancel a
             // pending crop first; the button stays for mouse users.
-            Button("Cancel") { onFinish(nil) }
+            Button("Cancel") { onCancel() }
 
             Button("Done") {
                 commitDraft()
@@ -700,7 +752,8 @@ private struct CropOverlay: View {
         NSRect(x: 60, y: 60, width: 200, height: 120).fill()
         return true
     }
-    return MarkupEditorView(image: image) { _ in }
+    return MarkupEditorView(image: image, onFinish: { _ in }, onCancel: {},
+                            onUnsavedChanges: { _ in })
         .frame(width: 760, height: 520)
 }
 #endif
