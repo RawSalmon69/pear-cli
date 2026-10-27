@@ -41,6 +41,15 @@ final class ScreenshotStackTests: XCTestCase {
         XCTAssertEqual(off.y, home.y, accuracy: 0.001)
     }
 
+    /// VoiceOver cannot hover a card to hold it, so it pauses auto-dismiss
+    /// outright, as an open detail window does.
+    func testAutoDismissPausesForAnOpenDetailWindowOrVoiceOver() {
+        XCTAssertTrue(PreviewStackLayout.autoDismisses(enabled: true, detailOpen: false, voiceOver: false))
+        XCTAssertFalse(PreviewStackLayout.autoDismisses(enabled: false, detailOpen: false, voiceOver: false))
+        XCTAssertFalse(PreviewStackLayout.autoDismisses(enabled: true, detailOpen: true, voiceOver: false))
+        XCTAssertFalse(PreviewStackLayout.autoDismisses(enabled: true, detailOpen: false, voiceOver: true))
+    }
+
     func testEvictionKeepsNewest() {
         XCTAssertEqual(PreviewStackLayout.overflowIndices(count: 5, maxCount: 5), [])
         XCTAssertEqual(PreviewStackLayout.overflowIndices(count: 6, maxCount: 5), [5])

@@ -550,7 +550,9 @@ state until it next asks; `currentValue()` is then already off.
   preview card keeps its hover-only actions up while VoiceOver is on
   (`VoiceOverState`, live from KVO on `NSWorkspace.isVoiceOverEnabled`; the
   SwiftUI environment value is unproven in a non-activating panel), since
-  VoiceOver cannot hover. **Every spring is passed through
+  VoiceOver cannot hover; for the same reason VoiceOver pauses the cards'
+  auto-dismiss, re-armed when it turns off (`PreviewStackLayout.autoDismisses`,
+  tested). **Every spring is passed through
   `Theme.motion(_:reduce:)`** with `@Environment(\.accessibilityReduceMotion)`
   (a short ease under Reduce Motion); a view that slides in switches its
   transition to `.opacity` there too (`NotesSection`). The one exception is the

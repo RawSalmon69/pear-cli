@@ -32,6 +32,13 @@ enum PreviewStackLayout {
     static func evictionVictims(count: Int, maxFit: Int, protected: Set<Int>) -> [Int] {
         overflowIndices(count: count, maxCount: maxFit).filter { !protected.contains($0) }
     }
+
+    /// Whether a card times out: never while its detail window is open (the
+    /// user is reading it), nor while VoiceOver is on, which cannot hover the
+    /// card to hold it.
+    static func autoDismisses(enabled: Bool, detailOpen: Bool, voiceOver: Bool) -> Bool {
+        enabled && !detailOpen && !voiceOver
+    }
 }
 
 /// What the detail window needs from the card that spawned it: the backing
@@ -98,6 +105,7 @@ final class ScreenshotPreviewController {
         observeCaptures()
         observeFocusedScreen()
         observeScreenChanges()
+        observeVoiceOver()
     }
 
     private var entries: [PreviewEntry] = [] // index 0 = newest, nearest edge
@@ -589,14 +597,30 @@ final class ScreenshotPreviewController {
     private func scheduleAutoDismiss(_ entry: PreviewEntry) {
         entry.timer?.invalidate()
         entry.timer = nil
-        // Never time out a card whose big view is open — the user is reading it.
-        guard Prefs.previewAutoDismiss, entry.detail == nil else { return }
+        guard PreviewStackLayout.autoDismisses(enabled: Prefs.previewAutoDismiss,
+                                               detailOpen: entry.detail != nil,
+                                               voiceOver: VoiceOverState.shared.isOn) else { return }
         let id = entry.id
         let timer = Timer(timeInterval: Prefs.previewAutoDismissSeconds, repeats: false) { [weak self] _ in
             Task { @MainActor in self?.dismiss(id: id) }
         }
         RunLoop.main.add(timer, forMode: .common)
         entry.timer = timer
+    }
+
+    /// VoiceOver on stops every card's timer; off re-arms them. Re-registered
+    /// on each change, since observation tracking fires once.
+    private func observeVoiceOver() {
+        withObservationTracking {
+            _ = VoiceOverState.shared.isOn
+        } onChange: {
+            Task { @MainActor in ScreenshotPreviewController.shared.voiceOverChanged() }
+        }
+    }
+
+    private func voiceOverChanged() {
+        observeVoiceOver()
+        for entry in entries { scheduleAutoDismiss(entry) }
     }
 
     private func hoverChange(id: UUID, hovering: Bool) {
