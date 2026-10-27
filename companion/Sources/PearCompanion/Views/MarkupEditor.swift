@@ -42,12 +42,13 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
             self?.finish(with: result)
         }
 
-        // The screen of the window the user clicked from (the card, or the
-        // detail window, still key at this point), else the pointer's (a
-        // just-closed detail window is no longer key), else the main screen.
+        // The screen under the pointer, where the Markup click just happened.
+        // Not the key window first: the card and the detail window close
+        // before this runs, so the key window is nil or some unrelated Pear
+        // window (Settings, Disk) that may sit on another display.
         let mouse = NSEvent.mouseLocation
-        let screen = NSApp.keyWindow?.screen
-            ?? NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
+        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
+            ?? NSApp.keyWindow?.screen
             ?? NSScreen.main
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let window = NSWindow(
