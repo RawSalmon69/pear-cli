@@ -90,6 +90,7 @@ final class ScreenshotPreviewController {
     private init() {
         observeCaptures()
         observeFocusedScreen()
+        observeScreenChanges()
     }
 
     private var entries: [PreviewEntry] = [] // index 0 = newest, nearest edge
@@ -480,6 +481,27 @@ final class ScreenshotPreviewController {
         guard next != anchorDisplay else { return }
         anchorDisplay = next
         // The new display can be shorter than the old one.
+        evictOverflow()
+        layout(newItem: nil)
+    }
+
+    /// A display unplugged, a resolution or arrangement change, a new primary,
+    /// the Dock moving: re-resolve the anchor by id (gone → the menu-bar
+    /// display, per `anchor`) and re-seat every card on the live frame, so no
+    /// card animates to coordinates that are now off every screen. Registered
+    /// once, like the activation observer; nothing happens with no cards up.
+    private func observeScreenChanges() {
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.screensChanged() }
+        }
+    }
+
+    private func screensChanged() {
+        guard !entries.isEmpty else { return }
+        anchorDisplay = resolvedAnchor(capturedOn: nil)
+        // Same display or not, its visible frame may have shrunk.
         evictOverflow()
         layout(newItem: nil)
     }
