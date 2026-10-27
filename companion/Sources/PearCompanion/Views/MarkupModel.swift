@@ -230,6 +230,30 @@ enum ImageCrop {
     }
 }
 
+/// Point size for `pixels` at the source's points-per-pixel, so a Retina shot
+/// stays 144 dpi after an edit. A crop changes the pixels, never that ratio.
+func markupPointSize(pixels: CGSize, sourcePixels: CGSize, sourcePoints: CGSize) -> CGSize {
+    guard sourcePixels.width > 0, sourcePixels.height > 0,
+          sourcePoints.width > 0, sourcePoints.height > 0 else { return pixels }
+    return CGSize(width: pixels.width * sourcePoints.width / sourcePixels.width,
+                  height: pixels.height * sourcePoints.height / sourcePixels.height)
+}
+
+extension NSImage {
+    /// These pixels tagged at the source's scale. A render at scale 1 has
+    /// point size == pixel size, which `pngData()` writes as 72 dpi, and the
+    /// edited shot then pastes at twice its size.
+    func keepingScale(sourcePixels: CGSize, sourcePoints: CGSize) -> NSImage? {
+        guard let cg = cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let rep = NSBitmapImageRep(cgImage: cg)
+        rep.size = markupPointSize(pixels: CGSize(width: cg.width, height: cg.height),
+                                   sourcePixels: sourcePixels, sourcePoints: sourcePoints)
+        let image = NSImage(size: rep.size)
+        image.addRepresentation(rep)
+        return image
+    }
+}
+
 // MARK: - Canvas
 
 /// Renders the base image plus every annotation. Reused verbatim for the live

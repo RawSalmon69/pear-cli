@@ -149,8 +149,14 @@ struct MarkupEditorView: View {
     @State private var draftFontSize: CGFloat = 0
     @FocusState private var textFieldFocused: Bool
 
+    /// The opened shot's pixels and points, so the export keeps its dpi.
+    private let sourcePixels: CGSize
+    private let sourcePoints: CGSize
+
     init(image: NSImage, onFinish: @escaping (NSImage?) -> Void) {
         self.onFinish = onFinish
+        sourcePixels = image.pixelSize
+        sourcePoints = image.size
         _image = State(initialValue: image)
         _pixelSize = State(initialValue: image.pixelSize)
         _pixelated = State(initialValue: Pixelation.pixelated(image))
@@ -514,7 +520,9 @@ struct MarkupEditorView: View {
             )
         )
         renderer.scale = 1
-        return renderer.nsImage ?? image
+        guard let rendered = renderer.nsImage else { return image }
+        return rendered.keepingScale(sourcePixels: sourcePixels, sourcePoints: sourcePoints)
+            ?? rendered
     }
 }
 

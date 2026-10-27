@@ -39,4 +39,45 @@ final class MarkupExportTests: XCTestCase {
     func testArrowHeadFollowsStrokeAboveTheFloor() {
         XCTAssertEqual(arrowHeadLength(lineWidth: 10, scale: 1), 45)
     }
+
+    // MARK: dpi
+
+    func testPointSizeKeepsRetinaRatioThroughACrop() {
+        let size = markupPointSize(pixels: CGSize(width: 300, height: 100),
+                                   sourcePixels: CGSize(width: 1000, height: 800),
+                                   sourcePoints: CGSize(width: 500, height: 400))
+        XCTAssertEqual(size, CGSize(width: 150, height: 50))
+    }
+
+    func testPointSizeFallsBackToPixelsForAnEmptySource() {
+        let size = markupPointSize(pixels: CGSize(width: 30, height: 10),
+                                   sourcePixels: .zero, sourcePoints: .zero)
+        XCTAssertEqual(size, CGSize(width: 30, height: 10))
+    }
+
+    func testRetinaShotComesOutOfMarkupAt144Dpi() throws {
+        // A 144-dpi PNG: 40×20 pixels tagged as 20×10 points.
+        let source = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 40, pixelsHigh: 20, bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        source.size = NSSize(width: 20, height: 10)
+        let png = try XCTUnwrap(source.representation(using: .png, properties: [:]))
+        let image = try XCTUnwrap(NSImage(data: png))
+
+        // The export path: a pixel-sized render (as ImageRenderer at scale 1
+        // produces, so 72 dpi on its own), wrapped at the source's ratio.
+        let cg = try XCTUnwrap(image.cgImage(forProposedRect: nil, context: nil, hints: nil))
+        let rendered = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        let unfixed = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(rendered.pngData())))
+        XCTAssertEqual(unfixed.size.width, 40, "the bug: a scale-1 render encodes at 72 dpi")
+        let flat = try XCTUnwrap(rendered.keepingScale(sourcePixels: image.pixelSize,
+                                                       sourcePoints: image.size))
+        let out = try XCTUnwrap(flat.pngData())
+
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: out))
+        XCTAssertEqual(rep.pixelsWide, 40)
+        XCTAssertEqual(rep.size.width, 20, "pixels / points = 2 → 144 dpi")
+        XCTAssertEqual(rep.size.height, 10)
+    }
 }
