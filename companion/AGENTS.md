@@ -175,8 +175,10 @@ check: the actions show in the Shortcuts app.
   a card's or the detail window's Save (`ScreenshotService.saveToFolder`; each
   shows its checkmark only on success, and a source that has gone takes the
   `missing` path), an edit that could not be written over the shot
-  (`ScreenshotService.overwrite`, after Markup or Remove Background; the
-  untouched original is re-shown instead of a card claiming the edit),
+  (`ScreenshotService.saveEdit` / `CaptureStore.land`, after Markup or Remove
+  Background, tested: the edit is kept as a new capture in the store, carded,
+  copied and added to Recent; only if the store fails too is the untouched
+  original re-shown — an edit is never silently lost),
   `WindowsTool.apply` (no Accessibility), `AXWindowMover.commit` (no movable
   front window) and `apply` (the app refused the frame after both passes).
   Tests: `ToolStatusTests`, `WindowsSnapPermissionTests`.

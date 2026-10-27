@@ -35,10 +35,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // loaded here: compiled, it is ~160 MB resident for a feature most
         // sessions never touch, so the first cutout loads it (`prepared()`).
         HDBackgroundModelManager.shared.prepare()
-        // Unsaved captures are kept for a week, then dropped. Launch-time only:
-        // preview cards are in-memory, so nothing from a previous run is still
-        // in use. `sweepStaleTempFiles` clears the temp-dir backlog builds
-        // ≤ 2.14.1 left behind, before captures moved into the store.
+        // Unsaved captures are kept for a week, then dropped. Nothing is kept
+        // here: preview cards are in-memory, so nothing from a previous run is
+        // still in use (a running app re-sweeps daily, keeping live cards).
+        // `sweepStaleTempFiles` clears the temp-dir backlog builds ≤ 2.14.1
+        // left behind, before captures moved into the store.
         Task.detached(priority: .background) {
             CaptureStore.sweep()
             _ = ScreenshotService.sweepStaleTempFiles()

@@ -195,6 +195,38 @@ final class CaptureStoreTests: XCTestCase {
         XCTAssertEqual(CaptureStore.sweep(in: gone), 0)
     }
 
+    // MARK: Landing an edit
+
+    /// Markup / Remove Background write over the shot. When that fails the
+    /// edit must not be lost: it is kept in the store as a new capture, and only
+    /// when the store fails too is it gone (the caller reports that).
+    func testAnEditOverwritesTheShotWhenItCan() throws {
+        let shot = try write("Pear shot.png", ageDays: 0)
+        let store = dir.appendingPathComponent("store", isDirectory: true)
+
+        XCTAssertEqual(CaptureStore.land(Data("edit".utf8), over: shot, store: store), .overwritten)
+        XCTAssertEqual(try Data(contentsOf: shot), Data("edit".utf8))
+    }
+
+    func testAnEditThatCannotOverwriteIsKeptAsANewCapture() throws {
+        let gone = dir.appendingPathComponent("unmounted/Pear shot.png")
+        let store = dir.appendingPathComponent("store", isDirectory: true)
+
+        let landing = CaptureStore.land(Data("edit".utf8), over: gone, store: store)
+
+        guard case .kept(let url) = landing else { return XCTFail("edit not kept: \(landing)") }
+        XCTAssertEqual(url.deletingLastPathComponent().standardizedFileURL, store.standardizedFileURL)
+        XCTAssertEqual(try Data(contentsOf: url), Data("edit".utf8))
+    }
+
+    func testAnEditIsLostOnlyWhenTheStoreFailsToo() throws {
+        let gone = dir.appendingPathComponent("unmounted/Pear shot.png")
+        // A regular file where the store directory should be: it cannot be created.
+        let store = try write("not-a-folder", ageDays: 0)
+
+        XCTAssertEqual(CaptureStore.land(Data("edit".utf8), over: gone, store: store), .lost)
+    }
+
     /// A menu-bar app runs for weeks; the store is swept again on the first
     /// capture once a day has passed since the last sweep.
     func testSweepIsDueOnceADayHasPassed() {

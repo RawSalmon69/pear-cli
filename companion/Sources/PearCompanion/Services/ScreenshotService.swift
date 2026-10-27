@@ -95,6 +95,25 @@ enum CaptureStore {
         return url
     }
 
+    /// Where an edit (Markup, background removal) ended up.
+    enum EditLanding: Equatable {
+        case overwritten
+        /// The shot could not be written over, so the edit is a new capture here.
+        case kept(URL)
+        /// Neither the shot nor the store took it.
+        case lost
+    }
+
+    /// Writes an edit over the shot. Atomic: a plain `write(to:)` truncates
+    /// first, so a full disk or an unmounted external screenshot folder left the
+    /// original 0-byte. When the overwrite fails the edit is filed in the store
+    /// like any capture whose folder failed, so the user's work is never lost.
+    static func land(_ data: Data, over fileURL: URL, store: URL = CaptureStore.root) -> EditLanding {
+        if (try? data.write(to: fileURL, options: .atomic)) != nil { return .overwritten }
+        if let url = try? save(data, in: store) { return .kept(url) }
+        return .lost
+    }
+
     /// How often a running app re-sweeps: a menu-bar app stays up for weeks.
     static let sweepInterval: TimeInterval = 24 * 60 * 60
 
@@ -413,16 +432,16 @@ final class ScreenshotService {
                 self.present(at: fileURL, capturedOn: nil)
                 return
             }
-            guard self.overwrite(png, at: fileURL) else {
+            guard let saved = self.saveEdit(png, over: fileURL) else {
                 // The file still holds the original: show that, not an edit
                 // that never landed.
                 SoundEffects.play(.discard)
                 self.present(at: fileURL, capturedOn: nil)
                 return
             }
-            self.copyToPasteboard(png, fileURL: fileURL)
+            self.copyToPasteboard(png, fileURL: saved)
             // nil: not a new capture, so the card joins a non-empty stack where it is, or opens an empty one on the focused screen.
-            self.present(at: fileURL, capturedOn: nil)
+            self.present(at: saved, capturedOn: nil)
         }
     }
 
@@ -438,16 +457,16 @@ final class ScreenshotService {
             let cutout = await Task.detached(priority: .userInitiated) {
                 BackgroundRemovalService.cutout(imageData: data, using: hd)
             }.value
-            // No subject, or the cutout could not be written: the file still
-            // holds the original, so re-show that.
-            guard let cutout, self.overwrite(cutout, at: fileURL) else {
+            // No subject, or the cutout landed nowhere: the file still holds
+            // the original, so re-show that.
+            guard let cutout, let saved = self.saveEdit(cutout, over: fileURL) else {
                 SoundEffects.play(.discard)
                 self.present(at: fileURL, capturedOn: nil)
                 return
             }
-            self.copyToPasteboard(cutout, fileURL: fileURL)
+            self.copyToPasteboard(cutout, fileURL: saved)
             SoundEffects.play(.copy)
-            self.present(at: fileURL, capturedOn: nil)
+            self.present(at: saved, capturedOn: nil)
         }
     }
 
@@ -472,19 +491,24 @@ final class ScreenshotService {
         }
     }
 
-    /// Replaces an already-saved shot after an edit (markup, background
-    /// removal). Atomic: a plain `write(to:)` truncates first, so a full disk or
-    /// an unmounted external screenshot folder left the original 0-byte while
-    /// the UI still showed the edit as saved. False (and reported) when the
-    /// edit did not land, so no card claims it did.
-    private func overwrite(_ data: Data, at fileURL: URL) -> Bool {
-        do {
-            try data.write(to: fileURL, options: .atomic)
-            return true
-        } catch {
-            logger.error("screenshot overwrite failed: \(error.localizedDescription, privacy: .public)")
-            ToolRegistry.live?.reportError("Couldn't save the edit over the shot", for: tool)
-            return false
+    /// Saves an edit (markup, background removal) and returns the file that now
+    /// holds it: the shot itself, or a new capture in the store when the shot
+    /// could not be written over. Nil (reported) only when it landed nowhere,
+    /// so no card ever claims an edit that was not saved.
+    private func saveEdit(_ data: Data, over fileURL: URL) -> URL? {
+        switch CaptureStore.land(data, over: fileURL) {
+        case .overwritten:
+            return fileURL
+        case .kept(let url):
+            logger.error("edit overwrite failed; kept as a new capture")
+            ToolRegistry.live?.reportError(
+                "Couldn't save the edit over the shot, so it was kept as a new capture", for: tool)
+            Prefs.recordCapture(url)
+            return url
+        case .lost:
+            logger.error("edit overwrite and store both failed")
+            ToolRegistry.live?.reportError("Couldn't save the edit, so the original is shown", for: tool)
+            return nil
         }
     }
 
