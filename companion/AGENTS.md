@@ -579,12 +579,24 @@ state until it next asks; `currentValue()` is then already off.
   that do nothing.
 - **Floating-window positioning**: the screenshot preview opens on **the screen
   the shot was taken on** and thereafter **follows the focused window's display**
-  (`ScreenshotPreviewController.anchor`, pure and tested — one decision for both,
-  with the focused screen in the `captured` slot). App activation is the trigger,
+  (`ScreenshotPreviewController.anchor`, pure and tested — one decision for both:
+  the first of captured, focused, current display still plugged in, else the
+  menu-bar display). The anchor is a **display id** (`CGDirectDisplayID` from
+  `NSScreenNumber`), never a `visibleFrame`, which moves with the Dock and menu
+  bar; the live frame is read at layout time. App activation is the trigger,
   read 150 ms later because `NSScreen.main` tracks the new key window and AppKit
   has not always installed it when the notification lands; switching windows
-  *within* one app across displays does not move the stack. A re-present after
-  markup or background removal passes no screen, meaning "keep where you are".
+  *within* one app across displays does not move the stack.
+  `didChangeScreenParametersNotification` (unplug, resolution, arrangement, new
+  primary) re-resolves the anchor by id and re-lays out the stack. A card with
+  no screen (a re-present after markup or background removal, a Recent-strip
+  open) joins a non-empty stack where it is; into an **empty** stack it opens on
+  the focused screen (`NSScreen.main`), never the emptied stack's stale display.
+  The detail window opens on the stack's display, not the card's
+  `panel.screen`, which reads the off-screen slide-in start frame. Eviction on
+  follow / screen change spares a card whose detail window is open
+  (`PreviewStackLayout.evictionVictims`), so moving never closes what the user
+  is reading; a new capture still evicts outright.
   Scratchpad still opens on the primary display. Menu-bar hider
   seeds its separator positions only when unset so the user's layout survives
   updates.
