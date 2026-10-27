@@ -383,8 +383,10 @@ final class ScreenshotService {
     /// Opens the markup editor; on completion, overwrites the saved PNG and
     /// clipboard with the edited image and re-shows the preview.
     private func markup(at fileURL: URL) {
-        guard let onMarkupRequest, let data = bytes(at: fileURL),
-              let image = NSImage(data: data) else { return }
+        guard let onMarkupRequest, let data = bytes(at: fileURL) else { return }
+        guard let image = NSImage(data: data) else {
+            return missing(fileURL, "not a decodable image")
+        }
         // The tapped preview card dismisses itself; on completion we show a
         // fresh preview for the edited image.
         onMarkupRequest(image) { [weak self] edited in
