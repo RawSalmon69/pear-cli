@@ -293,7 +293,7 @@ final class ScreenshotPreviewController {
             onCopyText: context.onCopyText,
             onQRTap: context.onQRTap,
             onPin: { [weak self] in self?.pin(id: id) },
-            onSave: { _ = context.onSave() },
+            onSave: context.onSave,
             onReveal: context.onReveal,
             onMarkup: { close(); context.onMarkup() },
             onRemoveBackground: { close(); context.onRemoveBackground() },

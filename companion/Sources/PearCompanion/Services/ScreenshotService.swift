@@ -413,7 +413,13 @@ final class ScreenshotService {
                 self.present(at: fileURL, capturedOn: nil)
                 return
             }
-            self.overwrite(png, at: fileURL)
+            guard self.overwrite(png, at: fileURL) else {
+                // The file still holds the original: show that, not an edit
+                // that never landed.
+                SoundEffects.play(.discard)
+                self.present(at: fileURL, capturedOn: nil)
+                return
+            }
             self.copyToPasteboard(png, fileURL: fileURL)
             // nil: not a new capture, so the card joins a non-empty stack where it is, or opens an empty one on the focused screen.
             self.present(at: fileURL, capturedOn: nil)
@@ -432,12 +438,13 @@ final class ScreenshotService {
             let cutout = await Task.detached(priority: .userInitiated) {
                 BackgroundRemovalService.cutout(imageData: data, using: hd)
             }.value
-            guard let cutout else {
+            // No subject, or the cutout could not be written: the file still
+            // holds the original, so re-show that.
+            guard let cutout, self.overwrite(cutout, at: fileURL) else {
                 SoundEffects.play(.discard)
                 self.present(at: fileURL, capturedOn: nil)
                 return
             }
-            self.overwrite(cutout, at: fileURL)
             self.copyToPasteboard(cutout, fileURL: fileURL)
             SoundEffects.play(.copy)
             self.present(at: fileURL, capturedOn: nil)
@@ -468,12 +475,16 @@ final class ScreenshotService {
     /// Replaces an already-saved shot after an edit (markup, background
     /// removal). Atomic: a plain `write(to:)` truncates first, so a full disk or
     /// an unmounted external screenshot folder left the original 0-byte while
-    /// the UI still showed the edit as saved.
-    private func overwrite(_ data: Data, at fileURL: URL) {
+    /// the UI still showed the edit as saved. False (and reported) when the
+    /// edit did not land, so no card claims it did.
+    private func overwrite(_ data: Data, at fileURL: URL) -> Bool {
         do {
             try data.write(to: fileURL, options: .atomic)
+            return true
         } catch {
             logger.error("screenshot overwrite failed: \(error.localizedDescription, privacy: .public)")
+            ToolRegistry.live?.reportError("Couldn't save the edit over the shot", for: tool)
+            return false
         }
     }
 

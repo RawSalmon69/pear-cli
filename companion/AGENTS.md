@@ -172,8 +172,11 @@ check: the actions show in the Shortcuts app.
   today: every capture through `ScreenCapture.run` (screencapture failed to
   start; Screen Recording denied; Esc reports nothing), `ScreenshotService.fileCapture`
   (screenshot folder failed so the store took it; nothing filed, temp copy only),
-  a card's Save (`ScreenshotService.saveToFolder`; the card shows its checkmark
-  only on success, and a source that has gone takes the `missing` path),
+  a card's or the detail window's Save (`ScreenshotService.saveToFolder`; each
+  shows its checkmark only on success, and a source that has gone takes the
+  `missing` path), an edit that could not be written over the shot
+  (`ScreenshotService.overwrite`, after Markup or Remove Background; the
+  untouched original is re-shown instead of a card claiming the edit),
   `WindowsTool.apply` (no Accessibility), `AXWindowMover.commit` (no movable
   front window) and `apply` (the app refused the frame after both passes).
   Tests: `ToolStatusTests`, `WindowsSnapPermissionTests`.

@@ -110,7 +110,8 @@ struct ScreenshotDetailView: View {
     let onCopyText: ((String) -> Void)?
     let onQRTap: (([String]) -> Void)?
     let onPin: () -> Void
-    let onSave: () -> Void
+    /// True only when the copy landed, so the checkmark never lies.
+    let onSave: () -> Bool
     let onReveal: () -> Void
     let onMarkup: () -> Void
     let onRemoveBackground: () -> Void
@@ -120,6 +121,7 @@ struct ScreenshotDetailView: View {
     @State private var picked: PickedColor?
     @State private var copiedValue: String?
     @State private var copiedResetToken = 0
+    @State private var saved = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -362,8 +364,15 @@ struct ScreenshotDetailView: View {
             DetailAction(symbol: "doc.on.doc", title: "Copy", action: onCopy)
                 .keyboardShortcut("c", modifiers: .command)
             if canSave {
-                DetailAction(symbol: "square.and.arrow.down", title: "Save", action: onSave)
-                    .keyboardShortcut("s", modifiers: .command)
+                DetailAction(symbol: saved ? "checkmark" : "square.and.arrow.down", title: "Save") {
+                    if onSave() { withAnimation(.easeOut(duration: 0.12)) { saved = true } }
+                }
+                .keyboardShortcut("s", modifiers: .command)
+                // A brief confirmation, like a colour copy's.
+                .task(id: saved) {
+                    guard saved, (try? await Task.sleep(for: .seconds(1.5))) != nil else { return }
+                    withAnimation(.easeOut(duration: 0.2)) { saved = false }
+                }
             }
             DetailAction(symbol: "folder", title: "Reveal", action: onReveal)
             DetailAction(symbol: "pin", title: "Pin", action: onPin)
