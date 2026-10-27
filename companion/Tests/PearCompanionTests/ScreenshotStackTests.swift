@@ -47,6 +47,17 @@ final class ScreenshotStackTests: XCTestCase {
         XCTAssertEqual(PreviewStackLayout.overflowIndices(count: 7, maxCount: 5), [5, 6])
         XCTAssertEqual(PreviewStackLayout.overflowIndices(count: 2, maxCount: 5), [])
     }
+
+    /// Following focus onto a shorter display must not close a detail window
+    /// the user is reading: a card whose detail is open is spared, the other
+    /// overflow still goes.
+    func testEvictionSparesProtectedCards() {
+        XCTAssertEqual(PreviewStackLayout.evictionVictims(count: 4, maxFit: 2, protected: [3]), [2])
+        XCTAssertEqual(PreviewStackLayout.evictionVictims(count: 4, maxFit: 2, protected: [2, 3]), [])
+        // Cards that fit are never victims, protected or not.
+        XCTAssertEqual(PreviewStackLayout.evictionVictims(count: 3, maxFit: 2, protected: [0]), [2])
+        XCTAssertEqual(PreviewStackLayout.evictionVictims(count: 4, maxFit: 2, protected: []), [2, 3])
+    }
 }
 
 /// Which display the preview stack anchors to. The card belongs on the screen

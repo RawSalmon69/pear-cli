@@ -25,6 +25,13 @@ enum PreviewStackLayout {
         guard count > maxCount else { return [] }
         return Array(maxCount..<count)
     }
+
+    /// The overflow cards to evict, minus the `protected` ones (a card whose
+    /// detail window is open), so the stack can run over its limit rather than
+    /// close a window the user is reading.
+    static func evictionVictims(count: Int, maxFit: Int, protected: Set<Int>) -> [Int] {
+        overflowIndices(count: count, maxCount: maxFit).filter { !protected.contains($0) }
+    }
 }
 
 /// What the detail window needs from the card that spawned it: the backing
@@ -495,7 +502,7 @@ final class ScreenshotPreviewController {
         guard next != anchorDisplay else { return }
         anchorDisplay = next
         // The new display can be shorter than the old one.
-        evictOverflow()
+        evictOverflow(sparingOpenDetails: true)
         layout(newItem: nil)
     }
 
@@ -516,7 +523,7 @@ final class ScreenshotPreviewController {
         guard !entries.isEmpty else { return }
         anchorDisplay = resolvedAnchor(capturedOn: nil)
         // Same display or not, its visible frame may have shrunk.
-        evictOverflow()
+        evictOverflow(sparingOpenDetails: true)
         layout(newItem: nil)
     }
 
@@ -539,11 +546,21 @@ final class ScreenshotPreviewController {
         }
     }
 
-    /// Fade out and drop the oldest cards beyond the stack limit.
-    private func evictOverflow() {
+    /// Fade out and drop the oldest cards beyond the stack limit. A new card
+    /// evicts outright; a stack that moved display (`sparingOpenDetails`) keeps
+    /// any card whose detail window is open, because the user did not ask for
+    /// that window to go and is likely reading it. A spared card can sit past
+    /// the fit until the next eviction.
+    /// ponytail: no re-check when that detail closes; add one (deferred a turn,
+    /// never from inside this loop's own `close()`) if spared cards linger.
+    private func evictOverflow(sparingOpenDetails: Bool = false) {
         let maxCount = min(Prefs.previewMaxStack, Self.maxCardsThatFit(in: anchorVisible))
-        while entries.count > maxCount {
-            let victim = entries.removeLast()
+        let spared = sparingOpenDetails
+            ? Set(entries.indices.filter { entries[$0].detail != nil }) : []
+        let victims = PreviewStackLayout.evictionVictims(
+            count: entries.count, maxFit: maxCount, protected: spared)
+        for index in victims.reversed() {
+            let victim = entries.remove(at: index)
             victim.timer?.invalidate()
             // Same teardown `remove(_:)` does: the entry is the only strong
             // holder of its detail-window controller, and `NSWindow.delegate`
