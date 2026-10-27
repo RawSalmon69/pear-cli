@@ -625,10 +625,7 @@ final class ZoomableImageScrollView: NSScrollView {
 
     func setMagnification(_ value: CGFloat, animated: Bool) {
         let clamped = min(max(value, minMagnification), maxMagnification)
-        guard abs(clamped - magnification) > 0.001 else {
-            controller?.report(magnification)
-            return
-        }
+        guard abs(clamped - magnification) > 0.001 else { return }
         if animated {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.18
@@ -638,7 +635,17 @@ final class ZoomableImageScrollView: NSScrollView {
         } else {
             magnification = clamped
         }
-        controller?.report(clamped)
+    }
+
+    /// AppKit calls this whenever the clip view's bounds change, which every
+    /// zoom does, whatever drove it: pinch, ⌘-scroll, scroll-magnify, the
+    /// buttons, an animation frame. So the readout follows the magnification
+    /// itself rather than the handful of paths Pear intercepts (⌘-scroll never
+    /// reached them and left it stale). Panning lands here too; `report`'s
+    /// dedupe keeps that from re-rendering anything.
+    override func reflectScrolledClipView(_ clipView: NSClipView) {
+        super.reflectScrolledClipView(clipView)
+        controller?.report(magnification)
     }
 
     func refreshCursor(picking: Bool) {
@@ -653,12 +660,10 @@ final class ZoomableImageScrollView: NSScrollView {
         }
     }
 
-    /// Pinch and ⌘-scroll are AppKit's; this just keeps the readout honest and
-    /// remembers that the user took control.
+    /// Pinch is AppKit's; this just remembers that the user took control.
     override func magnify(with event: NSEvent) {
         super.magnify(with: event)
         userAdjusted = true
-        controller?.report(magnification)
     }
 
     @objc func handleDoubleClick(_ sender: NSClickGestureRecognizer) {
@@ -673,7 +678,6 @@ final class ZoomableImageScrollView: NSScrollView {
                 context.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 animator().setMagnification(1, centeredAt: point)
             }
-            controller?.report(1)
         }
     }
 

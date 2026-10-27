@@ -483,6 +483,40 @@ final class ZoomStateMachineTests: XCTestCase {
 
         XCTAssertEqual(scrollView.fitCount, fits, "nothing changed; nothing to re-fit")
     }
+
+    /// The readout followed only the zoom paths Pear intercepts; ⌘-scroll and
+    /// scroll-magnify change `magnification` inside AppKit and left it stale.
+    func testTheReadoutFollowsAZoomPearDidNotIntercept() {
+        let scrollView = self.scrollView(document: NSSize(width: 6016, height: 3384),
+                                        viewport: NSSize(width: 1200, height: 700))
+        let controller = ZoomController()
+        scrollView.controller = controller
+        scrollView.layout()
+        settle()
+
+        scrollView.magnification = 2.5 // what ⌘-scroll leaves behind
+
+        XCTAssertEqual(controller.percent, 250)
+    }
+
+    /// The readout now hears every bounds change, including plain panning. A
+    /// pan does not change the zoom, so it must not invalidate the views that
+    /// read `percent`.
+    func testPanningDoesNotNotifyTheReadout() {
+        let scrollView = self.scrollView(document: NSSize(width: 6016, height: 3384),
+                                        viewport: NSSize(width: 1200, height: 700))
+        let controller = ZoomController()
+        scrollView.controller = controller
+        scrollView.magnification = 1
+        final class Flag: @unchecked Sendable { var raised = false }
+        let notified = Flag()
+        withObservationTracking { _ = controller.percent } onChange: { notified.raised = true }
+
+        scrollView.contentView.scroll(to: NSPoint(x: 400, y: 300))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+
+        XCTAssertFalse(notified.raised, "same zoom, same readout: nothing to re-render")
+    }
 }
 
 /// How the HD background-removal model is loaded. Measured on an M-series Mac:

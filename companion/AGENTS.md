@@ -714,7 +714,10 @@ does not.
   so a flag set from `magnify` misses them entirely. Derive "the user owns the
   zoom" from the magnification itself (compare against the fit you applied), not
   from having intercepted the right event. Shipped broken in 2.14.0: a scroll
-  zoom was discarded by the next layout pass and read as a dropped gesture.
+  zoom was discarded by the next layout pass and read as a dropped gesture. The
+  zoom readout follows the same rule: it reports from `reflectScrolledClipView`,
+  which AppKit calls on every clip-bounds change whatever drove it, not from the
+  intercepted paths (it went stale on ⌘-scroll until it did).
 - **An overridden `layout()` runs constantly.** It fires on every layout pass, so
   anything expensive or geometry-changing inside it must be gated on the geometry
   having actually changed. A fit that re-ran unconditionally cost six fits per
