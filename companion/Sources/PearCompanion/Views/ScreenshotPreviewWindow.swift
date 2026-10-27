@@ -144,6 +144,21 @@ final class ScreenshotPreviewController {
 
         let id = UUID()
         let insights = ScreenshotInsights(url: url)
+        // The actions that replace the card take it away with them, from the
+        // card and from its detail window alike: Markup / background removal
+        // re-present a fresh card, so a card left behind is a stale duplicate.
+        let markup: () -> Void = { [weak self] in
+            onMarkup()
+            self?.dismiss(id: id)
+        }
+        let removeBackground: () -> Void = { [weak self] in
+            onRemoveBackground()
+            self?.dismiss(id: id)
+        }
+        let send: () -> Void = { [weak self] in
+            onSend()
+            self?.dismiss(id: id)
+        }
         let content = ScreenshotPreviewView(
             image: image,
             canMarkup: canMarkup,
@@ -158,18 +173,9 @@ final class ScreenshotPreviewController {
             onPin: { [weak self] in self?.pin(id: id) },
             onSave: onSave,
             onReveal: onReveal,
-            onMarkup: { [weak self] in
-                onMarkup()
-                self?.dismiss(id: id)
-            },
-            onRemoveBackground: { [weak self] in
-                onRemoveBackground()
-                self?.dismiss(id: id)
-            },
-            onSend: { [weak self] in
-                onSend()
-                self?.dismiss(id: id)
-            },
+            onMarkup: markup,
+            onRemoveBackground: removeBackground,
+            onSend: send,
             onDismiss: { [weak self] in self?.dismiss(id: id) },
             onHoverChange: { [weak self] hovering in self?.hoverChange(id: id, hovering: hovering) }
         )
@@ -208,9 +214,9 @@ final class ScreenshotPreviewController {
                 onQRTap: onQRTap,
                 onSave: onSave,
                 onReveal: onReveal,
-                onMarkup: onMarkup,
-                onRemoveBackground: onRemoveBackground,
-                onSend: onSend
+                onMarkup: markup,
+                onRemoveBackground: removeBackground,
+                onSend: send
             )
         )
         // Fix the anchor screen when a fresh stack starts; existing stacks keep
@@ -250,7 +256,8 @@ final class ScreenshotPreviewController {
     /// Opens the big view for a card, or refocuses the one already open. The
     /// card stays put and stops auto-dismissing while its window is up.
     /// Markup / background-removal there close the window and run the card's own
-    /// closure, which re-presents a fresh card for the edited image.
+    /// closure, which dismisses the card and re-presents a fresh one for the
+    /// edited image.
     private func openDetail(id: UUID) {
         guard let entry = entries.first(where: { $0.id == id }) else { return }
         entry.timer?.invalidate()
