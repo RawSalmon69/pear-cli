@@ -20,9 +20,31 @@ final class BackgroundRemoverModel {
     private(set) var cutout: NSImage?
     /// True when the HD model produced this result (drives the quality badge).
     private(set) var usedHD = false
+    /// Why the last Save didn't write, shown under the actions.
+    private(set) var saveError: String?
 
-    private var cutoutData: Data?
+    private(set) var cutoutData: Data?
     private var savedURL: URL?
+
+    /// The image → cutout step. Live: the HD model when it's on and ready, else
+    /// Vision, off the main actor. Tests stand in their own.
+    typealias Engine = @MainActor (Data) async -> BackgroundRemovalService.Cutout?
+    private let engine: Engine
+    /// The cutout in flight. Only the newest load may write results: a slower
+    /// earlier image must not replace a later drop's (or play its sound).
+    private(set) var job: Task<Void, Never>?
+    private var generation = 0
+
+    init(engine: @escaping Engine = BackgroundRemoverModel.live) {
+        self.engine = engine
+    }
+
+    static func live(_ data: Data) async -> BackgroundRemovalService.Cutout? {
+        let hd = await HDBackgroundModelManager.shared.prepared()
+        return await Task.detached(priority: .userInitiated) {
+            BackgroundRemovalService.cutoutReportingEngine(imageData: data, using: hd)
+        }.value
+    }
 
     /// NSOpenPanel → any image file.
     func choose() {
@@ -35,6 +57,8 @@ final class BackgroundRemoverModel {
     }
 
     func load(_ url: URL) {
+        job?.cancel()
+        generation += 1
         guard let data = try? Data(contentsOf: url) else {
             state = .failed("Couldn't read that image.")
             return
@@ -44,17 +68,16 @@ final class BackgroundRemoverModel {
 
     private func process(_ data: Data) {
         state = .working
-        cutout = nil; cutoutData = nil; savedURL = nil
-        Task { [weak self] in
-            let hd = await HDBackgroundModelManager.shared.prepared()
-            self?.usedHD = hd != nil
-            let out = await Task.detached(priority: .userInitiated) {
-                BackgroundRemovalService.cutout(imageData: data, using: hd)
-            }.value
-            guard let self else { return }
-            if let out, let image = NSImage(data: out) {
-                self.cutoutData = out
+        cutout = nil; cutoutData = nil; savedURL = nil; saveError = nil
+        let current = generation
+        job = Task { [weak self] in
+            guard let engine = self?.engine else { return }
+            let out = await engine(data)
+            guard let self, self.generation == current else { return }
+            if let out, let image = NSImage(data: out.png) {
+                self.cutoutData = out.png
                 self.cutout = image
+                self.usedHD = out.usedHD
                 self.state = .done
                 SoundEffects.play(.done)
             } else {
@@ -78,13 +101,23 @@ final class BackgroundRemoverModel {
     }
 
     func save() {
-        guard let data = cutoutData else { return }
+        guard cutoutData != nil else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = "cutout.png"
-        if panel.runModal() == .OK, let url = panel.url {
-            try? data.write(to: url)
+        if panel.runModal() == .OK, let url = panel.url { save(to: url) }
+    }
+
+    /// Writes the cutout; Reveal is offered only for a file that was written.
+    func save(to url: URL) {
+        guard let data = cutoutData else { return }
+        do {
+            try data.write(to: url)
             savedURL = url
+            saveError = nil
+        } catch {
+            savedURL = nil
+            saveError = "Couldn't save the cutout: \(error.localizedDescription)"
         }
     }
 
@@ -95,7 +128,7 @@ final class BackgroundRemoverModel {
     }
 
     func reset() {
-        state = .empty; cutout = nil; cutoutData = nil; savedURL = nil
+        state = .empty; cutout = nil; cutoutData = nil; savedURL = nil; saveError = nil
     }
 }
 
@@ -164,7 +197,8 @@ struct BackgroundRemoverView: View {
             Text("Removing background…")
                 .font(Theme.Typography.body())
                 .foregroundStyle(.secondary)
-            Text(model.usedHD ? "High quality" : "Fast")
+            // What is being tried; the result's badge says what actually ran.
+            Text(Prefs.hdBackgroundRemoval && HDBackgroundModelManager.shared.isDownloaded ? "High quality" : "Fast")
                 .font(Theme.Typography.small(.semibold))
                 .foregroundStyle(.tertiary)
             Spacer()
@@ -202,6 +236,11 @@ struct BackgroundRemoverView: View {
                 Button { model.reset() } label: { Label("New Image", systemImage: "photo.badge.plus") }
             }
             .font(Theme.Typography.body())
+            if let error = model.saveError {
+                Text(error)
+                    .font(Theme.Typography.small(.semibold))
+                    .foregroundStyle(Theme.warn)
+            }
             qualityFootnote
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

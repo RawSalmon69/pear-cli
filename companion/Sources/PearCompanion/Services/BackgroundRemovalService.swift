@@ -19,8 +19,20 @@ enum BackgroundRemovalService {
     /// the HD model fails for any reason, falls back to Vision so removal always
     /// produces something.
     static func cutout(imageData: Data, using hd: BEN2Model?) -> Data? {
-        if let hd, let out = hd.cutout(imageData: imageData) { return out }
-        return cutout(imageData: imageData)
+        cutoutReportingEngine(imageData: imageData, using: hd)?.png
+    }
+
+    /// A cutout plus which engine made it, for the remover window's badge.
+    struct Cutout: Sendable {
+        let png: Data
+        let usedHD: Bool
+    }
+
+    /// `cutout(imageData:using:)`, saying whether the HD model produced it or
+    /// it fell back to Vision.
+    static func cutoutReportingEngine(imageData: Data, using hd: BEN2Model?) -> Cutout? {
+        if let hd, let out = hd.cutout(imageData: imageData) { return Cutout(png: out, usedHD: true) }
+        return cutout(imageData: imageData).map { Cutout(png: $0, usedHD: false) }
     }
 
     /// PNG (with transparency) of the foreground subjects in `imageData`, or nil

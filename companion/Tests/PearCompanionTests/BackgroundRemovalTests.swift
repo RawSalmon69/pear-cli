@@ -151,3 +151,112 @@ final class BackgroundRemovalIOTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(dpiWidth(of: png)), 144, accuracy: 0.5)
     }
 }
+
+/// The remover window's model, with the engine stood in so no model or Vision
+/// request runs.
+@MainActor
+final class BackgroundRemoverModelTests: XCTestCase {
+    private var dir: URL!
+
+    override func setUp() async throws {
+        dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BackgroundRemoverModelTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    }
+
+    override func tearDown() async throws {
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    /// A tiny real PNG (so `NSImage(data:)` accepts it), distinct per `gray`.
+    private func imageFile(_ name: String, gray: CGFloat) throws -> URL {
+        let ctx = try XCTUnwrap(CGContext(
+            data: nil, width: 2, height: 2, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.setFillColor(gray: gray, alpha: 1)
+        ctx.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        let png = try XCTUnwrap(BackgroundRemovalService.png(try XCTUnwrap(ctx.makeImage()), dpi: [:]))
+        let url = dir.appendingPathComponent(name)
+        try png.write(to: url)
+        return url
+    }
+
+    /// Runs with sounds off so a passing test plays nothing.
+    private func quietly(_ body: () async throws -> Void) async rethrows {
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: Prefs.soundsKey)
+        defaults.set(false, forKey: Prefs.soundsKey)
+        defer {
+            if let previous { defaults.set(previous, forKey: Prefs.soundsKey) }
+            else { defaults.removeObject(forKey: Prefs.soundsKey) }
+        }
+        try await body()
+    }
+
+    /// The badge shows the engine that actually produced the cutout, not the
+    /// one that was asked for (HD silently falls back to Vision).
+    func testBadgeFollowsTheEngineThatProducedTheResult() async throws {
+        try await quietly {
+            let url = try imageFile("a.png", gray: 0.2)
+            let model = BackgroundRemoverModel { data in .init(png: data, usedHD: false) }
+            model.load(url)
+            await model.job?.value
+            XCTAssertEqual(model.state, .done)
+            XCTAssertFalse(model.usedHD)
+
+            let hd = BackgroundRemoverModel { data in .init(png: data, usedHD: true) }
+            hd.load(url)
+            await hd.job?.value
+            XCTAssertTrue(hd.usedHD)
+        }
+    }
+
+    /// A slow first image finishing after a second drop must not replace the
+    /// second image's result.
+    func testOnlyTheLatestDropWritesTheResult() async throws {
+        try await quietly {
+            let slowURL = try imageFile("slow.png", gray: 0.1)
+            let fastURL = try imageFile("fast.png", gray: 0.9)
+            let slowData = try Data(contentsOf: slowURL)
+            let fastData = try Data(contentsOf: fastURL)
+            var held: CheckedContinuation<Void, Never>?
+            let model = BackgroundRemoverModel { data in
+                if data == slowData { await withCheckedContinuation { held = $0 } }
+                return .init(png: data, usedHD: false)
+            }
+
+            model.load(slowURL)
+            let first = model.job
+            while held == nil { await Task.yield() }
+            model.load(fastURL)
+            await model.job?.value
+            XCTAssertEqual(model.cutoutData, fastData)
+
+            held?.resume()
+            await first?.value
+            XCTAssertEqual(model.cutoutData, fastData, "the earlier, slower image overwrote the newer result")
+            XCTAssertEqual(model.state, .done)
+        }
+    }
+
+    /// Save reports a failed write instead of offering Reveal for a file that
+    /// was never written.
+    func testSaveOnlyCountsAWriteThatHappened() async throws {
+        try await quietly {
+            let model = BackgroundRemoverModel { data in .init(png: data, usedHD: false) }
+            model.load(try imageFile("a.png", gray: 0.5))
+            await model.job?.value
+
+            model.save(to: dir.appendingPathComponent("missing-folder/cutout.png"))
+            XCTAssertFalse(model.isSaved)
+            XCTAssertNotNil(model.saveError)
+
+            let good = dir.appendingPathComponent("cutout.png")
+            model.save(to: good)
+            XCTAssertTrue(model.isSaved)
+            XCTAssertNil(model.saveError)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: good.path))
+        }
+    }
+}
