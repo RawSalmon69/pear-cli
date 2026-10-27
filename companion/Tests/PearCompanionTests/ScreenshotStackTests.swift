@@ -51,17 +51,19 @@ final class ScreenshotStackTests: XCTestCase {
 
 /// Which display the preview stack anchors to. The card belongs on the screen
 /// the shot was taken on: a capture on the laptop panel whose card lands on an
-/// external monitor is the bug this replaced.
+/// external monitor is the bug this replaced. Displays are identified by their
+/// `CGDirectDisplayID`, never by `visibleFrame`, which moves under the stack
+/// whenever the Dock or menu bar does.
 @MainActor
 final class ScreenshotAnchorTests: XCTestCase {
-    private let laptop = NSRect(x: 0, y: 0, width: 1512, height: 916)
-    private let external = NSRect(x: 1512, y: 0, width: 2560, height: 1415)
-    private var both: [NSRect] { [laptop, external] }
+    private let laptop: CGDirectDisplayID = 1
+    private let external: CGDirectDisplayID = 2
+    private var both: [CGDirectDisplayID] { [laptop, external] }
 
     func testACaptureAnchorsToItsOwnScreen() {
         XCTAssertEqual(
             ScreenshotPreviewController.anchor(
-                captured: external, current: .zero, available: both, fallback: laptop),
+                captured: external, current: nil, available: both, fallback: laptop),
             external)
     }
 
@@ -73,12 +75,24 @@ final class ScreenshotAnchorTests: XCTestCase {
         XCTAssertNotEqual(anchor, laptop)
     }
 
-    /// Markup and background removal re-present with no capture screen. The
-    /// edited shot must stay where its card already was.
-    func testARepresentKeepsTheStacksCurrentScreen() {
+    /// A screen-parameter change (or any re-resolve with no new capture and no
+    /// focus to follow) keeps the stack where it is.
+    func testAReResolveKeepsTheStacksCurrentScreen() {
         XCTAssertEqual(
             ScreenshotPreviewController.anchor(
                 captured: nil, current: external, available: both, fallback: laptop),
+            external)
+    }
+
+    /// The Dock moving to the external display, or auto-hiding, changes that
+    /// display's visibleFrame but not its id. Keyed by the old frame, the stack
+    /// lost its display and jumped to the menu-bar one; keyed by id it stays.
+    func testSameDisplayWithAChangedVisibleFrameStaysPut() {
+        // The display set is unchanged: only frames moved, which the decision
+        // never sees.
+        XCTAssertEqual(
+            ScreenshotPreviewController.anchor(
+                captured: nil, current: external, available: [external, laptop], fallback: laptop),
             external)
     }
 
@@ -87,10 +101,12 @@ final class ScreenshotAnchorTests: XCTestCase {
     func testAnUnpluggedCaptureScreenFallsBack() {
         XCTAssertEqual(
             ScreenshotPreviewController.anchor(
-                captured: external, current: .zero, available: [laptop], fallback: laptop),
+                captured: external, current: nil, available: [laptop], fallback: laptop),
             laptop)
     }
 
+    /// The stack's display unplugged with cards up: the re-resolve on the
+    /// screen-parameter change lands it on the menu-bar display.
     func testAnUnpluggedCurrentAnchorFallsBack() {
         XCTAssertEqual(
             ScreenshotPreviewController.anchor(
@@ -99,20 +115,20 @@ final class ScreenshotAnchorTests: XCTestCase {
     }
 
     /// Focus moving to the other display re-anchors a live stack through the
-    /// same decision, with the focused screen in the `captured` slot: the cards
-    /// follow the user rather than sitting on the display they left.
+    /// same decision: the cards follow the user rather than sitting on the
+    /// display they left.
     func testFocusMovingToAnotherScreenMovesTheStack() {
         XCTAssertEqual(
             ScreenshotPreviewController.anchor(
-                captured: laptop, current: external, available: both, fallback: laptop),
+                captured: nil, focused: laptop, current: external, available: both, fallback: laptop),
             laptop)
     }
 
-    /// First card of a fresh stack with no capture screen — nothing to keep.
-    func testNoCaptureAndNoCurrentAnchorFallsBack() {
+    /// First card of a fresh stack with nothing to go on.
+    func testNoCaptureNoFocusAndNoCurrentAnchorFallsBack() {
         XCTAssertEqual(
             ScreenshotPreviewController.anchor(
-                captured: nil, current: .zero, available: both, fallback: laptop),
+                captured: nil, current: nil, available: both, fallback: laptop),
             laptop)
     }
 }

@@ -94,11 +94,23 @@ final class ScreenshotPreviewController {
 
     private var entries: [PreviewEntry] = [] // index 0 = newest, nearest edge
     private var scrollMonitor: Any?
-    /// Visible frame the stack lives in — the screen the capture came from when
-    /// the first card appears (see `show`), and thereafter the screen holding
-    /// the focused window (see `followFocusedScreen`), so the cards are on the
+    /// Display the stack lives on — the screen the capture came from when the
+    /// first card appears (see `show`), and thereafter the screen holding the
+    /// focused window (see `followFocusedScreen`), so the cards are on the
     /// display the user is working on rather than the one they have left.
-    private var anchorVisible: NSRect = .zero
+    /// Kept as an id, not a frame: `visibleFrame` changes whenever the Dock or
+    /// menu bar moves, resizes or auto-hides, and a stored frame then matched
+    /// no screen and threw the stack onto the primary display.
+    private var anchorDisplay: CGDirectDisplayID?
+
+    private var anchorScreen: NSScreen? {
+        NSScreen.screens.first { $0.displayID == anchorDisplay }
+    }
+
+    /// The anchor display's live visible frame, read at layout time. Zero when
+    /// the display has gone, which layout treats as "nowhere to put cards"
+    /// until the screen-parameter change re-resolves the anchor.
+    private var anchorVisible: NSRect { anchorScreen?.visibleFrame ?? .zero }
 
     /// Thumbnail (208×130) plus the card's glass rim on each side.
     private static let panelSize = NSSize(width: 208 + 2 * Theme.Space.xSmall,
@@ -202,7 +214,7 @@ final class ScreenshotPreviewController {
         )
         // Fix the anchor screen when a fresh stack starts; existing stacks keep
         // theirs so the cards stay put rather than teleporting mid-stack.
-        if entries.isEmpty { anchorVisible = resolvedAnchor(capturedOn: screen) }
+        if entries.isEmpty { anchorDisplay = resolvedAnchor(capturedOn: screen) }
         entries.insert(entry, at: 0)
         evictOverflow()
         layout(newItem: entry)
@@ -294,35 +306,40 @@ final class ScreenshotPreviewController {
         return true
     }
 
-    /// Visible frame the stack anchors to: the screen the shot was taken on, so
-    /// the card appears where the user was just looking instead of flying to
+    /// Display the stack anchors to: the screen the shot was taken on, so the
+    /// card appears where the user was just looking instead of flying to
     /// another display.
-    private func resolvedAnchor(capturedOn screen: NSScreen?) -> NSRect {
+    private func resolvedAnchor(capturedOn screen: NSScreen?,
+                                focused: NSScreen? = nil) -> CGDirectDisplayID? {
         Self.anchor(
-            captured: screen.map(\.visibleFrame),
-            current: anchorVisible,
-            available: NSScreen.screens.map(\.visibleFrame),
-            fallback: (NSScreen.screens.first ?? NSScreen.main)?.visibleFrame ?? .zero
+            captured: screen?.displayID,
+            focused: focused?.displayID,
+            current: anchorDisplay,
+            available: NSScreen.screens.compactMap(\.displayID),
+            fallback: NSScreen.screens.first?.displayID
         )
     }
 
-    /// The anchor decision, as pure math so all three branches are testable
-    /// without a display attached.
+    /// The anchor decision, on display ids so every branch is testable without
+    /// a display attached. The first of `captured`, `focused`, `current` that is
+    /// still plugged in (in `available`) wins.
     ///
     /// - `captured` is the screen the shot came from. A screen unplugged between
     ///   the capture and the card is no longer in `available`, so it is dropped.
-    /// - `current` non-zero with a nil `captured` means "no new capture": a
-    ///   re-present after markup or background removal, where the old card just
-    ///   dismissed itself and the stack is momentarily empty. Those keep the
-    ///   anchor they had, or the edited shot hops to another display.
+    /// - `focused` is the focused window's screen, when following focus.
+    /// - `current` alone means "keep where you are": a re-present after markup
+    ///   or background removal, where the old card just dismissed itself.
     /// - `fallback` is the menu-bar display, deliberately not `NSScreen.main`:
     ///   main follows the key window, so it drifts to whatever app is focused,
     ///   which is the unpredictability this anchor exists to avoid.
     static func anchor(
-        captured: NSRect?, current: NSRect, available: [NSRect], fallback: NSRect
-    ) -> NSRect {
-        if let captured, available.contains(captured) { return captured }
-        if current != .zero, available.contains(current) { return current }
+        captured: CGDirectDisplayID?, focused: CGDirectDisplayID? = nil,
+        current: CGDirectDisplayID?, available: [CGDirectDisplayID],
+        fallback: CGDirectDisplayID?
+    ) -> CGDirectDisplayID? {
+        for id in [captured, focused, current] {
+            if let id, available.contains(id) { return id }
+        }
         return fallback
     }
 
@@ -459,9 +476,9 @@ final class ScreenshotPreviewController {
 
     private func followFocusedScreen() {
         guard !entries.isEmpty else { return }
-        let next = resolvedAnchor(capturedOn: NSScreen.main)
-        guard next != anchorVisible else { return }
-        anchorVisible = next
+        let next = resolvedAnchor(capturedOn: nil, focused: NSScreen.main)
+        guard next != anchorDisplay else { return }
+        anchorDisplay = next
         // The new display can be shorter than the old one.
         evictOverflow()
         layout(newItem: nil)
@@ -592,6 +609,14 @@ final class VoiceOverState {
                 if self?.isOn != on { self?.isOn = on }
             }
         }
+    }
+}
+
+private extension NSScreen {
+    /// The display's `CGDirectDisplayID`: stable while it stays plugged in,
+    /// unlike `visibleFrame`, which follows the Dock and the menu bar.
+    var displayID: CGDirectDisplayID? {
+        (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
     }
 }
 
