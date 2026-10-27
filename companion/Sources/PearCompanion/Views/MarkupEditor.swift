@@ -69,7 +69,7 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
         // Wide enough for the full toolbar (7 tools + colour + stroke + undo +
         // redo + Cancel/Done ≈ 675 pt) — at 520 the trailing buttons clipped
         // into unreadable slivers (owner report, 2.3.0).
-        window.minSize = NSSize(width: 700, height: 420)
+        window.minSize = NSSize(width: Self.minContentWidth, height: 420)
         window.contentView = NSHostingView(rootView: root)
         window.delegate = self
         // `center()` would use whichever screen the zero origin lands on.
@@ -78,6 +78,9 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         self.window = window
     }
+
+    /// The toolbar's width, the floor for both the opening size and minSize.
+    nonisolated static let minContentWidth: CGFloat = 700
 
     /// Fit the image into ~80% of the target screen, leaving room for the toolbar.
     nonisolated static func initialContentSize(pixels px: CGSize, visible screen: CGSize) -> NSSize {
@@ -88,7 +91,7 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
         )
         let scale = min(maxCanvas.width / px.width, maxCanvas.height / px.height, 1)
         let canvas = CGSize(width: px.width * scale, height: px.height * scale)
-        return NSSize(width: max(canvas.width, 520), height: canvas.height + toolbarHeight)
+        return NSSize(width: max(canvas.width, minContentWidth), height: canvas.height + toolbarHeight)
     }
 
     /// Origin that centres a window of `size` on `visible`.
@@ -281,7 +284,8 @@ struct MarkupEditorView: View {
             Spacer()
 
             // Esc is handled by the view's onExitCommand so it can cancel a
-            // pending crop first; the button stays for mouse users.
+            // pending crop first; the button stays for mouse users. Both go
+            // through the window's performClose, so they ask before discarding.
             Button("Cancel") { onCancel() }
 
             Button("Done") {

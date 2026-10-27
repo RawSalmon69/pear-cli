@@ -24,6 +24,14 @@ final class MarkupExportTests: XCTestCase {
         XCTAssertLessThanOrEqual(size.height, small.height)
     }
 
+    func testTinyCaptureOpensAtLeastTheMinimumWidth() {
+        // minSize does not resize a window already created, so the initial
+        // size must honour it or the toolbar opens clipped.
+        let size = MarkupWindowController.initialContentSize(pixels: CGSize(width: 40, height: 30),
+                                                            visible: NSSize(width: 1440, height: 875))
+        XCTAssertGreaterThanOrEqual(size.width, MarkupWindowController.minContentWidth)
+    }
+
     // MARK: Arrowheads
 
     func testArrowHeadMatchesBetweenPreviewAndExport() {

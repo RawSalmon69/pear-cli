@@ -593,7 +593,10 @@ state until it next asks; `currentValue()` is then already off.
   Esc, ⌘W, Cancel and the close button all go through `windowShouldClose`, which
   asks "Discard your markup?" in a sheet when anything is undoable or a draft
   has text (`markupNeedsDiscardConfirmation`, tested); Keep Editing holds Esc and
-  Discard holds no key, so no keystroke throws work away.
+  Discard holds no key, so no keystroke throws work away. One constant
+  (`MarkupWindowController.minContentWidth`, 700 pt, the toolbar's width) is
+  both the opening-width floor and `minSize`, since `minSize` never grows a
+  window already created.
 - **Floating-window positioning**: the screenshot preview opens on **the screen
   the shot was taken on** and thereafter **follows the focused window's display**
   (`ScreenshotPreviewController.anchor`, pure and tested — one decision for both:
