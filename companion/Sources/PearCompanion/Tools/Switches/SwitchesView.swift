@@ -124,8 +124,8 @@ private struct LidClosedPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.small) {
             Text(warning)
-                .font(Theme.Typography.small(.semibold))
-                .foregroundStyle(Theme.warn)
+                .font(Theme.Typography.small())
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let end = model.lidSessionEnd {
@@ -186,17 +186,12 @@ private struct LidClosedPanel: View {
         .padding(.top, Theme.Space.xSmall)
     }
 
-    /// Says less once the two escape hatches are in place, because with a
-    /// deadline set and the grant installed the machine really does put itself
-    /// back. What survives in every case is the crash.
+    /// The one-line risk statement: with the grant installed, quitting Pear or
+    /// the timer puts sleep back; without it, nothing does.
     private var warning: String {
-        if model.lidRuleInstalled {
-            return "Lid Closed turns off sleep for the whole system, so a closed lid keeps running warm"
-                + " and draining. Quitting Pear and the timer above both restore it; a crash cannot."
-        }
-        return "Lid Closed asks for your admin password and turns off sleep for the whole system, so a"
-            + " closed lid keeps running warm and draining. It stays off after Pear quits unless you"
-            + " grant permission below. Turn it back off when you are done."
+        model.lidRuleInstalled
+            ? "Keeps running with the lid closed. Sleep returns when Pear quits or the timer ends."
+            : "Keeps running with the lid closed, even after Pear quits. Needs your admin password."
     }
 }
 
