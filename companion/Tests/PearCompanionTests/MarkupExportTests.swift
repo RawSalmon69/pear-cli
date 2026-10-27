@@ -24,4 +24,19 @@ final class MarkupExportTests: XCTestCase {
         XCTAssertLessThanOrEqual(size.height, small.height)
     }
 
+    // MARK: Arrowheads
+
+    func testArrowHeadMatchesBetweenPreviewAndExport() {
+        // A thin arrow, where the floor decides. In image pixels the head must
+        // be the same size at the live fit (0.25) and at export (1).
+        let width: CGFloat = 1
+        let preview: CGFloat = 0.25
+        let live = arrowHeadLength(lineWidth: width * preview, scale: preview) / preview
+        let export = arrowHeadLength(lineWidth: width * 1, scale: 1) / 1
+        XCTAssertEqual(live, export, accuracy: 0.0001)
+    }
+
+    func testArrowHeadFollowsStrokeAboveTheFloor() {
+        XCTAssertEqual(arrowHeadLength(lineWidth: 10, scale: 1), 45)
+    }
 }

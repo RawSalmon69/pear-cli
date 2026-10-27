@@ -303,7 +303,7 @@ struct MarkupCanvas: View {
 
         case let .arrow(start, end, color, width):
             drawArrow(from: point(start, s), to: point(end, s),
-                      color: color, lineWidth: width * s, in: context)
+                      color: color, lineWidth: width * s, scale: s, in: context)
 
         case let .freehand(points, color, width):
             drawFreehand(points.map { point($0, s) }, color: color,
@@ -320,7 +320,7 @@ struct MarkupCanvas: View {
     }
 
     private func drawArrow(from a: CGPoint, to b: CGPoint, color: Color,
-                           lineWidth: CGFloat, in context: GraphicsContext) {
+                           lineWidth: CGFloat, scale: CGFloat, in context: GraphicsContext) {
         var shaft = Path()
         shaft.move(to: a)
         shaft.addLine(to: b)
@@ -328,7 +328,7 @@ struct MarkupCanvas: View {
                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
 
         let angle = atan2(b.y - a.y, b.x - a.x)
-        let headLength = max(lineWidth * 4.5, 12)
+        let headLength = arrowHeadLength(lineWidth: lineWidth, scale: scale)
         let spread = CGFloat.pi / 7
         let left = CGPoint(x: b.x - headLength * cos(angle - spread),
                            y: b.y - headLength * sin(angle - spread))
@@ -371,6 +371,13 @@ struct MarkupCanvas: View {
         CGRect(x: rect.minX * s, y: rect.minY * s,
                width: rect.width * s, height: rect.height * s)
     }
+}
+
+/// Arrowhead length in render units. `lineWidth` already carries the render
+/// scale, so the 12 px floor must too, or the export (scale 1) draws a smaller
+/// head than the scaled-down preview showed.
+func arrowHeadLength(lineWidth: CGFloat, scale: CGFloat) -> CGFloat {
+    max(lineWidth * 4.5, 12 * scale)
 }
 
 /// Normalised rect from two arbitrary corners (any drag direction).
