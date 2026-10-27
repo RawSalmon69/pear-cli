@@ -547,6 +547,8 @@ final class ScreenshotPreviewController {
 
     private func remove(_ entry: PreviewEntry) {
         entry.timer?.invalidate()
+        // Its detail window closes with it, so nothing else needs the scan.
+        entry.detailContext.insights.cancel()
         entry.detail?.close()
         entry.panel.orderOut(nil)
         entries.removeAll { $0 === entry }
@@ -571,6 +573,7 @@ final class ScreenshotPreviewController {
         for index in victims.reversed() {
             let victim = entries.remove(at: index)
             victim.timer?.invalidate()
+            victim.detailContext.insights.cancel()
             // Same teardown `remove(_:)` does: the entry is the only strong
             // holder of its detail-window controller, and `NSWindow.delegate`
             // is weak — dropping it with the window open strands a window that

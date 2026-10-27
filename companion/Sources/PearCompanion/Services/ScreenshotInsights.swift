@@ -234,6 +234,47 @@ private struct ScreenshotScanResult: Sendable {
     let colors: [PickedColor]
 }
 
+/// Caps how many insights scans run at once. Each decodes the full bitmap and
+/// runs Vision `.accurate`, so a burst of large shots ran several of those
+/// together; the rest wait their turn, in arrival order.
+@MainActor
+final class ScanQueue {
+    static let shared = ScanQueue(limit: 2)
+
+    private let limit: Int
+    private var running = 0
+    private var waiting: [(id: UUID, start: () -> Void)] = []
+
+    init(limit: Int) {
+        self.limit = limit
+    }
+
+    /// Runs `start` now if a slot is free, else once one frees. A started job
+    /// calls `finish()` exactly once, however it ends.
+    func enqueue(id: UUID, start: @escaping () -> Void) {
+        waiting.append((id, start))
+        drain()
+    }
+
+    /// Drops a job that has not started yet; a started one is the caller's to
+    /// cancel (it still calls `finish()`).
+    func cancel(id: UUID) {
+        waiting.removeAll { $0.id == id }
+    }
+
+    func finish() {
+        running -= 1
+        drain()
+    }
+
+    private func drain() {
+        while running < limit, !waiting.isEmpty {
+            running += 1
+            waiting.removeFirst().start()
+        }
+    }
+}
+
 /// Everything Pear knows about a capture beyond its pixels — recognized text,
 /// QR payloads, a palette, and file facts. One per preview card; the detail
 /// window just reads it, so opening the window shows results already in hand.
@@ -248,6 +289,8 @@ final class ScreenshotInsights {
 
     @ObservationIgnored private let url: URL
     @ObservationIgnored private var didStartScan = false
+    @ObservationIgnored private let scanID = UUID()
+    @ObservationIgnored private var scanTask: Task<Void, Never>?
 
     init(url: URL) {
         self.url = url
@@ -258,28 +301,54 @@ final class ScreenshotInsights {
 
     /// One idempotent off-main pass: OCR, barcode detect, palette. The preview
     /// controller calls this AFTER the card is on screen, so scanning can never
-    /// delay the capture → preview hop.
+    /// delay the capture → preview hop. Runs through `ScanQueue`, so it may
+    /// wait for a slot.
     func scan() {
         guard !didStartScan else { return }
         didStartScan = true
         isScanning = true
+        ScanQueue.shared.enqueue(id: scanID) { [weak self] in
+            guard let self else { return ScanQueue.shared.finish() }
+            self.run()
+        }
+    }
+
+    /// Called when the card goes: a waiting scan never starts, and a running
+    /// one stops at the next pass (Vision's pass in flight still finishes).
+    func cancel() {
+        ScanQueue.shared.cancel(id: scanID)
+        scanTask?.cancel()
+    }
+
+    private func run() {
         let url = self.url
-        Task { @MainActor in
-            let result = await Task.detached(priority: .utility) {
+        scanTask = Task { @MainActor in
+            defer { ScanQueue.shared.finish() }
+            let work = Task.detached(priority: .utility) { () -> ScreenshotScanResult? in
                 // One decode for all three passes, read from the file here
                 // rather than held by the card. OCR and the barcode detect each
                 // used to inflate the full bitmap separately — ~81 MB twice for
                 // a 6K capture, on every shot. A capture whose file has gone
                 // simply yields nothing.
+                guard !Task.isCancelled else { return nil }
                 guard let cg = CaptureImage.decode(at: url) else {
                     return ScreenshotScanResult(text: "", payloads: [], colors: [])
                 }
+                guard !Task.isCancelled else { return nil }
+                let text = OCRText.recognize(in: cg)
+                guard !Task.isCancelled else { return nil }
                 return ScreenshotScanResult(
-                    text: OCRText.recognize(in: cg),
+                    text: text,
                     payloads: QRCode.decode(in: cg),
                     colors: DominantColors.palette(from: cg)
                 )
-            }.value
+            }
+            let result = await withTaskCancellationHandler {
+                await work.value
+            } onCancel: {
+                work.cancel()
+            }
+            guard let result else { return }
             self.text = result.text
             self.payloads = result.payloads
             self.colors = result.colors

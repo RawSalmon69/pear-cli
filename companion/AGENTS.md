@@ -289,7 +289,11 @@ AppKit, not custom gesture math), an eyedropper that samples exact image pixels
 (`PixelSampler`), the same actions, and a sidebar of
 `ScreenshotInsights` — full OCR text in its own scroll box, QR payloads, color
 palette, file facts — scanned once off-main *after* the card is on screen, so
-nothing delays capture → preview and the window always opens mid-scan. Cards are
+nothing delays capture → preview and the window always opens mid-scan; at most
+two scans run at once (`ScanQueue`, tested), the rest wait in arrival order, and
+a card that goes cancels its scan (queued: never starts; running: stops at the
+next pass). The card's and window's Copy text appear only once the scan has
+text and copy that text, never recognising the shot a second time. Cards are
 **backed by a file, never by bytes** (see `CaptureStore` below). **Pin** (card and
 detail window, `PinWindow.swift`) floats the shot in a borderless, always-on-top
 AppKit panel: dragged by its body, resized from its edges with the aspect locked

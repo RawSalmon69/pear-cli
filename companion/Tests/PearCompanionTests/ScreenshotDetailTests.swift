@@ -86,6 +86,40 @@ final class ScreenshotInsightsNonBlockingTests: XCTestCase {
     }
 }
 
+/// A burst of large shots used to run one full-bitmap OCR pass per card, all at
+/// once. The queue runs at most `limit`, in arrival order, and a card that goes
+/// before its turn never scans.
+@MainActor
+final class ScanQueueTests: XCTestCase {
+    func testRunsAtMostTheLimitAndStartsTheNextWhenOneFinishes() {
+        let queue = ScanQueue(limit: 2)
+        var started: [Int] = []
+        let ids = (0..<4).map { _ in UUID() }
+        for (index, id) in ids.enumerated() {
+            queue.enqueue(id: id) { started.append(index) }
+        }
+        XCTAssertEqual(started, [0, 1])
+
+        queue.finish()
+        XCTAssertEqual(started, [0, 1, 2])
+        queue.finish()
+        queue.finish()
+        XCTAssertEqual(started, [0, 1, 2, 3])
+    }
+
+    func testACancelledWaitingScanNeverStarts() {
+        let queue = ScanQueue(limit: 1)
+        var started: [Int] = []
+        let ids = (0..<3).map { _ in UUID() }
+        for (index, id) in ids.enumerated() {
+            queue.enqueue(id: id) { started.append(index) }
+        }
+        queue.cancel(id: ids[1])
+        queue.finish()
+        XCTAssertEqual(started, [0, 2])
+    }
+}
+
 final class ScreenshotDetailsTests: XCTestCase {
     /// Built through CGContext, not `NSImage.lockFocus`, so the PNG is exactly
     /// the requested pixel size — lockFocus draws at the backing scale (2× on a
