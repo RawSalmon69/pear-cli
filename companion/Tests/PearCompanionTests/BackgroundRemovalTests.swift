@@ -152,6 +152,37 @@ final class BackgroundRemovalIOTests: XCTestCase {
     }
 }
 
+/// The HD model download's transfer, driven offline only (a `file:` URL), so
+/// no test ever fetches the model.
+final class ModelDownloadCancelTests: XCTestCase {
+    private func run(_ delegate: DownloadProgressDelegate, _ url: URL) async -> Result<URL, Error> {
+        await withCheckedContinuation { cont in delegate.start(url) { cont.resume(returning: $0) } }
+    }
+
+    /// Remove before the transfer starts: it fails at once, never connecting.
+    func testCancelBeforeStartFailsWithoutStarting() async {
+        let delegate = DownloadProgressDelegate(progress: { _ in })
+        delegate.cancel()
+        let result = await run(delegate, URL(string: "https://example.invalid/never")!)
+        guard case .failure(let error) = result else { return XCTFail("a cancelled download must not start") }
+        XCTAssertTrue(error is CancellationError, "\(error)")
+    }
+
+    func testCancelAfterFinishingIsHarmless() async throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("dl-\(UUID().uuidString)")
+        try Data("weights".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let delegate = DownloadProgressDelegate(progress: { _ in })
+
+        let result = await run(delegate, file)
+        delegate.cancel()
+
+        let moved = try result.get()
+        defer { try? FileManager.default.removeItem(at: moved) }
+        XCTAssertEqual(try Data(contentsOf: moved), Data("weights".utf8))
+    }
+}
+
 /// The remover window's model, with the engine stood in so no model or Vision
 /// request runs.
 @MainActor

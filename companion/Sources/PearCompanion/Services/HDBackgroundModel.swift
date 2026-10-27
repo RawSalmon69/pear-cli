@@ -317,6 +317,9 @@ final class HDBackgroundModelManager {
                 }
             } catch {
                 await MainActor.run {
+                    // Removed mid-download: `remove()` already set `.absent`
+                    // (and may have started a new download). Leave both alone.
+                    guard !Task.isCancelled else { return }
                     self?.downloadTask = nil
                     self?.state = .failed("Download failed. Check your connection and try again.")
                     self?.logger.error("HD model download failed: \(error.localizedDescription, privacy: .public)")
@@ -324,6 +327,7 @@ final class HDBackgroundModelManager {
                 return
             }
             await MainActor.run {
+                guard !Task.isCancelled else { return }
                 self?.downloadTask = nil
                 guard let self else { return }
                 // Downloaded, not loaded: the first cutout compiles it.
@@ -341,7 +345,8 @@ final class HDBackgroundModelManager {
         return "\(fmt.string(fromByteCount: done)) of \(fmt.string(fromByteCount: Self.weightsBytes))"
     }
 
-    /// Deletes the download AND the compiled copy beside it. Nothing to unload:
+    /// Deletes the download AND the compiled copy beside it, cancelling a
+    /// download in flight (its network transfer too). Nothing to unload:
     /// no model is ever held between cutouts, so a cutout in flight simply keeps
     /// the instance it already has and the next one falls back to Vision.
     func remove() {
@@ -359,6 +364,7 @@ final class HDBackgroundModelManager {
         try FileManager.default.createDirectory(
             at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
         let (tmp, _) = try await URLSession.shared.download(from: url)
+        try discardIfCancelled(tmp)
         if FileManager.default.fileExists(atPath: dest.path) { try FileManager.default.removeItem(at: dest) }
         try FileManager.default.moveItem(at: tmp, to: dest)
     }
@@ -370,33 +376,71 @@ final class HDBackgroundModelManager {
         let dest = dir.appendingPathComponent(file.rel)
         try FileManager.default.createDirectory(
             at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let tmp = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<URL, Error>) in
-            let delegate = DownloadProgressDelegate(progress: progress) { cont.resume(with: $0) }
-            let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-            delegate.hold(session)
-            session.downloadTask(with: url).resume()
+        // Cancelling the Swift task (Remove) must stop the URLSession transfer
+        // too, or ~200 MB keeps downloading into a folder that is gone.
+        let delegate = DownloadProgressDelegate(progress: progress)
+        let tmp = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<URL, Error>) in
+                delegate.start(url) { cont.resume(with: $0) }
+            }
+        } onCancel: {
+            delegate.cancel()
         }
+        try discardIfCancelled(tmp)
         if FileManager.default.fileExists(atPath: dest.path) { try FileManager.default.removeItem(at: dest) }
         try FileManager.default.moveItem(at: tmp, to: dest)
+    }
+
+    /// A transfer that finished just as Remove ran: drop the file rather than
+    /// move it into the model folder Remove just deleted.
+    private static func discardIfCancelled(_ tmp: URL) throws {
+        guard Task.isCancelled else { return }
+        try? FileManager.default.removeItem(at: tmp)
+        throw CancellationError()
     }
 }
 
 /// Bridges URLSession's byte-progress + completion callbacks to a continuation.
 /// The finished temp file is moved somewhere stable inside the callback (the
 /// delegate's `location` is deleted the instant the callback returns).
-private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+/// `cancel()` may race `start()` from any thread, hence the lock: a cancel
+/// before the start fails it at once without touching the network.
+final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     private let progress: @Sendable (Double) -> Void
-    private let completion: @Sendable (Result<URL, Error>) -> Void
+    private let lock = NSLock()
+    private var completion: (@Sendable (Result<URL, Error>) -> Void)?
     private var session: URLSession?
-    private var finished = false
+    private var cancelled = false
 
-    init(progress: @escaping @Sendable (Double) -> Void,
-         completion: @escaping @Sendable (Result<URL, Error>) -> Void) {
+    init(progress: @escaping @Sendable (Double) -> Void) {
         self.progress = progress
-        self.completion = completion
     }
 
-    func hold(_ session: URLSession) { self.session = session }
+    /// Downloads `url`; `completion` runs exactly once.
+    func start(_ url: URL, completion: @escaping @Sendable (Result<URL, Error>) -> Void) {
+        lock.lock()
+        guard !cancelled else {
+            lock.unlock()
+            completion(.failure(CancellationError()))
+            return
+        }
+        self.completion = completion
+        let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+        self.session = session
+        // Under the lock, so a racing cancel never invalidates the session
+        // before its task exists (creating a task on one throws).
+        session.downloadTask(with: url).resume()
+        lock.unlock()
+    }
+
+    /// Stops the transfer; the completion then reports the cancellation.
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let session = self.session
+        lock.unlock()
+        session?.invalidateAndCancel()
+    }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
                     didWriteData bytesWritten: Int64, totalBytesWritten: Int64,
@@ -417,10 +461,13 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
     }
 
     private func finish(_ result: Result<URL, Error>) {
-        guard !finished else { return }
-        finished = true
-        completion(result)
+        lock.lock()
+        let completion = self.completion
+        let session = self.session
+        self.completion = nil
+        self.session = nil
+        lock.unlock()
+        completion?(result)
         session?.invalidateAndCancel()
-        session = nil
     }
 }
