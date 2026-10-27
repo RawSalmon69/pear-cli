@@ -57,13 +57,43 @@ final class BackgroundRemoverModel {
     }
 
     func load(_ url: URL) {
+        load(try? Data(contentsOf: url))
+    }
+
+    /// Image bytes from a file, a drop or a paste; one path for all three, so
+    /// each decodes the same way. Bytes that aren't an image show the error.
+    func load(_ data: Data?) {
         job?.cancel()
         generation += 1
-        guard let data = try? Data(contentsOf: url) else {
+        guard let data, let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetType(source) != nil else {
             state = .failed("Couldn't read that image.")
             return
         }
         process(data)
+    }
+
+    /// What to read from a drop or paste offering `types`: a file URL first
+    /// (Finder, whose copy also carries the file's icon), else the first image
+    /// type (a browser's image bytes), else nothing (text, a web link alone).
+    nonisolated static func pick(_ types: [UTType]) -> UTType? {
+        types.contains(.fileURL) ? .fileURL : types.first { $0.conforms(to: .image) }
+    }
+
+    /// ⌘V: the image on `pasteboard`, through `pick`. False when there is none.
+    func paste(from pasteboard: NSPasteboard) -> Bool {
+        switch Self.pick((pasteboard.types ?? []).compactMap { UTType($0.rawValue) }) {
+        case .fileURL?:
+            let urls = pasteboard.readObjects(forClasses: [NSURL.self],
+                                              options: [.urlReadingFileURLsOnly: true]) as? [URL]
+            guard let url = urls?.first else { return false }
+            load(url)
+        case let type?:
+            load(pasteboard.data(forType: NSPasteboard.PasteboardType(type.identifier)))
+        case nil:
+            return false
+        }
+        return true
     }
 
     private func process(_ data: Data) {
@@ -144,7 +174,7 @@ struct BackgroundRemoverView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(Theme.Space.large)
-        .onDrop(of: [.fileURL], isTargeted: $targeted, perform: handleDrop)
+        .onDrop(of: [.fileURL, .image], isTargeted: $targeted, perform: handleDrop)
         .overlay {
             RoundedRectangle(cornerRadius: Theme.Radius.medium)
                 .strokeBorder(Theme.accent, lineWidth: 2)
@@ -258,13 +288,26 @@ struct BackgroundRemoverView: View {
         }
     }
 
+    /// A Finder file or a browser's image bytes, chosen by `pick`; anything
+    /// else is refused, so the drop is never accepted and then ignored.
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first(where: { $0.canLoadObject(ofClass: URL.self) }) else { return false }
-        _ = provider.loadObject(ofClass: URL.self) { url, _ in
-            guard let url, url.isFileURL else { return }
-            Task { @MainActor in model.load(url) }
+        for provider in providers {
+            switch BackgroundRemoverModel.pick(provider.registeredContentTypes) {
+            case .fileURL?:
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    let data = url.flatMap { $0.isFileURL ? try? Data(contentsOf: $0) : nil }
+                    Task { @MainActor in model.load(data) }
+                }
+            case let type?:
+                _ = provider.loadDataRepresentation(for: type) { data, _ in
+                    Task { @MainActor in model.load(data) }
+                }
+            case nil:
+                continue
+            }
+            return true
         }
-        return true
+        return false
     }
 }
 

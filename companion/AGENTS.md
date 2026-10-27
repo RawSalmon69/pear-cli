@@ -308,7 +308,10 @@ after, like the preview stack, so a full-screen shot never contains one;
 small for it, `PinLayout.closeButtonFrame`; always shown under VoiceOver, and
 re-decided on every resize and VoiceOver toggle), and right-click offers Close and Reveal in Finder. **OCR / Grab Text**
 (⌃⇧T, Vision), **Background
-removal** (Apple Vision default; opt-in HD BEN2 Core ML — see below), **QR**
+removal** (Apple Vision default; opt-in HD BEN2 Core ML — see below; the
+Remove Background window takes files, dropped image data and ⌘V, a file URL
+ahead of image bytes via `BackgroundRemoverModel.pick`, ⌘V caught in the
+window's `performKeyEquivalent` as there is no menu bar), **QR**
 (⌃⇧Q, scan screen region / generate from clipboard, auto QR badge + Copy-text
 button on screenshot preview cards).
 Windows: **Windows** (⌃⌥ + arrows/↩/C/⌫ snaps the front window; hold **Fn** for a

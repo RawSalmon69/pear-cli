@@ -44,6 +44,7 @@ final class BackgroundRemoverWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
         window.title = "Remove Background"
+        window.onPaste = { [model] in model.paste(from: .general) }
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: BackgroundRemoverView(model: model))
         window.delegate = self
@@ -66,7 +67,21 @@ final class BackgroundRemoverWindowController: NSObject, NSWindowDelegate {
 }
 
 /// Titled window that also closes on Esc — matches the app's dismissal grammar
-/// (Monitor/Disk windows, the floating panels).
+/// (Monitor/Disk windows, the floating panels). ⌘V pastes an image here, since
+/// the menu bar (and its Edit ▸ Paste) only exists while Settings is open.
 private final class EscClosableWindow: NSWindow {
+    var onPaste: (() -> Bool)?
+
     override func cancelOperation(_ sender: Any?) { close() }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // Caps Lock is in the device-independent mask; it must not block ⌘V.
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            .subtracting(.capsLock) == .command,
+           event.charactersIgnoringModifiers == "v",
+           onPaste?() == true {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 }

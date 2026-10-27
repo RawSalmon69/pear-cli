@@ -311,4 +311,115 @@ final class BackgroundRemoverModelTests: XCTestCase {
             XCTAssertTrue(FileManager.default.fileExists(atPath: good.path))
         }
     }
+
+    // MARK: Drops and ⌘V
+
+    /// Finder offers the file URL (plus the file's own type, or for a copy, its
+    /// icon); a browser offers a web URL plus the image bytes. The file wins,
+    /// then the image bytes; text and web links alone are refused.
+    func testPickPrefersAFileURLThenImageDataAndRefusesTheRest() {
+        XCTAssertEqual(BackgroundRemoverModel.pick([.tiff, .fileURL]), .fileURL)
+        XCTAssertEqual(BackgroundRemoverModel.pick([.url, .png, .tiff]), .png)
+        XCTAssertEqual(BackgroundRemoverModel.pick([.url, .heic]), .heic)
+        XCTAssertNil(BackgroundRemoverModel.pick([.url, .plainText]))
+        XCTAssertNil(BackgroundRemoverModel.pick([]))
+    }
+
+    /// A browser's "Copy Image": bytes only, no file.
+    func testPasteLoadsImageData() async throws {
+        try await quietly {
+            let png = try Data(contentsOf: try imageFile("a.png", gray: 0.4))
+            let pb = NSPasteboard.withUniqueName()
+            defer { pb.releaseGlobally() }
+            pb.clearContents()
+            pb.setData(png, forType: .png)
+            let model = BackgroundRemoverModel { data in .init(png: data, usedHD: false) }
+
+            XCTAssertTrue(model.paste(from: pb))
+            await model.job?.value
+            XCTAssertEqual(model.state, .done)
+            XCTAssertEqual(model.cutoutData, png)
+        }
+    }
+
+    /// Finder's ⌘C puts the file's icon on the pasteboard beside its URL; the
+    /// file is what gets cut out, not the icon.
+    func testPasteOfACopiedFileUsesTheFileNotItsIcon() async throws {
+        try await quietly {
+            let url = try imageFile("file.png", gray: 0.7)
+            let icon = try Data(contentsOf: try imageFile("icon.png", gray: 0.1))
+            let pb = NSPasteboard.withUniqueName()
+            defer { pb.releaseGlobally() }
+            pb.clearContents()
+            pb.writeObjects([url as NSURL])
+            pb.addTypes([.png], owner: nil)
+            pb.setData(icon, forType: .png)
+            let model = BackgroundRemoverModel { data in .init(png: data, usedHD: false) }
+
+            XCTAssertTrue(model.paste(from: pb))
+            await model.job?.value
+            XCTAssertEqual(model.cutoutData, try Data(contentsOf: url))
+        }
+    }
+
+    func testPasteOfTextIsRefusedAndChangesNothing() {
+        let pb = NSPasteboard.withUniqueName()
+        defer { pb.releaseGlobally() }
+        pb.clearContents()
+        pb.setString("not an image", forType: .string)
+        let model = BackgroundRemoverModel { _ in XCTFail("the engine must not run"); return nil }
+
+        XCTAssertFalse(model.paste(from: pb))
+        XCTAssertEqual(model.state, .empty)
+        XCTAssertNil(model.job)
+    }
+
+    /// Bytes that are not an image (a dropped .txt, a bad paste) show the error
+    /// instead of running the engine and reporting "no subject".
+    func testNonImageBytesShowTheError() {
+        let model = BackgroundRemoverModel { _ in XCTFail("the engine must not run"); return nil }
+        model.load(Data("hello".utf8))
+        XCTAssertEqual(model.state, .failed("Couldn't read that image."))
+        model.load(nil)
+        XCTAssertEqual(model.state, .failed("Couldn't read that image."))
+    }
+
+    /// A pasted phone photo comes out upright, exactly like the same file
+    /// dropped: both reach the engine as the same bytes and decode alike.
+    func testPastedJPEGDecodesLikeTheSameFile() async throws {
+        try await quietly {
+            let ctx = try XCTUnwrap(CGContext(
+                data: nil, width: 40, height: 20, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+            let jpeg = NSMutableData()
+            let dest = try XCTUnwrap(CGImageDestinationCreateWithData(jpeg, UTType.jpeg.identifier as CFString, 1, nil))
+            CGImageDestinationAddImage(dest, try XCTUnwrap(ctx.makeImage()),
+                                       [kCGImagePropertyOrientation: 6] as CFDictionary)
+            XCTAssertTrue(CGImageDestinationFinalize(dest))
+            let url = dir.appendingPathComponent("portrait.jpg")
+            try (jpeg as Data).write(to: url)
+
+            let decodeEngine: BackgroundRemoverModel.Engine = { data in
+                BackgroundRemovalService.decode(data)
+                    .flatMap { BackgroundRemovalService.png($0.image, dpi: $0.dpi) }
+                    .map { .init(png: $0, usedHD: false) }
+            }
+            let dropped = BackgroundRemoverModel(engine: decodeEngine)
+            dropped.load(url)
+            await dropped.job?.value
+
+            let pb = NSPasteboard.withUniqueName()
+            defer { pb.releaseGlobally() }
+            pb.clearContents()
+            pb.setData(jpeg as Data, forType: NSPasteboard.PasteboardType(UTType.jpeg.identifier))
+            let pasted = BackgroundRemoverModel(engine: decodeEngine)
+            XCTAssertTrue(pasted.paste(from: pb))
+            await pasted.job?.value
+
+            let out = try XCTUnwrap(pasted.cutout?.representations.first)
+            XCTAssertEqual([out.pixelsWide, out.pixelsHigh], [20, 40], "the pasted photo came out sideways")
+            XCTAssertEqual(pasted.cutoutData, dropped.cutoutData)
+        }
+    }
 }
