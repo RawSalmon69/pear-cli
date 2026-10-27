@@ -10,9 +10,10 @@ name: Companion Release
 #   MACOS_CERT_PASSWORD     password protecting the .p12 above
 #   MACOS_SIGN_IDENTITY     codesigning identity string, e.g.
 #                           "Developer ID Application: Some Name (TEAMID)"
-#   APPLE_ID                Apple ID email used for notarization
-#   APPLE_TEAM_ID           Apple Developer Team ID
-#   APPLE_APP_PASSWORD      app-specific password for notarytool (not the Apple ID password)
+#   ASC_API_KEY_P8          App Store Connect API key (.p8 contents) for notarytool;
+#                           an API key does not expire like an app-specific password
+#   ASC_API_KEY_ID          that key's Key ID
+#   ASC_API_ISSUER_ID       that key's Issuer ID
 #   SPARKLE_ED_PRIVATE_KEY  Sparkle EdDSA private key (from `generate_keys -x`),
 #                           used to sign the update zip for the appcast
 
@@ -110,9 +111,9 @@ jobs:
       - name: Notarize and staple
         id: notarize
         env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
         run: |
           set -euo pipefail
           VERSION="${{ steps.version.outputs.version }}"
@@ -120,14 +121,17 @@ jobs:
           ASSET_NAME="Pear-${VERSION}.zip"
           SUBMIT_ZIP="$RUNNER_TEMP/Pear-submit.zip"
           FINAL_ZIP="$RUNNER_TEMP/${ASSET_NAME}"
+          KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
 
           ditto -c -k --keepParent "$APP" "$SUBMIT_ZIP"
 
+          printf '%s\n' "$ASC_API_KEY_P8" > "$KEY_PATH"
           xcrun notarytool submit "$SUBMIT_ZIP" \
-            --apple-id "$APPLE_ID" \
-            --team-id "$APPLE_TEAM_ID" \
-            --password "$APPLE_APP_PASSWORD" \
+            --key "$KEY_PATH" \
+            --key-id "$ASC_API_KEY_ID" \
+            --issuer "$ASC_API_ISSUER_ID" \
             --wait
+          rm -f "$KEY_PATH"
 
           xcrun stapler staple "$APP"
 

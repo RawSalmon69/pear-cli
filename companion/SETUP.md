@@ -81,9 +81,9 @@ Actions → New repository secret) or `gh secret set NAME --repo RawSalmon69/pea
 | `MACOS_CERT_P12` | base64 of the `.p12` above | clipboard from the command above |
 | `MACOS_CERT_PASSWORD` | the export password you set | the password you just typed |
 | `MACOS_SIGN_IDENTITY` | `Developer ID Application: <Name> (<TEAMID>)` | `security find-identity -v -p codesigning` |
-| `APPLE_ID` | your Apple ID email | the account under developer.apple.com |
-| `APPLE_TEAM_ID` | your Team ID | developer.apple.com/account → Membership details |
-| `APPLE_APP_PASSWORD` | an app-specific password (not your Apple ID password) | appleid.apple.com → Sign-In and Security → App-Specific Passwords |
+| `ASC_API_KEY_P8` | App Store Connect API key file contents (`AuthKey_<KEYID>.p8`; notarization login, does not expire) | appstoreconnect.apple.com → Users and Access → Integrations → App Store Connect API (`gh secret set ASC_API_KEY_P8 < AuthKey_<KEYID>.p8`) |
+| `ASC_API_KEY_ID` | that key's Key ID | same page, the key's row |
+| `ASC_API_ISSUER_ID` | the Issuer ID (a UUID) | same page, above the keys list |
 | `SPARKLE_ED_PRIVATE_KEY` | Sparkle private key | step 2 above |
 
 ## 4. First release
