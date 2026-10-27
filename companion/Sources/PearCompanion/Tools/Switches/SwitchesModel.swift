@@ -168,6 +168,13 @@ enum SwitchCommands {
 
     static let screenSaver = ShellCommand(binary: openBinary, arguments: ["-a", "ScreenSaverEngine"])
 
+    // MARK: Display Off (sleep the displays now; momentary)
+    // An action, not a setting: pmset needs root only "to modify any settings"
+    // (man pmset), so like `sleepnow` this runs as the console user. Moving the
+    // pointer or pressing a key wakes the displays.
+
+    static let displaySleepNow = ShellCommand(binary: pmsetBinary, arguments: ["displaysleepnow"])
+
     private static func trimmed(_ output: String?) -> String? {
         guard let value = output?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
         return value
@@ -399,6 +406,10 @@ final class SwitchesModel {
 
     func lockScreen() {
         locker.lock()
+    }
+
+    func displayOff() async {
+        await run([SwitchCommands.displaySleepNow])
     }
 
     /// Tool teardown mirror: release the power assertion when the tool is

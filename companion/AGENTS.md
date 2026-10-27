@@ -330,7 +330,9 @@ done nothing, which is exactly how it read in use). `CopyToast.show(message:)` i
 the same pure-AppKit HUD with no "Copied" caption, for one-line notices.
 System: **Disk** (sunburst/treemap + safe Trash delete), **Menu Bar
 hider** (Hidden Bar-style, default OFF), **Switches**
-(6 toggles — three removals at the owner's order: Screen Test after it hard-locked
+(7 toggles; **Display Off** is a momentary `pmset displaysleepnow`, an action
+rather than a setting so it needs no root, shown by default like Screen Saver and
+Lock Screen since it writes no persistent state — three removals at the owner's order: Screen Test after it hard-locked
 a machine, **Mute** in 2.25.0 (`kAudioDevicePropertyMute` is advisory on many
 outputs and the volume-zeroing replacement was not worth keeping), and **Big
 Cursor** in 2.26.1 (a TCC-gated write that could silently not apply — the same

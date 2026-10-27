@@ -68,14 +68,15 @@ private final class RuleFlag: @unchecked Sendable {
 final class SwitchesTests: XCTestCase {
     // MARK: - SystemSwitch metadata
 
-    func testSixOwnerLockedSwitches() {
+    func testOwnerLockedSwitches() {
         // Three removals at the owner's order: Screen Test (hard-locked a machine
         // with undismissable fullscreen overlays), Mute, and Big Cursor (a
-        // TCC-gated write that could silently not apply). Lid Closed was added.
-        XCTAssertEqual(SystemSwitch.allCases.count, 6)
+        // TCC-gated write that could silently not apply). Lid Closed and
+        // Display Off were added.
+        XCTAssertEqual(SystemSwitch.allCases.count, 7)
         XCTAssertEqual(
             SystemSwitch.allCases.map(\.rawValue),
-            ["keepAwake", "lidClosed", "screenSaver", "lockScreen",
+            ["keepAwake", "lidClosed", "screenSaver", "lockScreen", "displayOff",
              "hideDesktop", "showHidden"]
         )
         for gone in ["mute", "bigCursor"] {
@@ -99,7 +100,7 @@ final class SwitchesTests: XCTestCase {
         XCTAssertFalse(SystemSwitch.lidClosed.defaultVisible)
         XCTAssertFalse(SystemSwitch.hideDesktop.defaultVisible)
         XCTAssertFalse(SystemSwitch.showHidden.defaultVisible)
-        for toggle in [SystemSwitch.keepAwake, .screenSaver, .lockScreen] {
+        for toggle in [SystemSwitch.keepAwake, .screenSaver, .lockScreen, .displayOff] {
             XCTAssertTrue(toggle.defaultVisible, "\(toggle.rawValue) should default shown")
         }
     }
@@ -136,14 +137,14 @@ final class SwitchesTests: XCTestCase {
         // Defaults: the four transient switches, in owner-locked order.
         XCTAssertEqual(
             SwitchesSettings.visibleSwitches(defaults),
-            [.keepAwake, .screenSaver, .lockScreen]
+            [.keepAwake, .screenSaver, .lockScreen, .displayOff]
         )
 
         SwitchesSettings.setVisible(.hideDesktop, true, defaults)
         SwitchesSettings.setVisible(.keepAwake, false, defaults)
         XCTAssertEqual(
             SwitchesSettings.visibleSwitches(defaults),
-            [.screenSaver, .lockScreen, .hideDesktop]
+            [.screenSaver, .lockScreen, .displayOff, .hideDesktop]
         )
     }
 
@@ -277,6 +278,13 @@ final class SwitchesTests: XCTestCase {
     func testScreenSaverCommand() {
         XCTAssertEqual(SwitchCommands.screenSaver,
                        ShellCommand(binary: "/usr/bin/open", arguments: ["-a", "ScreenSaverEngine"]))
+    }
+
+    func testDisplayOffCommand() {
+        // An action, not a setting, so no root: pmset needs root only "to
+        // modify any settings" (man pmset), the same as `sleepnow`.
+        XCTAssertEqual(SwitchCommands.displaySleepNow,
+                       ShellCommand(binary: "/usr/bin/pmset", arguments: ["displaysleepnow"]))
     }
 
     // MARK: - Model command-line assertions (mock runner)
@@ -539,6 +547,13 @@ final class SwitchesTests: XCTestCase {
         let model = makeModel(runner: runner)
         await model.launchScreenSaver()
         XCTAssertEqual(runner.recorded, [SwitchCommands.screenSaver])
+    }
+
+    func testDisplayOffRunsOnlyPmsetDisplaySleepNow() async {
+        let runner = MockCommandRunner { _ in .success(Data()) }
+        let model = makeModel(runner: runner)
+        await model.displayOff()
+        XCTAssertEqual(runner.recorded, [ShellCommand(binary: "/usr/bin/pmset", arguments: ["displaysleepnow"])])
     }
 
     // MARK: - Model state read (refresh → grid state)

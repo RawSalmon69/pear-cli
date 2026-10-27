@@ -16,6 +16,8 @@ struct SwitchesView: View {
     private var showScreenSaver = SystemSwitch.screenSaver.defaultVisible
     @AppStorage(SwitchesSettings.showKey(.lockScreen))
     private var showLockScreen = SystemSwitch.lockScreen.defaultVisible
+    @AppStorage(SwitchesSettings.showKey(.displayOff))
+    private var showDisplayOff = SystemSwitch.displayOff.defaultVisible
     @AppStorage(SwitchesSettings.showKey(.hideDesktop))
     private var showHideDesktop = SystemSwitch.hideDesktop.defaultVisible
     @AppStorage(SwitchesSettings.showKey(.showHidden))
@@ -66,6 +68,7 @@ struct SwitchesView: View {
         case .lidClosed: showLidClosed
         case .screenSaver: showScreenSaver
         case .lockScreen: showLockScreen
+        case .displayOff: showDisplayOff
         case .hideDesktop: showHideDesktop
         case .showHidden: showShowHidden
         }
@@ -242,7 +245,7 @@ private struct SwitchTile: View {
         case .lidClosed: model.lidClosedOn
         case .hideDesktop: model.hideDesktopOn
         case .showHidden: model.showHiddenOn
-        case .screenSaver, .lockScreen: false
+        case .screenSaver, .lockScreen, .displayOff: false
         }
     }
 
@@ -255,7 +258,7 @@ private struct SwitchTile: View {
                 case .lidClosed: Task { await model.setLidClosed(newValue) }
                 case .hideDesktop: Task { await model.setHideDesktop(newValue) }
                 case .showHidden: Task { await model.setShowHidden(newValue) }
-                case .screenSaver, .lockScreen: break
+                case .screenSaver, .lockScreen, .displayOff: break
                 }
             }
         )
@@ -265,6 +268,7 @@ private struct SwitchTile: View {
         switch toggle {
         case .screenSaver: Task { await model.launchScreenSaver() }
         case .lockScreen: model.lockScreen()
+        case .displayOff: Task { await model.displayOff() }
         default: break
         }
     }
