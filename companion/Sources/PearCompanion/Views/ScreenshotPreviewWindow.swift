@@ -145,12 +145,12 @@ final class ScreenshotPreviewController {
         onSave: @escaping () -> Bool = { false },
         capturedOn screen: NSScreen? = nil
     ) {
-        // ~2.4× the 208pt thumbnail — headroom for scaledToFill's crop without
-        // ever inflating the full capture here.
-        guard let image = Thumbnail.image(at: url, maxPixel: 504) else { return }
+        // The header alone says whether this is an image at all; the card
+        // decodes its thumbnail off the main actor once it is up.
+        let insights = ScreenshotInsights(url: url)
+        guard insights.details.pixelWidth > 0 else { return }
 
         let id = UUID()
-        let insights = ScreenshotInsights(url: url)
         // The actions that replace the card take it away with them, from the
         // card and from its detail window alike: Markup / background removal
         // re-present a fresh card, so a card left behind is a stale duplicate.
@@ -167,7 +167,7 @@ final class ScreenshotPreviewController {
             self?.dismiss(id: id)
         }
         let content = ScreenshotPreviewView(
-            image: image,
+            url: url,
             canMarkup: canMarkup,
             canSend: canSend,
             canSave: canSave,
@@ -701,7 +701,7 @@ private final class PreviewHostingView<Content: View>: NSHostingView<Content> {
 /// A sleek CleanShot-style card: just the thumbnail at rest; a slim icon-only
 /// action bar and close button fade in on hover.
 private struct ScreenshotPreviewView: View {
-    let image: NSImage
+    let url: URL
     let canMarkup: Bool
     let canSend: Bool
     let canSave: Bool
@@ -725,7 +725,13 @@ private struct ScreenshotPreviewView: View {
     @State private var hovering = false
     @State private var copied = false
     @State private var saved = false
+    /// Decoded off the main actor; a flat placeholder of the same fixed size
+    /// shows for the frame or two before it lands.
+    @State private var image: NSImage?
 
+    /// ~2.4× the 208pt thumbnail — headroom for scaledToFill's crop without
+    /// ever inflating the full capture.
+    private static let thumbMaxPixel = 504
     private static let thumbWidth: CGFloat = 208
     private static let thumbHeight: CGFloat = 130
     /// Slim glass rim: the card reads as a framed thumbnail, not a thumbnail
@@ -735,9 +741,11 @@ private struct ScreenshotPreviewView: View {
     private static let cardRadius = Theme.Radius.medium
 
     var body: some View {
-        Image(nsImage: image)
-            .resizable()
-            .scaledToFill()
+        Rectangle()
+            .fill(Color.primary.opacity(0.05))
+            .overlay {
+                if let image { Image(nsImage: image).resizable().scaledToFill() }
+            }
             .frame(width: Self.thumbWidth, height: Self.thumbHeight)
             .clipShape(RoundedRectangle(cornerRadius: Self.cardRadius - Self.inset))
             .overlay {
@@ -767,6 +775,15 @@ private struct ScreenshotPreviewView: View {
             .onHover { hovering in
                 withAnimation(.easeOut(duration: 0.14)) { self.hovering = hovering }
                 onHoverChange(hovering)
+            }
+            .task {
+                let url = url, maxPixel = Self.thumbMaxPixel
+                image = await Task.detached(priority: .userInitiated) {
+                    Thumbnail.image(at: url, maxPixel: maxPixel)
+                }.value
+                // The header read but the pixels would not: a failed read
+                // dismisses the card, like any other.
+                if image == nil { onDismiss() }
             }
     }
 
