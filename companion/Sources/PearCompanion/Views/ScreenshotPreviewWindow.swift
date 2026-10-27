@@ -535,6 +535,9 @@ final class ScreenshotPreviewController {
         layout(newItem: nil)
     }
 
+    /// The files the cards on screen are backed by, which the store sweep keeps.
+    var liveURLs: [URL] { entries.map(\.url) }
+
     /// Drops every card backed by `url`. Called when a read of that file fails:
     /// the card can no longer copy, save, open or send, so leaving it on screen
     /// would just offer buttons that do nothing.

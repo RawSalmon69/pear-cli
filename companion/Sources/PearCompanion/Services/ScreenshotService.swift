@@ -95,9 +95,19 @@ enum CaptureStore {
         return url
     }
 
+    /// How often a running app re-sweeps: a menu-bar app stays up for weeks.
+    static let sweepInterval: TimeInterval = 24 * 60 * 60
+
+    /// True once `sweepInterval` has passed since `last`, either way, so a
+    /// clock set backwards cannot stall sweeping for the gap.
+    static func sweepDue(last: Date, now: Date) -> Bool {
+        abs(now.timeIntervalSince(last)) >= sweepInterval
+    }
+
     /// Drops captures older than `retention`. Called at launch, where `live` is
-    /// necessarily empty (cards are in-memory), but a card's file must never be
-    /// deleted out from under it if this ever runs while the app is up.
+    /// necessarily empty (cards are in-memory), and again by the first capture
+    /// once a day (`ScreenshotService.sweepStoreIfDue`), which passes the files
+    /// still backing a card or the Recent strip so none is deleted from under it.
     ///
     /// Only `.png` files are considered, and only inside Pear's own store — no
     /// user document is ever in scope, which is why this deletes outright
@@ -235,6 +245,22 @@ final class ScreenshotService {
         Prefs.recordCapture(url) // the panel's recent-captures strip
         copyToPasteboard(at: url)
         present(at: url, capturedOn: screen)
+        sweepStoreIfDue()
+    }
+
+    /// When the store was last swept. First read at the first capture, which
+    /// comes after the launch sweep, so that sweep counts.
+    private static var lastStoreSweep = Date()
+
+    /// The launch sweep alone let the store grow for as long as the app stayed
+    /// up. Riding on a capture costs nothing while idle, and only captures add
+    /// to the store. Keeps the files behind live cards and the Recent strip.
+    private func sweepStoreIfDue() {
+        let now = Date()
+        guard CaptureStore.sweepDue(last: Self.lastStoreSweep, now: now) else { return }
+        Self.lastStoreSweep = now
+        let keep = Set(preview.liveURLs + Prefs.recentCaptures())
+        Task.detached(priority: .background) { CaptureStore.sweep(keeping: keep) }
     }
 
     /// Opens the detail window for a capture already on disk (the panel's

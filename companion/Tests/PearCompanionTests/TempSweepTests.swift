@@ -195,6 +195,17 @@ final class CaptureStoreTests: XCTestCase {
         XCTAssertEqual(CaptureStore.sweep(in: gone), 0)
     }
 
+    /// A menu-bar app runs for weeks; the store is swept again on the first
+    /// capture once a day has passed since the last sweep.
+    func testSweepIsDueOnceADayHasPassed() {
+        let last = Date(timeIntervalSince1970: 1_770_000_000)
+        XCTAssertFalse(CaptureStore.sweepDue(last: last, now: last))
+        XCTAssertFalse(CaptureStore.sweepDue(last: last, now: last + CaptureStore.sweepInterval - 1))
+        XCTAssertTrue(CaptureStore.sweepDue(last: last, now: last + CaptureStore.sweepInterval))
+        // A clock set backwards must not stall sweeping for the gap.
+        XCTAssertTrue(CaptureStore.sweepDue(last: last, now: last - CaptureStore.sweepInterval))
+    }
+
     // MARK: Filing a fresh capture
 
     /// The capture leaves the temp dir by being moved, so a bug here loses the
