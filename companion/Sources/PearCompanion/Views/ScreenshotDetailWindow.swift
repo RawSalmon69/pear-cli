@@ -91,9 +91,19 @@ final class ScreenshotDetailWindowController: NSObject, NSWindowDelegate {
     }
 }
 
-/// Esc closes, matching the Disk / Monitor / Scratchpad windows.
+/// Esc closes, matching the Disk / Monitor / Scratchpad windows — except with
+/// the eyedropper armed, where it disarms the eyedropper and a second Esc closes.
 private final class DetailWindow: NSWindow {
-    override func cancelOperation(_ sender: Any?) { close() }
+    /// Set by the zoomable image once it is in this window.
+    weak var zoom: ZoomController?
+
+    override func cancelOperation(_ sender: Any?) {
+        if let zoom, zoom.isPicking {
+            zoom.isPicking = false
+        } else {
+            close()
+        }
+    }
 }
 
 /// Image left, insights right, actions along the bottom. Every action is a
@@ -675,6 +685,12 @@ final class ZoomableImageScrollView: NSScrollView {
     /// itself rather than the handful of paths Pear intercepts (⌘-scroll never
     /// reached them and left it stale). Panning lands here too; `report`'s
     /// dedupe keeps that from re-rendering anything.
+    /// Lets the window's Esc disarm the eyedropper before it closes anything.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        (window as? DetailWindow)?.zoom = controller
+    }
+
     override func reflectScrolledClipView(_ clipView: NSClipView) {
         super.reflectScrolledClipView(clipView)
         controller?.report(magnification)
