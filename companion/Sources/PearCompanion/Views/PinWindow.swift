@@ -38,11 +38,26 @@ enum PinLayout {
         let factor = min(1, minimumLongSide / longer)
         return NSSize(width: size.width * factor, height: size.height * factor)
     }
+
+    /// Where the hover close button sits in a pin's (unflipped) bounds: the
+    /// top-left corner, where a window's close button is, inset by
+    /// `Theme.Space.small`. Nil when the pin is too small to hold it with that
+    /// inset all round, so a thin strip stays all drag surface; the right-click
+    /// menu, Esc and ⌘W still close it.
+    static func closeButtonFrame(in bounds: CGRect, button: CGSize) -> CGRect? {
+        let inset = Theme.Space.small
+        guard bounds.width >= button.width + 2 * inset,
+              bounds.height >= button.height + 2 * inset else { return nil }
+        return CGRect(x: bounds.minX + inset, y: bounds.maxY - inset - button.height,
+                      width: button.width, height: button.height)
+    }
 }
 
 /// A capture pinned to the screen: a borderless, always-on-top panel showing
 /// just the shot, dragged by its body and resized from its edges with the
-/// aspect locked. Esc or ⌘W closes it while it is key.
+/// aspect locked. Esc or ⌘W closes it while it is key; a ✕ shows in its
+/// top-left corner while the pointer is over it, and a right-click offers Close
+/// and Reveal in Finder.
 ///
 /// The pin reads its file once, at pin time, and holds that image, so the card
 /// that spawned it can go and a later `CaptureStore` sweep cannot break it. Pins
@@ -61,9 +76,11 @@ final class PinController: NSObject, NSWindowDelegate {
     private static var observingCaptures = false
 
     private let panel: PinPanel
+    private let imageView: PinImageView
 
-    private init(panel: PinPanel) {
+    private init(panel: PinPanel, imageView: PinImageView) {
         self.panel = panel
+        self.imageView = imageView
     }
 
     /// Pins the capture at `url` on `screen` (the main display if nil). Returns
@@ -82,7 +99,7 @@ final class PinController: NSObject, NSWindowDelegate {
             cascade: opened)
         opened += 1
 
-        let imageView = PinImageView(frame: NSRect(origin: .zero, size: frame.size))
+        let imageView = PinImageView(frame: NSRect(origin: .zero, size: frame.size), fileURL: url)
         imageView.image = image
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.autoresizingMask = [.width, .height]
@@ -110,7 +127,7 @@ final class PinController: NSObject, NSWindowDelegate {
         panel.contentMinSize = PinLayout.minimumSize(for: frame.size)
         panel.contentView = imageView
 
-        let controller = PinController(panel: panel)
+        let controller = PinController(panel: panel, imageView: imageView)
         panel.delegate = controller
         open.append(controller)
         observeCapturesOnce()
@@ -134,7 +151,17 @@ final class PinController: NSObject, NSWindowDelegate {
             ) { _ in
                 MainActor.assumeIsolated {
                     for pin in open {
-                        if visible { pin.panel.orderFrontRegardless() } else { pin.panel.orderOut(nil) }
+                        if visible {
+                            pin.panel.orderFrontRegardless()
+                            // No mouseEntered comes for a window that appears
+                            // under a still pointer, so ask where it is.
+                            pin.imageView.setHovering(pin.panel.frame.contains(NSEvent.mouseLocation),
+                                                      animated: false)
+                        } else {
+                            // Ordered out mid-hover, it gets no mouseExited either.
+                            pin.imageView.setHovering(false, animated: false)
+                            pin.panel.orderOut(nil)
+                        }
                     }
                 }
             }
@@ -165,7 +192,106 @@ private final class PinPanel: NSPanel {
 /// `performDrag`, the one move mechanism: no `isMovableByWindowBackground` or
 /// `mouseDownCanMoveWindow` beside it, so nothing races it. Edge resizing is
 /// the window frame's, and only events that reach this view are drags.
+///
+/// The hover ✕ is a subview, so hit-testing returns it ahead of this view and
+/// its press never reaches `mouseDown`; it is inset from the edges, so the
+/// window's resize zones stay clear. It is hidden, not just transparent,
+/// whenever it is not showing: hit-testing skips a hidden view but not a
+/// zero-alpha one.
 private final class PinImageView: NSImageView {
+    private let fileURL: URL
+    private let closeButton = PinCloseButton()
+    private var showingClose = false
+
+    init(frame: NSRect, fileURL: URL) {
+        self.fileURL = fileURL
+        super.init(frame: frame)
+        closeButton.image = NSImage(systemSymbolName: "xmark.circle.fill",
+                                    accessibilityDescription: "Close pin")?
+            .withSymbolConfiguration(
+                NSImage.SymbolConfiguration(pointSize: Theme.Typography.Size.large, weight: .regular)
+                    // A white cross on a dark translucent disc reads on any shot.
+                    .applying(NSImage.SymbolConfiguration(
+                        paletteColors: [.white, NSColor.black.withAlphaComponent(0.55)])))
+        closeButton.imagePosition = .imageOnly
+        closeButton.isBordered = false
+        closeButton.sizeToFit()
+        closeButton.target = self
+        closeButton.action = #selector(closePin)
+        closeButton.toolTip = "Close pin"
+        closeButton.setAccessibilityLabel("Close pin")
+        closeButton.autoresizingMask = [.maxXMargin, .minYMargin]
+        closeButton.isHidden = true
+        closeButton.alphaValue = 0
+        addSubview(closeButton)
+        // `.inVisibleRect` follows every resize, so this one area is enough.
+        addTrackingArea(NSTrackingArea(
+            rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self, userInfo: nil))
+        setHovering(false, animated: false)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
+
+    override func mouseDown(with event: NSEvent) {
+        // A control-click is the context menu, never a drag.
+        if event.modifierFlags.contains(.control), let menu = menu(for: event) {
+            NSMenu.popUpContextMenu(menu, with: event, for: self)
+            return
+        }
+        window?.performDrag(with: event)
+    }
+
+    override func mouseEntered(with event: NSEvent) { setHovering(true, animated: true) }
+    override func mouseExited(with event: NSEvent) { setHovering(false, animated: true) }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        menu.addItem(withTitle: "Close", action: #selector(closePin), keyEquivalent: "").target = self
+        // The pin holds the image, not the file: a swept or moved file has
+        // nothing to reveal.
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            menu.addItem(withTitle: "Reveal in Finder", action: #selector(revealFile),
+                         keyEquivalent: "").target = self
+        }
+        return menu
+    }
+
+    @objc private func closePin() { window?.close() }
+    @objc private func revealFile() { NSWorkspace.shared.activateFileViewerSelecting([fileURL]) }
+
+    /// Shows the ✕ while hovered (always under VoiceOver, which cannot hover)
+    /// when the pin is big enough for it. Fades, unless Reduce Motion is on.
+    func setHovering(_ hovering: Bool, animated: Bool) {
+        let frame = PinLayout.closeButtonFrame(in: bounds, button: closeButton.frame.size)
+        let show = (hovering || NSWorkspace.shared.isVoiceOverEnabled) && frame != nil
+        if let frame { closeButton.frame = frame }
+        showingClose = show
+        let button = closeButton
+        guard animated, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            button.alphaValue = show ? 1 : 0
+            button.isHidden = !show
+            return
+        }
+        if show { button.isHidden = false }
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.15
+            button.animator().alphaValue = show ? 1 : 0
+        }, completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                // A re-enter during the fade-out keeps it.
+                guard let self, !self.showingClose else { return }
+                self.closeButton.isHidden = true
+            }
+        })
+    }
+}
+
+/// The pin is a non-activating panel and Pear is rarely frontmost: the first
+/// click on the ✕ must close it, not just bring it forward.
+private final class PinCloseButton: NSButton {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }

@@ -291,7 +291,9 @@ AppKit panel: dragged by its body, resized from its edges with the aspect locked
 file once at pin time and holds that image, so it outlives its card and a later
 sweep, and nothing is restored at relaunch. Pins hide for a capture and come back
 after, like the preview stack, so a full-screen shot never contains one;
-`PinLayout` (initial fit + cascade) is the tested piece. **OCR / Grab Text**
+`PinLayout` (initial fit + cascade) is the tested piece. Hovering shows a top-left
+✕ (`NSButton` above the image view, so it never starts a drag; hidden on pins too
+small for it, `PinLayout.closeButtonFrame`), and right-click offers Close and Reveal in Finder. **OCR / Grab Text**
 (⌃⇧T, Vision), **Background
 removal** (Apple Vision default; opt-in HD BEN2 Core ML — see below), **QR**
 (⌃⇧Q, scan screen region / generate from clipboard, auto QR badge + Copy-text

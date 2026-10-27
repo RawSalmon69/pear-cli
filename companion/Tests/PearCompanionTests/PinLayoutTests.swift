@@ -41,6 +41,19 @@ final class PinLayoutTests: XCTestCase {
                        NSSize(width: 30, height: 20))
     }
 
+    func testCloseButtonSitsTopLeftAndHidesOnPinsTooSmallForIt() {
+        let button = CGSize(width: 18, height: 18)
+        let inset = Theme.Space.small
+        let frame = PinLayout.closeButtonFrame(in: CGRect(x: 0, y: 0, width: 400, height: 300),
+                                               button: button)
+        XCTAssertEqual(frame, CGRect(x: inset, y: 300 - inset - 18, width: 18, height: 18))
+        // A thin strip at the minimum size has no room: it stays all drag surface.
+        XCTAssertNil(PinLayout.closeButtonFrame(in: CGRect(x: 0, y: 0, width: 80, height: 20),
+                                                button: button))
+        XCTAssertNotNil(PinLayout.closeButtonFrame(
+            in: CGRect(x: 0, y: 0, width: 18 + 2 * inset, height: 18 + 2 * inset), button: button))
+    }
+
     func testDegenerateInputsStillGiveAUsableFrame() {
         let frame = PinLayout.frame(pixels: .zero, scale: 0, visible: visible, cascade: 0)
         XCTAssertGreaterThan(frame.width, 0)
