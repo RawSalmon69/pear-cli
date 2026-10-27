@@ -25,8 +25,8 @@ final class BEN2Model: @unchecked Sendable {
     /// Transparent-background PNG for `imageData`, or nil on any failure (the
     /// caller then falls back to the Vision cutout).
     func cutout(imageData: Data) -> Data? {
-        guard let source = CGImageSourceCreateWithData(imageData as CFData, nil),
-              let cg = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        guard let source = BackgroundRemovalService.decode(imageData) else { return nil }
+        let cg = source.image
         let N = Self.N
         let src = Self.rgba(cg, N, N)
         guard let input = try? MLMultiArray(shape: [1, 3, NSNumber(value: N), NSNumber(value: N)], dataType: .float32)
@@ -47,7 +47,7 @@ final class BEN2Model: @unchecked Sendable {
         else { return nil }
 
         let matte = Self.matte(mask, count: N * N)
-        return Self.composite(cg: cg, matte: matte, maskSide: N)
+        return Self.composite(cg: cg, matte: matte, maskSide: N, dpi: source.dpi)
     }
 
     // MARK: - Pixels
@@ -81,28 +81,54 @@ final class BEN2Model: @unchecked Sendable {
     }
 
     /// Applies `matte` (a `maskSide`×`maskSide` alpha) to the full-resolution
-    /// image and encodes a transparent PNG.
-    private static func composite(cg: CGImage, matte: [Float], maskSide: Int) -> Data? {
+    /// image and encodes a transparent PNG. The output context uses the
+    /// source's colour space (sRGB when it has none an 8-bit context can take),
+    /// so a P3 image is not clipped; `dpi` is written into the PNG.
+    static func composite(cg: CGImage, matte: [Float], maskSide: Int, dpi: [CFString: Any]) -> Data? {
         let (w, h) = (cg.width, cg.height)
-        var buf = rgba(cg, w, h)
+        let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+        let source = cg.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? srgb
+        func context(_ space: CGColorSpace) -> CGContext? {
+            CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                      space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        }
+        guard let ctx = context(source) ?? context(srgb), let pixels = ctx.data else { return nil }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        applyMatte(matte, side: maskSide, to: pixels.assumingMemoryBound(to: UInt8.self),
+                   width: w, height: h, bytesPerRow: ctx.bytesPerRow)
+        guard let outCG = ctx.makeImage() else { return nil }
+        return BackgroundRemovalService.png(outCG, dpi: dpi)
+    }
+
+    /// Multiplies every channel of a premultiplied RGBA buffer (row 0 = top)
+    /// by the matte, bilinearly upsampled from `side`×`side`. Scaling RGB too is
+    /// what premultiplied storage requires: alpha alone gets un-premultiplied
+    /// by the encoder into a bright halo. Multiplying (not replacing) alpha
+    /// keeps a source that was already partly transparent.
+    static func applyMatte(_ matte: [Float], side: Int, to pixels: UnsafeMutablePointer<UInt8>,
+                           width w: Int, height h: Int, bytesPerRow: Int) {
+        let (sx, sy) = (Float(side) / Float(w), Float(side) / Float(h))
         for y in 0..<h {
-            let my = min(maskSide - 1, y * maskSide / h)
+            let my = (Float(y) + 0.5) * sy - 0.5
+            let row = pixels + y * bytesPerRow
             for x in 0..<w {
-                let mx = min(maskSide - 1, x * maskSide / w)
-                let a = max(0, min(1, matte[my * maskSide + mx]))
-                buf[(y * w + x) * 4 + 3] = UInt8(a * 255)
+                let a = max(0, min(1, sample(matte, side: side, x: (Float(x) + 0.5) * sx - 0.5, y: my)))
+                for c in 0..<4 { row[x * 4 + c] = UInt8((Float(row[x * 4 + c]) * a).rounded()) }
             }
         }
-        guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
-                                  space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
-              let outCG = ctx.makeImage() else { return nil }
-        let data = NSMutableData()
-        guard let dest = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil)
-        else { return nil }
-        CGImageDestinationAddImage(dest, outCG, nil)
-        guard CGImageDestinationFinalize(dest) else { return nil }
-        return data as Data
+    }
+
+    /// Bilinear read of a `side`×`side` matte at (x, y) in matte pixels,
+    /// clamped to the edges.
+    static func sample(_ matte: [Float], side: Int, x: Float, y: Float) -> Float {
+        let edge = Float(side - 1)
+        let (cx, cy) = (min(max(x, 0), edge), min(max(y, 0), edge))
+        let (x0, y0) = (Int(cx), Int(cy))
+        let (x1, y1) = (min(x0 + 1, side - 1), min(y0 + 1, side - 1))
+        let (fx, fy) = (cx - Float(x0), cy - Float(y0))
+        let top = matte[y0 * side + x0] * (1 - fx) + matte[y0 * side + x1] * fx
+        let bottom = matte[y1 * side + x0] * (1 - fx) + matte[y1 * side + x1] * fx
+        return top * (1 - fy) + bottom * fy
     }
 }
 

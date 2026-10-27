@@ -26,14 +26,11 @@ enum BackgroundRemovalService {
     /// PNG (with transparency) of the foreground subjects in `imageData`, or nil
     /// when Vision finds no foreground instance (caller keeps the original).
     static func cutout(imageData: Data) -> Data? {
-        guard let source = CGImageSourceCreateWithData(imageData as CFData, nil),
-              let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-            return nil
-        }
-        return cutout(cgImage: cgImage)
+        guard let source = decode(imageData) else { return nil }
+        return cutout(cgImage: source.image, dpi: source.dpi)
     }
 
-    static func cutout(cgImage: CGImage) -> Data? {
+    static func cutout(cgImage: CGImage, dpi: [CFString: Any]) -> Data? {
         let request = VNGenerateForegroundInstanceMaskRequest()
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
@@ -50,7 +47,7 @@ enum BackgroundRemovalService {
                 from: handler,
                 croppedToInstancesExtent: false
             )
-            return png(from: masked)
+            return png(from: masked, dpi: dpi)
         } catch {
             logger.error("mask compositing failed: \(error.localizedDescription, privacy: .public)")
             return nil
@@ -59,14 +56,46 @@ enum BackgroundRemovalService {
 
     /// The masked buffer carries alpha where the background was removed; render
     /// it to a PNG so the transparency is preserved.
-    private static func png(from pixelBuffer: CVPixelBuffer) -> Data? {
+    private static func png(from pixelBuffer: CVPixelBuffer, dpi: [CFString: Any]) -> Data? {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         let context = CIContext()
         guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
+        return png(cgImage, dpi: dpi)
+    }
+
+    // MARK: - Shared by the Vision and HD paths
+
+    /// The first image in `data`, upright, plus its DPI. EXIF orientation is
+    /// baked into the pixels (the thumbnail path, at full size, as the shelf's
+    /// 50% copy does), since neither Vision's `.up` handler nor the HD model
+    /// reads the tag: a portrait iPhone photo would come out sideways. The DPI
+    /// rides along so a 144-dpi capture's cutout still pastes at its size.
+    static func decode(_ data: Data) -> (image: CGImage, dpi: [CFString: Any])? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
+        let dpi = props.filter { $0.key == kCGImagePropertyDPIWidth || $0.key == kCGImagePropertyDPIHeight }
+        let image: CGImage?
+        if (props[kCGImagePropertyOrientation] as? Int ?? 1) == 1 {
+            image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        } else {
+            let side = max(props[kCGImagePropertyPixelWidth] as? Int ?? 0,
+                           props[kCGImagePropertyPixelHeight] as? Int ?? 0)
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: side,
+            ]
+            image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        }
+        return image.map { ($0, dpi) }
+    }
+
+    /// PNG of `image`, carrying `dpi` (empty means the 72-dpi default).
+    static func png(_ image: CGImage, dpi: [CFString: Any]) -> Data? {
         let data = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(
             data, UTType.png.identifier as CFString, 1, nil) else { return nil }
-        CGImageDestinationAddImage(dest, cgImage, nil)
+        CGImageDestinationAddImage(dest, image, dpi as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { return nil }
         return data as Data
     }

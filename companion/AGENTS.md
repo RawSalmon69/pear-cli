@@ -558,6 +558,11 @@ state until it next asks; `currentValue()` is then already off.
   old RMBG-2.0 model (CC-BY-NC, which blocked monetization) on 2026-07-23. Model
   I/O: input `[1,3,1024,1024]` ImageNet-normalized NCHW (the app normalizes);
   output is a **0..1 sigmoid matte** (already sigmoided — do NOT sigmoid again).
+  The matte is bilinear-upsampled and multiplies **every** channel of the
+  premultiplied buffer (alpha alone un-premultiplies into a bright halo), and
+  both engines decode through `BackgroundRemovalService.decode` (EXIF
+  orientation baked in) and keep the source's DPI; the HD output also keeps
+  the source colour space (`HDMatteCompositeTests`, `BackgroundRemovalIOTests`).
 - **Captures are files, not bytes.** A capture is filed the moment it is taken:
   into the user's screenshot folder when auto-save is on, otherwise into
   `~/Library/Application Support/PearCompanion/Captures` (`CaptureStore`,

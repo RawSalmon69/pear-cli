@@ -1,0 +1,153 @@
+import AppKit
+import ImageIO
+import UniformTypeIdentifiers
+import XCTest
+@testable import PearCompanion
+
+/// The HD matte compositing, without the model: a matte applied to a generated
+/// image, encoded and read back the way any app reading the PNG would.
+final class HDMatteCompositeTests: XCTestCase {
+    /// A solid `width`×`height` opaque image of `rgb` in `space`.
+    private func solid(_ rgb: (CGFloat, CGFloat, CGFloat), width: Int = 4, height: Int = 4,
+                       space: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB)!) throws -> CGImage {
+        let ctx = try XCTUnwrap(CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.setFillColor(CGColor(colorSpace: space, components: [rgb.0, rgb.1, rgb.2, 1])!)
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        return try XCTUnwrap(ctx.makeImage())
+    }
+
+    private func pixel(of png: Data, x: Int = 0, y: Int = 0) throws -> [Int] {
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: png))
+        var px = [Int](repeating: 0, count: 4)
+        rep.getPixel(&px, atX: x, y: y)
+        return px
+    }
+
+    /// The halo bug: the matte went into the alpha byte of a PREMULTIPLIED
+    /// buffer with RGB left alone, so the encoder un-premultiplied
+    /// (100,50,30)@63 into (255,202,121). Every channel must scale by the matte.
+    func testMattePremultipliesEveryChannel() {
+        var px: [UInt8] = [100, 50, 30, 255]
+        px.withUnsafeMutableBufferPointer {
+            BEN2Model.applyMatte([63.0 / 255], side: 1, to: $0.baseAddress!, width: 1, height: 1, bytesPerRow: 4)
+        }
+        XCTAssertEqual(px, [25, 12, 7, 63])
+    }
+
+    /// A source pixel that was already partly transparent keeps that: the
+    /// matte multiplies the existing alpha rather than replacing it.
+    func testMatteMultipliesExistingAlpha() {
+        var px: [UInt8] = [50, 0, 0, 128] // premultiplied 100 @ ~half
+        px.withUnsafeMutableBufferPointer {
+            BEN2Model.applyMatte([0.5], side: 1, to: $0.baseAddress!, width: 1, height: 1, bytesPerRow: 4)
+        }
+        XCTAssertEqual(px, [25, 0, 0, 64])
+    }
+
+    func testHalfMatteColourSurvivesThePNGRoundTrip() throws {
+        let image = try solid((100 / 255, 50 / 255, 30 / 255))
+        let matte = [Float](repeating: 63.0 / 255, count: 4)
+        let png = try XCTUnwrap(BEN2Model.composite(cg: image, matte: matte, maskSide: 2, dpi: [:]))
+        let px = try pixel(of: png, x: 1, y: 1)
+        XCTAssertEqual(px[3], 63)
+        for (got, want) in zip(px.prefix(3), [100, 50, 30]) {
+            XCTAssertEqual(got, want, accuracy: 4, "colour washed out: \(px)")
+        }
+    }
+
+    // MARK: Bilinear sampling (the blocky-edge bug: nearest-neighbour upsampling)
+
+    func testSampleIsLinearBetweenNeighbours() {
+        let matte: [Float] = [0, 1,
+                              0, 1]
+        XCTAssertEqual(BEN2Model.sample(matte, side: 2, x: 0.5, y: 0), 0.5, accuracy: 1e-6)
+        XCTAssertEqual(BEN2Model.sample(matte, side: 2, x: 0.25, y: 0.5), 0.25, accuracy: 1e-6)
+    }
+
+    func testSampleClampsAtTheEdges() {
+        let matte: [Float] = [0.2, 0.8,
+                              0.2, 0.8]
+        XCTAssertEqual(BEN2Model.sample(matte, side: 2, x: -3, y: -3), 0.2, accuracy: 1e-6)
+        XCTAssertEqual(BEN2Model.sample(matte, side: 2, x: 5, y: 5), 0.8, accuracy: 1e-6)
+    }
+
+    /// Upsampling a 2-wide hard step to 8 wide gives a ramp, not a 4|4 block.
+    func testUpsampledStepIsARampNotABlock() {
+        var px = [UInt8](repeating: 255, count: 8 * 4)
+        px.withUnsafeMutableBufferPointer {
+            BEN2Model.applyMatte([0, 1, 0, 1], side: 2, to: $0.baseAddress!, width: 8, height: 1, bytesPerRow: 32)
+        }
+        let alphas = stride(from: 3, to: px.count, by: 4).map { px[$0] }
+        XCTAssertEqual(alphas.first, 0)
+        XCTAssertEqual(alphas.last, 255)
+        XCTAssertEqual(alphas, alphas.sorted(), "alpha must rise monotonically: \(alphas)")
+        XCTAssertGreaterThan(Set(alphas).count, 4, "a ramp has intermediate steps: \(alphas)")
+    }
+
+    // MARK: Colour space (P3 used to be clipped to Device RGB)
+
+    func testOutputKeepsTheSourceColourSpace() throws {
+        let p3 = try XCTUnwrap(CGColorSpace(name: CGColorSpace.displayP3))
+        let image = try solid((0, 1, 0), space: p3)
+        let png = try XCTUnwrap(BEN2Model.composite(cg: image, matte: [1], maskSide: 1, dpi: [:]))
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(png as CFData, nil))
+        let out = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        XCTAssertEqual(out.colorSpace?.name, CGColorSpace.displayP3)
+    }
+}
+
+/// Decode and encode shared by the Vision and HD cutouts: orientation and DPI
+/// must survive, or a phone photo comes out sideways and a Retina capture
+/// pastes at twice its size.
+final class BackgroundRemovalIOTests: XCTestCase {
+    private func encode(width: Int, height: Int, as type: UTType,
+                        properties: [CFString: Any]) throws -> Data {
+        let ctx = try XCTUnwrap(CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        let data = NSMutableData()
+        let dest = try XCTUnwrap(CGImageDestinationCreateWithData(data, type.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(dest, try XCTUnwrap(ctx.makeImage()), properties as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(dest))
+        return data as Data
+    }
+
+    private func dpiWidth(of png: Data) -> Double? {
+        let source = CGImageSourceCreateWithData(png as CFData, nil)!
+        let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        return (props?[kCGImagePropertyDPIWidth] as? NSNumber)?.doubleValue
+    }
+
+    func testDecodeAppliesTheEXIFOrientation() throws {
+        let jpeg = try encode(width: 40, height: 20, as: .jpeg, properties: [kCGImagePropertyOrientation: 6])
+        let decoded = try XCTUnwrap(BackgroundRemovalService.decode(jpeg))
+        XCTAssertEqual(decoded.image.width, 20)
+        XCTAssertEqual(decoded.image.height, 40)
+    }
+
+    func testDecodeLeavesAnUprightImageAtFullSize() throws {
+        let png = try encode(width: 40, height: 20, as: .png, properties: [:])
+        let decoded = try XCTUnwrap(BackgroundRemovalService.decode(png))
+        XCTAssertEqual(decoded.image.width, 40)
+        XCTAssertEqual(decoded.image.height, 20)
+    }
+
+    func testDPICarriesFromSourceToCutoutPNG() throws {
+        let source = try encode(width: 8, height: 8, as: .png,
+                                properties: [kCGImagePropertyDPIWidth: 144, kCGImagePropertyDPIHeight: 144])
+        let decoded = try XCTUnwrap(BackgroundRemovalService.decode(source))
+        let png = try XCTUnwrap(BackgroundRemovalService.png(decoded.image, dpi: decoded.dpi))
+        XCTAssertEqual(try XCTUnwrap(dpiWidth(of: png)), 144, accuracy: 0.5)
+    }
+
+    func testHDCompositeKeepsTheDPI() throws {
+        let source = try encode(width: 8, height: 8, as: .png,
+                                properties: [kCGImagePropertyDPIWidth: 144, kCGImagePropertyDPIHeight: 144])
+        let decoded = try XCTUnwrap(BackgroundRemovalService.decode(source))
+        let png = try XCTUnwrap(BEN2Model.composite(cg: decoded.image, matte: [1], maskSide: 1, dpi: decoded.dpi))
+        XCTAssertEqual(try XCTUnwrap(dpiWidth(of: png)), 144, accuracy: 0.5)
+    }
+}
