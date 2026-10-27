@@ -499,6 +499,27 @@ final class ZoomStateMachineTests: XCTestCase {
         XCTAssertEqual(controller.percent, 250)
     }
 
+    /// A fit that changes nothing moves no bounds, so `reflectScrolledClipView`
+    /// never fires. A controller still showing another view's zoom must still be
+    /// told where this one is.
+    func testANoOpFitStillCorrectsAReusedReadout() {
+        let controller = ZoomController()
+        let previous = self.scrollView(document: NSSize(width: 6016, height: 3384),
+                                       viewport: NSSize(width: 1200, height: 700))
+        previous.controller = controller
+        previous.magnification = 0.3
+        XCTAssertEqual(controller.percent, 30)
+
+        // A tiny grab fits at 1.0, which is where a fresh scroll view already is.
+        let scrollView = self.scrollView(document: NSSize(width: 30, height: 30),
+                                        viewport: NSSize(width: 460, height: 436))
+        scrollView.controller = controller
+        scrollView.layout()
+        settle()
+
+        XCTAssertEqual(controller.percent, 100)
+    }
+
     /// The readout now hears every bounds change, including plain panning. A
     /// pan does not change the zoom, so it must not invalidate the views that
     /// read `percent`.

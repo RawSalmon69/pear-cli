@@ -251,6 +251,8 @@ private final class PinImageView: NSImageView {
 
     /// VoiceOver cannot hover, so the ✕ shows while it runs; it can start or
     /// stop with a pin already up. Re-armed per change, like the menu-bar runner.
+    /// A closed pin leaves one dead registration (weak, retains nothing) until
+    /// VoiceOver next toggles.
     private func followVoiceOver() {
         withObservationTracking {
             _ = VoiceOverState.shared.isOn

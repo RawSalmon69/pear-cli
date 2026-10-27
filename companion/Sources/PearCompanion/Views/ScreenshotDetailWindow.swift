@@ -643,7 +643,12 @@ final class ZoomableImageScrollView: NSScrollView {
 
     func setMagnification(_ value: CGFloat, animated: Bool) {
         let clamped = min(max(value, minMagnification), maxMagnification)
-        guard abs(clamped - magnification) > 0.001 else { return }
+        guard abs(clamped - magnification) > 0.001 else {
+            // No bounds move, so `reflectScrolledClipView` stays silent; a
+            // reused controller may still show another image's zoom.
+            controller?.report(magnification)
+            return
+        }
         if animated {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.18
