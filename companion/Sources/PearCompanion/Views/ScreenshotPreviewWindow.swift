@@ -112,7 +112,7 @@ final class ScreenshotPreviewController {
     private var anchorDisplay: CGDirectDisplayID?
 
     private var anchorScreen: NSScreen? {
-        NSScreen.screens.first { $0.displayID == anchorDisplay }
+        anchorDisplay.flatMap { id in NSScreen.screens.first { $0.displayID == id } }
     }
 
     /// The anchor display's live visible frame, read at layout time. Zero when
@@ -314,6 +314,14 @@ final class ScreenshotPreviewController {
             entry.detail = nil
             // Re-arm auto-dismiss (if enabled) once the big view is gone.
             self?.scheduleAutoDismiss(entry)
+            // A card spared from eviction while this window was open may sit
+            // past the fit, off the top of the screen; with auto-dismiss off
+            // nothing else would ever take it. Next turn, never inline: this
+            // runs inside `close()`, which eviction itself calls mid-loop.
+            Task { @MainActor [weak self] in
+                self?.evictOverflow(sparingOpenDetails: true)
+                self?.layout(newItem: nil)
+            }
         }
         entry.detail = controller
         controller.show()
@@ -549,10 +557,8 @@ final class ScreenshotPreviewController {
     /// Fade out and drop the oldest cards beyond the stack limit. A new card
     /// evicts outright; a stack that moved display (`sparingOpenDetails`) keeps
     /// any card whose detail window is open, because the user did not ask for
-    /// that window to go and is likely reading it. A spared card can sit past
-    /// the fit until the next eviction.
-    /// ponytail: no re-check when that detail closes; add one (deferred a turn,
-    /// never from inside this loop's own `close()`) if spared cards linger.
+    /// that window to go and is likely reading it. A spared card sits past the
+    /// fit until its detail window closes, which re-runs this (see `onClosed`).
     private func evictOverflow(sparingOpenDetails: Bool = false) {
         let maxCount = min(Prefs.previewMaxStack, Self.maxCardsThatFit(in: anchorVisible))
         let spared = sparingOpenDetails

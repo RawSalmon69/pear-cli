@@ -397,7 +397,7 @@ final class ScreenshotService {
             }
             self.overwrite(png, at: fileURL)
             self.copyToPasteboard(png, fileURL: fileURL)
-            // nil: not a new capture, so the card keeps the screen it was on.
+            // nil: not a new capture, so the card joins a non-empty stack where it is, or opens an empty one on the focused screen.
             self.present(at: fileURL, capturedOn: nil)
         }
     }

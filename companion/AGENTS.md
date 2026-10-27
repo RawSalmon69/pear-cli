@@ -596,7 +596,8 @@ state until it next asks; `currentValue()` is then already off.
   `panel.screen`, which reads the off-screen slide-in start frame. Eviction on
   follow / screen change spares a card whose detail window is open
   (`PreviewStackLayout.evictionVictims`), so moving never closes what the user
-  is reading; a new capture still evicts outright.
+  is reading, and re-runs (next main-actor turn) when that window closes, so a
+  spared card never lingers off-screen; a new capture still evicts outright.
   Scratchpad still opens on the primary display. Menu-bar hider
   seeds its separator positions only when unset so the user's layout survives
   updates.

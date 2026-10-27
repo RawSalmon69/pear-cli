@@ -58,6 +58,14 @@ final class ScreenshotStackTests: XCTestCase {
         XCTAssertEqual(PreviewStackLayout.evictionVictims(count: 3, maxFit: 2, protected: [0]), [2])
         XCTAssertEqual(PreviewStackLayout.evictionVictims(count: 4, maxFit: 2, protected: []), [2, 3])
     }
+
+    /// Protection lasts only while the detail window is open: the re-run on its
+    /// close sees the card unprotected and evicts it, or a spared card would
+    /// sit off the top of the screen for good with auto-dismiss off.
+    func testASparedCardIsEvictedOnceItsDetailCloses() {
+        XCTAssertEqual(PreviewStackLayout.evictionVictims(count: 3, maxFit: 2, protected: [2]), [])
+        XCTAssertEqual(PreviewStackLayout.evictionVictims(count: 3, maxFit: 2, protected: []), [2])
+    }
 }
 
 /// Which display the preview stack anchors to. The card belongs on the screen
