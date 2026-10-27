@@ -22,6 +22,8 @@ struct SwitchesView: View {
     private var showHideDesktop = SystemSwitch.hideDesktop.defaultVisible
     @AppStorage(SwitchesSettings.showKey(.showHidden))
     private var showShowHidden = SystemSwitch.showHidden.defaultVisible
+    @AppStorage(SwitchesSettings.showKey(.showExtensions))
+    private var showShowExtensions = SystemSwitch.showExtensions.defaultVisible
 
     private let columns = [GridItem(.flexible(), spacing: Theme.Space.medium),
                            GridItem(.flexible(), spacing: Theme.Space.medium)]
@@ -71,6 +73,7 @@ struct SwitchesView: View {
         case .displayOff: showDisplayOff
         case .hideDesktop: showHideDesktop
         case .showHidden: showShowHidden
+        case .showExtensions: showShowExtensions
         }
     }
 }
@@ -245,6 +248,7 @@ private struct SwitchTile: View {
         case .lidClosed: model.lidClosedOn
         case .hideDesktop: model.hideDesktopOn
         case .showHidden: model.showHiddenOn
+        case .showExtensions: model.showExtensionsOn
         case .screenSaver, .lockScreen, .displayOff: false
         }
     }
@@ -258,6 +262,7 @@ private struct SwitchTile: View {
                 case .lidClosed: Task { await model.setLidClosed(newValue) }
                 case .hideDesktop: Task { await model.setHideDesktop(newValue) }
                 case .showHidden: Task { await model.setShowHidden(newValue) }
+                case .showExtensions: Task { await model.setShowExtensions(newValue) }
                 case .screenSaver, .lockScreen, .displayOff: break
                 }
             }

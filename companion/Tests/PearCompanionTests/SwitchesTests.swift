@@ -71,13 +71,13 @@ final class SwitchesTests: XCTestCase {
     func testOwnerLockedSwitches() {
         // Three removals at the owner's order: Screen Test (hard-locked a machine
         // with undismissable fullscreen overlays), Mute, and Big Cursor (a
-        // TCC-gated write that could silently not apply). Lid Closed and
-        // Display Off were added.
-        XCTAssertEqual(SystemSwitch.allCases.count, 7)
+        // TCC-gated write that could silently not apply). Lid Closed, Display
+        // Off and Show File Extensions were added.
+        XCTAssertEqual(SystemSwitch.allCases.count, 8)
         XCTAssertEqual(
             SystemSwitch.allCases.map(\.rawValue),
             ["keepAwake", "lidClosed", "screenSaver", "lockScreen", "displayOff",
-             "hideDesktop", "showHidden"]
+             "hideDesktop", "showHidden", "showExtensions"]
         )
         for gone in ["mute", "bigCursor"] {
             XCTAssertFalse(
@@ -88,7 +88,7 @@ final class SwitchesTests: XCTestCase {
 
     func testSwitchKinds() {
         let toggles: Set<SystemSwitch> = [
-            .keepAwake, .lidClosed, .hideDesktop, .showHidden,
+            .keepAwake, .lidClosed, .hideDesktop, .showHidden, .showExtensions,
         ]
         for toggle in SystemSwitch.allCases {
             let expected: SystemSwitch.Kind = toggles.contains(toggle) ? .toggle : .momentary
@@ -100,6 +100,7 @@ final class SwitchesTests: XCTestCase {
         XCTAssertFalse(SystemSwitch.lidClosed.defaultVisible)
         XCTAssertFalse(SystemSwitch.hideDesktop.defaultVisible)
         XCTAssertFalse(SystemSwitch.showHidden.defaultVisible)
+        XCTAssertFalse(SystemSwitch.showExtensions.defaultVisible)
         for toggle in [SystemSwitch.keepAwake, .screenSaver, .lockScreen, .displayOff] {
             XCTAssertTrue(toggle.defaultVisible, "\(toggle.rawValue) should default shown")
         }
@@ -196,6 +197,26 @@ final class SwitchesTests: XCTestCase {
         XCTAssertTrue(SwitchCommands.showHiddenIsOn(fromRead: "1\n"))
         XCTAssertTrue(SwitchCommands.showHiddenIsOn(fromRead: "true"))
         XCTAssertFalse(SwitchCommands.showHiddenIsOn(fromRead: "0"))
+    }
+
+    func testShowExtensionsCommands() {
+        XCTAssertEqual(SwitchCommands.showExtensions(true), [
+            ShellCommand(binary: "/usr/bin/defaults",
+                         arguments: ["write", "NSGlobalDomain", "AppleShowAllExtensions", "-bool", "true"]),
+            ShellCommand(binary: "/usr/bin/killall", arguments: ["Finder"]),
+        ])
+        XCTAssertEqual(SwitchCommands.showExtensions(false).first?.arguments.last, "false")
+        XCTAssertEqual(SwitchCommands.showExtensionsRead,
+                       ShellCommand(binary: "/usr/bin/defaults",
+                                    arguments: ["read", "NSGlobalDomain", "AppleShowAllExtensions"]))
+    }
+
+    func testShowExtensionsParse() {
+        // Absent key (macOS default: extensions hidden) reads as off.
+        XCTAssertFalse(SwitchCommands.showExtensionsIsOn(fromRead: nil))
+        XCTAssertFalse(SwitchCommands.showExtensionsIsOn(fromRead: ""))
+        XCTAssertTrue(SwitchCommands.showExtensionsIsOn(fromRead: "1\n"))
+        XCTAssertFalse(SwitchCommands.showExtensionsIsOn(fromRead: "0\n"))
     }
 
     func testLidClosedPromptedGoesThroughAdminAuthorization() {
@@ -313,6 +334,24 @@ final class SwitchesTests: XCTestCase {
         await model.setShowHidden(true)
         XCTAssertEqual(runner.recorded, SwitchCommands.showHidden(true))
         XCTAssertTrue(model.showHiddenOn)
+    }
+
+    func testSetShowExtensionsRunsExactCommands() async {
+        let runner = MockCommandRunner { _ in .success(Data()) }
+        let model = makeModel(runner: runner)
+        await model.setShowExtensions(true)
+        XCTAssertEqual(runner.recorded, SwitchCommands.showExtensions(true))
+        XCTAssertTrue(model.showExtensionsOn)
+    }
+
+    func testFailedShowExtensionsWriteReconcilesWithTheLiveValue() async {
+        let runner = MockCommandRunner { command in
+            command == SwitchCommands.showExtensionsRead ? success("0") : .failed
+        }
+        let model = makeModel(runner: runner)
+        await model.setShowExtensions(true)
+        XCTAssertFalse(model.showExtensionsOn, "a write that did not apply must not show as on")
+        XCTAssertEqual(runner.recorded.last, SwitchCommands.showExtensionsRead)
     }
 
     func testGrantedLidFlipNeverReachesTheAuthDialog() async {
@@ -563,6 +602,7 @@ final class SwitchesTests: XCTestCase {
             switch command {
             case SwitchCommands.hideDesktopRead: success("0")   // hidden
             case SwitchCommands.showHiddenRead: success("1")    // showing
+            case SwitchCommands.showExtensionsRead: success("1")
             case SwitchCommands.lidClosedRead:
                 success("System-wide power settings:\n SleepDisabled\t\t1\n")
             default: .failed
@@ -576,6 +616,7 @@ final class SwitchesTests: XCTestCase {
         XCTAssertTrue(model.keepAwakeOn)
         XCTAssertTrue(model.hideDesktopOn)
         XCTAssertTrue(model.showHiddenOn)
+        XCTAssertTrue(model.showExtensionsOn)
         XCTAssertTrue(model.lidClosedOn)
     }
 
@@ -586,6 +627,7 @@ final class SwitchesTests: XCTestCase {
         XCTAssertFalse(model.keepAwakeOn)
         XCTAssertFalse(model.hideDesktopOn)
         XCTAssertFalse(model.showHiddenOn)
+        XCTAssertFalse(model.showExtensionsOn)
         XCTAssertFalse(model.lidClosedOn)
     }
 

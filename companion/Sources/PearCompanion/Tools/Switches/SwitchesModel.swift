@@ -66,6 +66,27 @@ enum SwitchCommands {
         return (value as NSString).boolValue
     }
 
+    // MARK: Show File Extensions (NSGlobalDomain AppleShowAllExtensions)
+    // Finder's "Show all filename extensions". Global domain, so open and save
+    // panels in other apps follow it from their next launch; Finder is relaunched
+    // like Show Hidden. Absent key = macOS default (extensions hidden) = off.
+
+    static let showExtensionsRead = ShellCommand(
+        binary: defaultsBinary, arguments: ["read", "NSGlobalDomain", "AppleShowAllExtensions"]
+    )
+
+    static func showExtensions(_ on: Bool) -> [ShellCommand] {
+        [
+            ShellCommand(binary: defaultsBinary,
+                         arguments: ["write", "NSGlobalDomain", "AppleShowAllExtensions", "-bool", on ? "true" : "false"]),
+            ShellCommand(binary: killallBinary, arguments: ["Finder"]),
+        ]
+    }
+
+    static func showExtensionsIsOn(fromRead output: String?) -> Bool {
+        showHiddenIsOn(fromRead: output)
+    }
+
     // MARK: Lid Closed (pmset disablesleep / SleepDisabled)
     // Prior art: https://github.com/pistachionet/awake (MIT) established that
     // `pmset -a disablesleep` is the only lever that survives a lid close (IOKit
@@ -192,6 +213,7 @@ final class SwitchesModel {
     var lidClosedOn = false
     var hideDesktopOn = false
     var showHiddenOn = false
+    var showExtensionsOn = false
 
     /// When a timed Lid Closed session ends, so the grid can say it. Nil means
     /// the switch is either off or on indefinitely.
@@ -258,13 +280,15 @@ final class SwitchesModel {
 
     func refresh() async {
         keepAwakeOn = power.isActive
-        // The three `defaults read`s are independent, so spawn them together
-        // rather than paying three sequential process round-trips on open.
+        // The four reads are independent, so spawn them together rather than
+        // paying four sequential process round-trips on open.
         async let hideDesktop = read(SwitchCommands.hideDesktopRead)
         async let showHidden = read(SwitchCommands.showHiddenRead)
+        async let showExtensions = read(SwitchCommands.showExtensionsRead)
         async let lidClosed = read(SwitchCommands.lidClosedRead)
         hideDesktopOn = SwitchCommands.hideDesktopIsOn(fromRead: await hideDesktop)
         showHiddenOn = SwitchCommands.showHiddenIsOn(fromRead: await showHidden)
+        showExtensionsOn = SwitchCommands.showExtensionsIsOn(fromRead: await showExtensions)
         lidClosedOn = SwitchCommands.lidClosedIsOn(fromRead: await lidClosed)
         lidRuleInstalled = ruleExists()
         // A session the user cannot see the effect of is just a stale label.
@@ -395,6 +419,14 @@ final class SwitchesModel {
         showHiddenOn = on
         if await run(SwitchCommands.showHidden(on)) == false {
             showHiddenOn = SwitchCommands.showHiddenIsOn(fromRead: await read(SwitchCommands.showHiddenRead))
+        }
+    }
+
+    func setShowExtensions(_ on: Bool) async {
+        showExtensionsOn = on
+        if await run(SwitchCommands.showExtensions(on)) == false {
+            showExtensionsOn = SwitchCommands.showExtensionsIsOn(
+                fromRead: await read(SwitchCommands.showExtensionsRead))
         }
     }
 
