@@ -517,6 +517,41 @@ final class ZoomStateMachineTests: XCTestCase {
 
         XCTAssertFalse(notified.raised, "same zoom, same readout: nothing to re-render")
     }
+
+    /// Fit is the zoom-out floor. With the user's zoom kept across a resize, the
+    /// floor stayed at the old fit: a smaller window could no longer zoom out
+    /// to the whole image.
+    func testShrinkingTheWindowLowersTheZoomOutFloor() {
+        let scrollView = self.scrollView(document: NSSize(width: 6016, height: 3384),
+                                        viewport: NSSize(width: 1200, height: 700))
+        scrollView.layout()
+        settle()
+
+        scrollView.magnification = 1.0
+        scrollView.setFrameSize(NSSize(width: 600, height: 350))
+        scrollView.layout()
+        settle()
+
+        XCTAssertEqual(scrollView.minMagnification, 600.0 / 6016.0, accuracy: 0.001)
+        XCTAssertEqual(scrollView.magnification, 1.0, accuracy: 0.001, "the user's zoom stays")
+    }
+
+    /// And the other way: a bigger window must not leave the image zoomed out
+    /// past its new fit.
+    func testEnlargingTheWindowRaisesTheFloorAndClampsTheZoomUp() {
+        let scrollView = self.scrollView(document: NSSize(width: 6016, height: 3384),
+                                        viewport: NSSize(width: 600, height: 350))
+        scrollView.layout()
+        settle()
+
+        scrollView.magnification = 0.12 // above the 600-wide fit, below the 1200-wide one
+        scrollView.setFrameSize(NSSize(width: 1200, height: 700))
+        scrollView.layout()
+        settle()
+
+        XCTAssertEqual(scrollView.minMagnification, 1200.0 / 6016.0, accuracy: 0.001)
+        XCTAssertEqual(scrollView.magnification, 1200.0 / 6016.0, accuracy: 0.001)
+    }
 }
 
 /// How the HD background-removal model is loaded. Measured on an M-series Mac:

@@ -537,8 +537,8 @@ final class ZoomableImageScrollView: NSScrollView {
 
     private var didFit = false
     private var fitMagnification: CGFloat = 1
-    /// Viewport the last fit was computed for. A layout pass that did not change
-    /// the viewport has nothing to fit.
+    /// Viewport the last fit (or floor) was computed for. A layout pass that did
+    /// not change the viewport has nothing to fit.
     private var lastFitViewport: NSSize = .zero
     /// Once the user zooms deliberately, a window resize must not yank them
     /// back to fit.
@@ -561,7 +561,14 @@ final class ZoomableImageScrollView: NSScrollView {
             // layout pass silently threw their zoom away — the gesture looked
             // like it had not registered. Comparing against the fit actually
             // applied catches every path, including ones added later.
-            guard !userAdjusted, abs(magnification - fitMagnification) < 0.001 else { return }
+            if userAdjusted || abs(magnification - fitMagnification) >= 0.001 {
+                // The user's zoom stays, but fit is still the zoom-out floor and
+                // fit just changed: left alone, a smaller window could not zoom
+                // out to the whole image and a bigger one could zoom out past it.
+                lastFitViewport = bounds.size
+                DispatchQueue.main.async { [weak self] in self?.updateFloor() }
+                return
+            }
         }
         didFit = true
         lastFitViewport = bounds.size
@@ -609,6 +616,17 @@ final class ZoomableImageScrollView: NSScrollView {
         minMagnification = target
         userAdjusted = false
         setMagnification(target, animated: animated)
+    }
+
+    /// Moves the zoom-out floor to the current viewport's fit without touching
+    /// a zoom the user owns, except to lift one the new floor now sits above.
+    private func updateFloor() {
+        guard let document = documentView,
+              let target = Self.fitTarget(viewport: bounds.size, document: document.bounds.size)
+        else { return }
+        fitMagnification = target
+        minMagnification = target
+        if magnification < target { magnification = target }
     }
 
     func step(by factor: CGFloat) {

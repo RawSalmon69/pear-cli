@@ -280,7 +280,8 @@ instantly) and **Window Shot** (⌃⇧W, click a window) — all three are
 `ScreenshotTool` modes sharing one preview/markup/send flow. Clicking a preview
 card opens the **detail window** (`ScreenshotDetailWindow.swift`): the shot in a
 magnifying `NSScrollView` (pinch / ⌘-scroll / double-click / ⌘+ ⌘− ⌘0 / zoom
-capsule, with a centering clip view and fit as the zoom-out floor — native
+capsule, with a centering clip view and fit as the zoom-out floor, re-floored
+on every resize even when the user owns the zoom — native
 AppKit, not custom gesture math), an eyedropper that samples exact image pixels
 (`PixelSampler`), the same actions, and a sidebar of
 `ScreenshotInsights` — full OCR text in its own scroll box, QR payloads, color
