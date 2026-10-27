@@ -587,7 +587,9 @@ state until it next asks; `currentValue()` is then already off.
   A failed read dismisses the card (with `.discard`) rather than leaving buttons
   that do nothing. A Markup edit keeps the capture's points-per-pixel
   (`NSImage.keepingScale`, crop included), so a Retina shot stays 144 dpi and
-  does not paste at twice its size in Pages, Keynote or Mail.
+  does not paste at twice its size in Pages, Keynote or Mail. Markup's undo and
+  redo (⌘Z / ⌘⇧Z) walk one snapshot history, crop included (`MarkupHistory`,
+  tested); ⌘Z with a text draft open discards it, and ⌘⇧Z puts it back as text.
 - **Floating-window positioning**: the screenshot preview opens on **the screen
   the shot was taken on** and thereafter **follows the focused window's display**
   (`ScreenshotPreviewController.anchor`, pure and tested — one decision for both:

@@ -174,6 +174,46 @@ extension Annotation {
     }
 }
 
+// MARK: - Undo / redo
+
+/// Undoable editor state. Base image is a reference, so a snapshot is cheap,
+/// and one snapshot covers a crop (which replaces the image) too.
+struct MarkupSnapshot {
+    let image: NSImage
+    let pixelSize: CGSize
+    let pixelated: NSImage?
+    let annotations: [Annotation]
+}
+
+/// Undo and redo over whole-editor snapshots. The editor records the state an
+/// edit replaces; undo and redo trade the current state for the stored one.
+struct MarkupHistory {
+    private var undoStack: [MarkupSnapshot] = []
+    private var redoStack: [MarkupSnapshot] = []
+
+    var canUndo: Bool { !undoStack.isEmpty }
+    var canRedo: Bool { !redoStack.isEmpty }
+
+    /// Call before an edit with the state it replaces. A new edit forks
+    /// history, so whatever was undone can no longer be redone.
+    mutating func record(_ current: MarkupSnapshot) {
+        undoStack.append(current)
+        redoStack.removeAll()
+    }
+
+    mutating func undo(from current: MarkupSnapshot) -> MarkupSnapshot? {
+        guard let previous = undoStack.popLast() else { return nil }
+        redoStack.append(current)
+        return previous
+    }
+
+    mutating func redo(from current: MarkupSnapshot) -> MarkupSnapshot? {
+        guard let next = redoStack.popLast() else { return nil }
+        undoStack.append(current)
+        return next
+    }
+}
+
 // MARK: - Image helpers
 
 extension NSImage {

@@ -61,9 +61,9 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
         window.title = "Markup"
         window.isReleasedWhenClosed = false
         // Wide enough for the full toolbar (7 tools + colour + stroke + undo +
-        // Cancel/Done ≈ 640 pt) — at 520 the trailing buttons clipped into
-        // unreadable slivers (owner report, 2.3.0).
-        window.minSize = NSSize(width: 660, height: 420)
+        // redo + Cancel/Done ≈ 675 pt) — at 520 the trailing buttons clipped
+        // into unreadable slivers (owner report, 2.3.0).
+        window.minSize = NSSize(width: 700, height: 420)
         window.contentView = NSHostingView(rootView: root)
         window.delegate = self
         // `center()` would use whichever screen the zero origin lands on.
@@ -130,9 +130,9 @@ struct MarkupEditorView: View {
     /// Pending crop region in image coordinates while the crop tool is active.
     @State private var cropRect: CGRect?
 
-    /// Full editor snapshots for undo, so a single stack covers both
+    /// Full editor snapshots for undo and redo, so one history covers both
     /// annotation edits and crops (which change the base image too).
-    @State private var undoStack: [Snapshot] = []
+    @State private var history = MarkupHistory()
 
     /// In-progress drag in canvas (view) coordinates.
     @State private var dragStart: CGPoint?
@@ -161,14 +161,6 @@ struct MarkupEditorView: View {
         _image = State(initialValue: image)
         _pixelSize = State(initialValue: image.pixelSize)
         _pixelated = State(initialValue: Pixelation.pixelated(image))
-    }
-
-    /// Undoable editor state. Base image is a reference, so a snapshot is cheap.
-    private struct Snapshot {
-        let image: NSImage
-        let pixelSize: CGSize
-        let pixelated: NSImage?
-        let annotations: [Annotation]
     }
 
     private var isCropping: Bool { tool == .crop && cropRect != nil }
@@ -225,8 +217,14 @@ struct MarkupEditorView: View {
             GlyphButton(symbol: "arrow.uturn.backward", help: "Undo") {
                 undo()
             }
-            .disabled(undoStack.isEmpty)
+            .disabled(!history.canUndo)
             .keyboardShortcut("z", modifiers: .command)
+
+            GlyphButton(symbol: "arrow.uturn.forward", help: "Redo") {
+                redo()
+            }
+            .disabled(!history.canRedo)
+            .keyboardShortcut("z", modifiers: [.command, .shift])
 
             Spacer()
 
@@ -491,18 +489,38 @@ struct MarkupEditorView: View {
 
     // MARK: Undo
 
-    private func pushUndo() {
-        undoStack.append(Snapshot(image: image, pixelSize: pixelSize,
-                                  pixelated: pixelated, annotations: annotations))
+    private var current: MarkupSnapshot {
+        MarkupSnapshot(image: image, pixelSize: pixelSize,
+                       pixelated: pixelated, annotations: annotations)
     }
 
+    private func pushUndo() {
+        history.record(current)
+    }
+
+    /// An open text draft is committed first, so ⌘Z discards it (the commit is
+    /// the step undone) and ⌘⇧Z brings it back as a placed annotation.
     private func undo() {
         commitDraft()
-        guard let last = undoStack.popLast() else { return }
-        image = last.image
-        pixelSize = last.pixelSize
-        pixelated = last.pixelated
-        annotations = last.annotations
+        guard let previous = history.undo(from: current) else { return }
+        restore(previous)
+    }
+
+    /// Committing a non-empty draft is a new edit, which clears redo, so ⌘⇧Z
+    /// while typing just places the text.
+    private func redo() {
+        commitDraft()
+        guard let next = history.redo(from: current) else { return }
+        restore(next)
+    }
+
+    private func restore(_ snapshot: MarkupSnapshot) {
+        image = snapshot.image
+        pixelSize = snapshot.pixelSize
+        pixelated = snapshot.pixelated
+        annotations = snapshot.annotations
+        // A pending crop rect was measured on the image just replaced.
+        if cropRect != nil { cropRect = CGRect(origin: .zero, size: snapshot.pixelSize) }
     }
 
     // MARK: Flatten
