@@ -520,6 +520,9 @@ state until it next asks; `currentValue()` is then already off.
   miniaturizable, resizable, standard title bar and background, normal level),
   shown with `makeKeyAndOrderFront` + `NSApp.activate`. The detail window opens
   centred on its card's screen, so focusing it does not move the preview stack.
+  Markup opens sized for and centred on the screen of the window it was opened
+  from (the key card or detail window, else the pointer's screen), never via
+  `center()`, which picks whichever screen the zero origin lands on.
   Preview cards stay non-activating borderless panels; their action bar (and the
   Disk treemap tooltip) sits on glass, so it takes a flat
   `windowBackgroundColor` fill, not more glass. Window Shot's icon is

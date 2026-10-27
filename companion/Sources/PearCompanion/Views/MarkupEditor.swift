@@ -42,8 +42,17 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
             self?.finish(with: result)
         }
 
+        // The screen of the window the user clicked from (the card, or the
+        // detail window, still key at this point), else the pointer's (a
+        // just-closed detail window is no longer key), else the main screen.
+        let mouse = NSEvent.mouseLocation
+        let screen = NSApp.keyWindow?.screen
+            ?? NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
+            ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: Self.initialContentSize(for: image)),
+            contentRect: NSRect(origin: .zero,
+                                size: Self.initialContentSize(pixels: image.pixelSize, visible: visible.size)),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -56,24 +65,28 @@ final class MarkupWindowController: NSObject, NSWindowDelegate {
         window.minSize = NSSize(width: 660, height: 420)
         window.contentView = NSHostingView(rootView: root)
         window.delegate = self
-        window.center()
+        // `center()` would use whichever screen the zero origin lands on.
+        window.setFrameOrigin(Self.centred(size: window.frame.size, in: visible))
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = window
     }
 
-    /// Fit the image into ~80% of the main screen, leaving room for the toolbar.
-    private static func initialContentSize(for image: NSImage) -> NSSize {
+    /// Fit the image into ~80% of the target screen, leaving room for the toolbar.
+    nonisolated static func initialContentSize(pixels px: CGSize, visible screen: CGSize) -> NSSize {
         let toolbarHeight: CGFloat = 64
-        let screen = NSScreen.main?.visibleFrame.size ?? CGSize(width: 1440, height: 900)
         let maxCanvas = CGSize(
             width: screen.width * 0.8,
             height: screen.height * 0.8 - toolbarHeight
         )
-        let px = image.pixelSize
         let scale = min(maxCanvas.width / px.width, maxCanvas.height / px.height, 1)
         let canvas = CGSize(width: px.width * scale, height: px.height * scale)
         return NSSize(width: max(canvas.width, 520), height: canvas.height + toolbarHeight)
+    }
+
+    /// Origin that centres a window of `size` on `visible`.
+    nonisolated static func centred(size: NSSize, in visible: NSRect) -> NSPoint {
+        NSPoint(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2)
     }
 
     private func finish(with result: NSImage?) {
