@@ -202,6 +202,9 @@ private final class PinImageView: NSImageView {
     private let fileURL: URL
     private let closeButton = PinCloseButton()
     private var showingClose = false
+    /// Kept so a resize or VoiceOver starting can re-decide the ✕ without a
+    /// fresh mouseEntered.
+    private var hovering = false
 
     init(frame: NSRect, fileURL: URL) {
         self.fileURL = fileURL
@@ -229,12 +232,36 @@ private final class PinImageView: NSImageView {
             rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
             owner: self, userInfo: nil))
         setHovering(false, animated: false)
+        followVoiceOver()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /// A resize can make the pin too small for the ✕ or big enough for it, and
+    /// the ✕'s frame was only decided on hover. This view is resized by the
+    /// window as its content view; it never resizes the window.
+    override func setFrameSize(_ newSize: NSSize) {
+        let changed = newSize != frame.size
+        super.setFrameSize(newSize)
+        if changed { setHovering(hovering, animated: false) }
+    }
+
+    /// VoiceOver cannot hover, so the ✕ shows while it runs; it can start or
+    /// stop with a pin already up. Re-armed per change, like the menu-bar runner.
+    private func followVoiceOver() {
+        withObservationTracking {
+            _ = VoiceOverState.shared.isOn
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.setHovering(self.hovering, animated: false)
+                self.followVoiceOver()
+            }
+        }
+    }
 
     override func mouseDown(with event: NSEvent) {
         // A control-click is the context menu, never a drag.
@@ -266,6 +293,7 @@ private final class PinImageView: NSImageView {
     /// Shows the ✕ while hovered (always under VoiceOver, which cannot hover)
     /// when the pin is big enough for it. Fades, unless Reduce Motion is on.
     func setHovering(_ hovering: Bool, animated: Bool) {
+        self.hovering = hovering
         let frame = PinLayout.closeButtonFrame(in: bounds, button: closeButton.frame.size)
         let show = (hovering || NSWorkspace.shared.isVoiceOverEnabled) && frame != nil
         if let frame { closeButton.frame = frame }
