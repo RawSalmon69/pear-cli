@@ -349,19 +349,9 @@ final class ScreenshotService {
             onCopy: { [weak self] in
                 if self?.copyToPasteboard(at: fileURL) == true { SoundEffects.play(.copy) }
             },
-            onCopyText: { [weak self] in
-                // The card offers this before its insights scan is done, so
-                // recognise here, but off the main actor: Vision `.accurate` on
-                // a full-res shot froze the app for seconds.
-                Task { @MainActor in
-                    let text = await Task.detached(priority: .userInitiated) {
-                        CaptureImage.decode(at: fileURL).map(OCRText.recognize(in:))
-                    }.value
-                    guard let self else { return }
-                    guard let text else { return self.missing(fileURL, "not a decodable image") }
-                    self.ocr.copyText(text)
-                }
-            },
+            // The card and the detail window offer this only once the insights
+            // scan has text, and hand that text in: no second recognition.
+            onCopyText: { [weak self] text in self?.ocr.copyText(text) },
             onQRTap: { [weak self] payloads in
                 self?.qr.deliver(payloads)
             },

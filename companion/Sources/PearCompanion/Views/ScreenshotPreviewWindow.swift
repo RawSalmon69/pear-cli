@@ -46,7 +46,7 @@ private struct DetailContext {
     let canSave: Bool
     let canRemoveBackground: Bool
     let onCopy: () -> Void
-    let onCopyText: (() -> Void)?
+    let onCopyText: ((String) -> Void)?
     let onQRTap: (([String]) -> Void)?
     let onSave: () -> Bool
     let onReveal: () -> Void
@@ -136,7 +136,7 @@ final class ScreenshotPreviewController {
         canSave: Bool = false,
         canRemoveBackground: Bool = true,
         onCopy: @escaping () -> Void,
-        onCopyText: (() -> Void)? = nil,
+        onCopyText: ((String) -> Void)? = nil,
         onQRTap: (([String]) -> Void)? = nil,
         onReveal: @escaping () -> Void,
         onMarkup: @escaping () -> Void,
@@ -705,7 +705,7 @@ private struct ScreenshotPreviewView: View {
     let canRemoveBackground: Bool
     let insights: ScreenshotInsights
     let onCopy: () -> Void
-    let onCopyText: (() -> Void)?
+    let onCopyText: ((String) -> Void)?
     let onQRTap: (([String]) -> Void)?
     let onOpen: () -> Void
     let onPin: () -> Void
@@ -775,8 +775,9 @@ private struct ScreenshotPreviewView: View {
             PreviewAction(symbol: copied ? "checkmark" : "doc.on.doc", help: "Copy") {
                 onCopy(); withAnimation { copied = true }
             }
-            if let onCopyText {
-                PreviewAction(symbol: "text.viewfinder", help: "Copy text", action: onCopyText)
+            // Only once the scan has text: copies what it read, no second pass.
+            if let onCopyText, !insights.text.isEmpty {
+                PreviewAction(symbol: "text.viewfinder", help: "Copy text") { onCopyText(insights.text) }
             }
             if canSave {
                 PreviewAction(symbol: saved ? "checkmark" : "square.and.arrow.down", help: "Save") {

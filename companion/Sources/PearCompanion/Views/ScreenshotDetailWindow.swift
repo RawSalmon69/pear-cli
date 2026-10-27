@@ -107,7 +107,7 @@ struct ScreenshotDetailView: View {
     let canSave: Bool
     let canRemoveBackground: Bool
     let onCopy: () -> Void
-    let onCopyText: (() -> Void)?
+    let onCopyText: ((String) -> Void)?
     let onQRTap: (([String]) -> Void)?
     let onPin: () -> Void
     let onSave: () -> Void
@@ -211,7 +211,7 @@ struct ScreenshotDetailView: View {
             title: "Extracted text",
             subtitle: textSubtitle,
             action: insights.text.isEmpty ? nil : onCopyText.map { copy in
-                DetailSection.Action(symbol: "doc.on.doc", help: "Copy all text", run: copy)
+                DetailSection.Action(symbol: "doc.on.doc", help: "Copy all text") { copy(insights.text) }
             }
         ) {
             if !insights.text.isEmpty {
