@@ -214,8 +214,13 @@ final class ScreenshotPreviewController {
             )
         )
         // Fix the anchor screen when a fresh stack starts; existing stacks keep
-        // theirs so the cards stay put rather than teleporting mid-stack.
-        if entries.isEmpty { anchorDisplay = resolvedAnchor(capturedOn: screen) }
+        // theirs so the cards stay put rather than teleporting mid-stack. A
+        // fresh stack with no capture screen (Recent strip, a re-presented
+        // edit) opens on the focused screen: an emptied stack's display is
+        // stale, however long ago it emptied.
+        if entries.isEmpty {
+            anchorDisplay = resolvedAnchor(capturedOn: screen, focused: NSScreen.main)
+        }
         entries.insert(entry, at: 0)
         evictOverflow()
         layout(newItem: entry)
@@ -285,8 +290,10 @@ final class ScreenshotPreviewController {
         let controller = ScreenshotDetailWindowController(
             content: content,
             imageSize: pixelSize.width > 0 ? pixelSize : image.size,
-            // The card's screen: focusing the window there leaves the stack put.
-            screen: entry.panel.screen
+            // The stack's display: focusing the window there leaves the stack
+            // put. Not `panel.screen`, which a card opened in the same turn
+            // reads from its off-screen slide-in start frame.
+            screen: anchorScreen
         )
         controller.onClosed = { [weak self, weak entry] in
             guard let entry else { return }
@@ -328,8 +335,8 @@ final class ScreenshotPreviewController {
     /// - `captured` is the screen the shot came from. A screen unplugged between
     ///   the capture and the card is no longer in `available`, so it is dropped.
     /// - `focused` is the focused window's screen, when following focus.
-    /// - `current` alone means "keep where you are": a re-present after markup
-    ///   or background removal, where the old card just dismissed itself.
+    /// - `current` alone means "keep where you are": a screen-parameter change.
+    ///   A card added to a non-empty stack never re-resolves at all.
     /// - `fallback` is the menu-bar display, deliberately not `NSScreen.main`:
     ///   main follows the key window, so it drifts to whatever app is focused,
     ///   which is the unpredictability this anchor exists to avoid.

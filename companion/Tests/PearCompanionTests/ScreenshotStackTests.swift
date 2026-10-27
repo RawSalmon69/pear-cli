@@ -124,6 +124,17 @@ final class ScreenshotAnchorTests: XCTestCase {
             laptop)
     }
 
+    /// A fresh stack with no capture screen (opened from the panel's Recent
+    /// strip, or an edit re-presented after its card left) opens where the user
+    /// is now. The emptied stack's old display is stale: it used to win here,
+    /// so a Recent-strip open landed on whatever display the last stack was on.
+    func testAFreshStackWithNoCaptureScreenOpensOnTheFocusedScreen() {
+        XCTAssertEqual(
+            ScreenshotPreviewController.anchor(
+                captured: nil, focused: external, current: laptop, available: both, fallback: laptop),
+            external)
+    }
+
     /// First card of a fresh stack with nothing to go on.
     func testNoCaptureNoFocusAndNoCurrentAnchorFallsBack() {
         XCTAssertEqual(
