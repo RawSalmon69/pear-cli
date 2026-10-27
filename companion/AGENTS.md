@@ -335,7 +335,8 @@ running. Every flip tries `sudo -n` first and falls back to one
 `osascript … with administrator privileges` call, so the switch works with no
 grant at all. An **optional one-time grant** installs a NOPASSWD sudoers rule
 scoped to those two exact command lines, which is what buys silent flips, the
-5h/12h auto-sleep timers, and the restore-on-quit — install it by validating a
+5h/12h auto-sleep timers (plus a Custom… quarter-hour stepper, 15 min–24 h,
+remembered in `Prefs.lidCustomMinutes`), and the restore-on-quit — install it by validating a
 dot-prefixed staged file with `visudo -cf` **before** renaming it into place, never
 the other way round: a malformed file in `/etc/sudoers.d` makes sudo refuse to
 parse its config at all. The switch defaults hidden (Rule B), the panel states the

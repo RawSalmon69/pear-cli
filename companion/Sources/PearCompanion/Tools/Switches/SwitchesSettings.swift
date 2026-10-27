@@ -98,3 +98,28 @@ enum SwitchesSettings {
         SystemSwitch.allCases.filter { isVisible($0, store) }
     }
 }
+
+/// The custom Lid Closed timer: whole quarter-hours from 15 minutes to 24 hours.
+/// Pure, so the popover's stepper and the stored value agree on one range.
+enum LidTimer {
+    static let step = 15
+    static let range = 15...(24 * 60)
+
+    /// Rounds to the nearest quarter-hour (7 past a step down, 8 up), then
+    /// clamps into `range`, so any stored or passed value comes back usable.
+    static func clamped(minutes: Int) -> Int {
+        let bounded = min(max(minutes, 0), range.upperBound + step)
+        let rounded = (bounded + step / 2) / step * step
+        return min(max(rounded, range.lowerBound), range.upperBound)
+    }
+
+    /// "45 min", "1 h", "1 h 30 min", "24 h".
+    static func label(minutes: Int) -> String {
+        let hours = minutes / 60, rest = minutes % 60
+        switch (hours, rest) {
+        case (0, _): return "\(rest) min"
+        case (_, 0): return "\(hours) h"
+        default: return "\(hours) h \(rest) min"
+        }
+    }
+}

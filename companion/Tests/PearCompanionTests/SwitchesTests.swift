@@ -613,6 +613,46 @@ final class SwitchesTests: XCTestCase {
         XCTAssertFalse(model.keepAwakeOn)
     }
 
+    // MARK: - Custom Lid Closed timer
+
+    func testCustomLidTimerClampsToRange() {
+        XCTAssertEqual(LidTimer.clamped(minutes: 0), 15)
+        XCTAssertEqual(LidTimer.clamped(minutes: -90), 15)
+        XCTAssertEqual(LidTimer.clamped(minutes: 15), 15)
+        XCTAssertEqual(LidTimer.clamped(minutes: 24 * 60), 24 * 60)
+        XCTAssertEqual(LidTimer.clamped(minutes: 24 * 60 + 15), 24 * 60)
+        XCTAssertEqual(LidTimer.clamped(minutes: Int.max), 24 * 60)
+    }
+
+    func testCustomLidTimerRoundsToTheNearestQuarterHour() {
+        XCTAssertEqual(LidTimer.clamped(minutes: 22), 15, "7 past a step rounds down")
+        XCTAssertEqual(LidTimer.clamped(minutes: 23), 30, "8 past a step rounds up")
+        XCTAssertEqual(LidTimer.clamped(minutes: 97), 90)
+        XCTAssertEqual(LidTimer.clamped(minutes: 98), 105)
+        XCTAssertEqual(LidTimer.clamped(minutes: 1), 15, "rounding to zero still clamps to the floor")
+    }
+
+    func testCustomLidTimerLabels() {
+        XCTAssertEqual(LidTimer.label(minutes: 15), "15 min")
+        XCTAssertEqual(LidTimer.label(minutes: 45), "45 min")
+        XCTAssertEqual(LidTimer.label(minutes: 60), "1 h")
+        XCTAssertEqual(LidTimer.label(minutes: 90), "1 h 30 min")
+        XCTAssertEqual(LidTimer.label(minutes: 24 * 60), "24 h")
+    }
+
+    func testCustomLidTimerRemembersTheLastDuration() {
+        let suite = "switches-lid-timer-roundtrip"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(Prefs.lidCustomMinutes(defaults: defaults), 60, "unset offers an hour")
+        Prefs.setLidCustomMinutes(150, defaults: defaults)
+        XCTAssertEqual(Prefs.lidCustomMinutes(defaults: defaults), 150)
+        defaults.set(10_000, forKey: Prefs.lidCustomMinutesKey)
+        XCTAssertEqual(Prefs.lidCustomMinutes(defaults: defaults), 24 * 60, "a stored value is clamped on read")
+    }
+
     // MARK: - Helpers
 
     private func makeModel(

@@ -111,6 +111,9 @@ struct SwitchesVisibilityView: View {
 /// the tile is visible, which it is not on a fresh install.
 private struct LidClosedPanel: View {
     @Bindable var model: SwitchesModel
+    @State private var showsCustom = false
+    /// Starts at the last custom duration (`Prefs`), saved again on Start.
+    @State private var customMinutes = Prefs.lidCustomMinutes()
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.small) {
@@ -137,7 +140,26 @@ private struct LidClosedPanel: View {
                         .controlSize(.mini)
                     Button("12 hours") { Task { await model.startLidSession(hours: 12) } }
                         .controlSize(.mini)
+                    Button("Custom…") { showsCustom.toggle() }
+                        .controlSize(.mini)
                     Spacer()
+                }
+                if showsCustom {
+                    // A stepper over quarter-hours cannot hold an invalid value.
+                    HStack(spacing: Theme.Space.small) {
+                        Stepper(LidTimer.label(minutes: customMinutes), value: $customMinutes,
+                                in: LidTimer.range, step: LidTimer.step)
+                            .font(Theme.Typography.small(.semibold))
+                            .controlSize(.mini)
+                        Spacer()
+                        Button("Start") {
+                            let minutes = customMinutes
+                            Prefs.setLidCustomMinutes(minutes)
+                            showsCustom = false
+                            Task { await model.startLidSession(hours: Double(minutes) / 60) }
+                        }
+                        .controlSize(.mini)
+                    }
                 }
             }
 

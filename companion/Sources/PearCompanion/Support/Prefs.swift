@@ -58,6 +58,20 @@ enum Prefs {
         return max(1, stored ?? 5)
     }
 
+    // MARK: - Lid Closed custom timer
+
+    static let lidCustomMinutesKey = "lidClosedCustomMinutes"
+
+    /// The last custom Lid Closed duration, offered again next time. Unset
+    /// offers an hour; a stored value is clamped to the timer's range on read.
+    static func lidCustomMinutes(defaults: UserDefaults = .standard) -> Int {
+        LidTimer.clamped(minutes: defaults.object(forKey: lidCustomMinutesKey) as? Int ?? 60)
+    }
+
+    static func setLidCustomMinutes(_ minutes: Int, defaults: UserDefaults = .standard) {
+        defaults.set(LidTimer.clamped(minutes: minutes), forKey: lidCustomMinutesKey)
+    }
+
     // MARK: - Settings window
 
     static let settingsPageKey = "settingsLastPage"
