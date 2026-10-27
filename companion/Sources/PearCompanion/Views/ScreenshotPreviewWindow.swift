@@ -809,6 +809,12 @@ private struct ScreenshotPreviewView: View {
                 // dismisses the card, like any other.
                 if image == nil { onDismiss() }
             }
+            // The Copy checkmark is a brief confirmation, like the detail
+            // window's; on the body, not the hover-only toolbar, so it resets.
+            .task(id: copied) {
+                guard copied, (try? await Task.sleep(for: .seconds(1.5))) != nil else { return }
+                withAnimation { copied = false }
+            }
     }
 
     /// Icon-only actions in a floating capsule over the thumbnail's lower edge.
