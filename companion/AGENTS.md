@@ -310,8 +310,11 @@ re-decided on every resize and VoiceOver toggle), and right-click offers Close a
 (⌃⇧T, Vision), **Background
 removal** (Apple Vision default; opt-in HD BEN2 Core ML — see below; the
 Remove Background window takes files, dropped image data and ⌘V, a file URL
-ahead of image bytes via `BackgroundRemoverModel.pick`, ⌘V caught in the
-window's `performKeyEquivalent` as there is no menu bar), **QR**
+ahead of image bytes via `BackgroundRemoverModel.pick` (a pasted non-image
+file is refused, never swapped for its Finder icon), ⌘V caught in the
+window's `performKeyEquivalent` as there is no menu bar; every load takes a
+`beginLoad` token when asked for, so a slow earlier source landing late is
+dropped, and files are read off the main actor), **QR**
 (⌃⇧Q, scan screen region / generate from clipboard, auto QR badge + Copy-text
 button on screenshot preview cards).
 Windows: **Windows** (⌃⌥ + arrows/↩/C/⌫ snaps the front window; hold **Fn** for a

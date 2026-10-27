@@ -323,6 +323,51 @@ final class BackgroundRemoverModelTests: XCTestCase {
         XCTAssertEqual(BackgroundRemoverModel.pick([.url, .heic]), .heic)
         XCTAssertNil(BackgroundRemoverModel.pick([.url, .plainText]))
         XCTAssertNil(BackgroundRemoverModel.pick([]))
+        // A paste knows the file's own type: an image file is taken, anything
+        // else is refused outright rather than swapped for Finder's icon.
+        XCTAssertEqual(BackgroundRemoverModel.pick([.fileURL, .tiff], fileType: .png), .fileURL)
+        XCTAssertNil(BackgroundRemoverModel.pick([.fileURL, .tiff], fileType: .plainText))
+    }
+
+    /// Finder's ⌘C of a .txt: ⌘V passes through instead of erroring.
+    func testPasteOfACopiedNonImageFileIsRefused() throws {
+        let url = dir.appendingPathComponent("notes.txt")
+        try Data("hello".utf8).write(to: url)
+        let icon = try Data(contentsOf: try imageFile("icon.png", gray: 0.1))
+        let pb = NSPasteboard.withUniqueName()
+        defer { pb.releaseGlobally() }
+        pb.clearContents()
+        pb.writeObjects([url as NSURL])
+        pb.addTypes([.png], owner: nil)
+        pb.setData(icon, forType: .png)
+        let model = BackgroundRemoverModel { _ in XCTFail("the engine must not run"); return nil }
+
+        XCTAssertFalse(model.paste(from: pb))
+        XCTAssertEqual(model.state, .empty)
+        XCTAssertNil(model.job)
+    }
+
+    /// Drop a slow A (iCloud, a network volume), then a fast B: A's bytes, or
+    /// its failure, arriving after B must not replace B's result.
+    func testALateEarlierLoadCannotReplaceANewerOne() async throws {
+        try await quietly {
+            let a = try Data(contentsOf: try imageFile("a.png", gray: 0.2))
+            let b = try Data(contentsOf: try imageFile("b.png", gray: 0.8))
+            let model = BackgroundRemoverModel { data in .init(png: data, usedHD: false) }
+
+            let tokenA = model.beginLoad()
+            let tokenB = model.beginLoad()
+            model.load(b, token: tokenB)
+            await model.job?.value
+            XCTAssertEqual(model.cutoutData, b)
+
+            model.load(nil, token: tokenA)
+            await model.job?.value
+            XCTAssertEqual(model.state, .done, "a late failed load flipped the newer result to an error")
+            model.load(a, token: tokenA)
+            await model.job?.value
+            XCTAssertEqual(model.cutoutData, b, "a late earlier load replaced the newer result")
+        }
     }
 
     /// A browser's "Copy Image": bytes only, no file.
@@ -376,11 +421,13 @@ final class BackgroundRemoverModelTests: XCTestCase {
 
     /// Bytes that are not an image (a dropped .txt, a bad paste) show the error
     /// instead of running the engine and reporting "no subject".
-    func testNonImageBytesShowTheError() {
+    func testNonImageBytesShowTheError() async {
         let model = BackgroundRemoverModel { _ in XCTFail("the engine must not run"); return nil }
-        model.load(Data("hello".utf8))
+        model.load(Data("hello".utf8), token: model.beginLoad())
+        await model.job?.value
         XCTAssertEqual(model.state, .failed("Couldn't read that image."))
-        model.load(nil)
+        model.load(nil, token: model.beginLoad())
+        await model.job?.value
         XCTAssertEqual(model.state, .failed("Couldn't read that image."))
     }
 

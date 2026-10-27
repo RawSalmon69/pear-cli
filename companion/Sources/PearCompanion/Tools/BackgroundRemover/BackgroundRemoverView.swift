@@ -56,63 +56,82 @@ final class BackgroundRemoverModel {
         if panel.runModal() == .OK, let url = panel.url { load(url) }
     }
 
-    func load(_ url: URL) {
-        load(try? Data(contentsOf: url))
-    }
-
-    /// Image bytes from a file, a drop or a paste; one path for all three, so
-    /// each decodes the same way. Bytes that aren't an image show the error.
-    func load(_ data: Data?) {
+    /// Starts a load, taken the moment it is asked for (drop, paste, Choose),
+    /// before any bytes arrive: a slower earlier source that lands later holds
+    /// a stale token and is dropped, so it can't replace or fail a newer one.
+    func beginLoad() -> Int {
         job?.cancel()
         generation += 1
-        guard let data, let source = CGImageSourceCreateWithData(data as CFData, nil),
-              CGImageSourceGetType(source) != nil else {
-            state = .failed("Couldn't read that image.")
-            return
-        }
-        process(data)
+        state = .working
+        cutout = nil; cutoutData = nil; savedURL = nil; saveError = nil
+        return generation
     }
 
-    /// What to read from a drop or paste offering `types`: a file URL first
-    /// (Finder, whose copy also carries the file's icon), else the first image
-    /// type (a browser's image bytes), else nothing (text, a web link alone).
-    nonisolated static func pick(_ types: [UTType]) -> UTType? {
-        types.contains(.fileURL) ? .fileURL : types.first { $0.conforms(to: .image) }
+    /// Reads the file off the main actor, so a big or network file doesn't
+    /// stall the window.
+    func load(_ url: URL) {
+        let token = beginLoad()
+        job = Task { [weak self] in
+            let data = await Task.detached(priority: .userInitiated) { try? Data(contentsOf: url) }.value
+            await self?.run(data, token: token)
+        }
+    }
+
+    /// Image bytes from a file, a drop or a paste, under `beginLoad`'s token;
+    /// one path for all three, so each decodes the same way.
+    func load(_ data: Data?, token: Int) {
+        guard token == generation else { return }
+        job = Task { [weak self] in await self?.run(data, token: token) }
+    }
+
+    /// What to read from a drop or paste offering `types`: a file URL first,
+    /// else the first image type (a browser's image bytes), else nothing (text,
+    /// a web link alone). `fileType` is the file's own type when known (a
+    /// paste): a non-image file is refused, not swapped for the icon Finder's
+    /// copy carries beside it, so ⌘V passes through.
+    nonisolated static func pick(_ types: [UTType], fileType: UTType? = nil) -> UTType? {
+        if types.contains(.fileURL) {
+            return fileType?.conforms(to: .image) == false ? nil : .fileURL
+        }
+        return types.first { $0.conforms(to: .image) }
     }
 
     /// ⌘V: the image on `pasteboard`, through `pick`. False when there is none.
     func paste(from pasteboard: NSPasteboard) -> Bool {
-        switch Self.pick((pasteboard.types ?? []).compactMap { UTType($0.rawValue) }) {
+        let file = (pasteboard.readObjects(forClasses: [NSURL.self],
+                                           options: [.urlReadingFileURLsOnly: true]) as? [URL])?.first
+        let types = (pasteboard.types ?? []).compactMap { UTType($0.rawValue) }
+        switch Self.pick(types, fileType: file.flatMap { UTType(filenameExtension: $0.pathExtension) }) {
         case .fileURL?:
-            let urls = pasteboard.readObjects(forClasses: [NSURL.self],
-                                              options: [.urlReadingFileURLsOnly: true]) as? [URL]
-            guard let url = urls?.first else { return false }
-            load(url)
+            guard let file else { return false }
+            load(file)
         case let type?:
-            load(pasteboard.data(forType: NSPasteboard.PasteboardType(type.identifier)))
+            let data = pasteboard.data(forType: NSPasteboard.PasteboardType(type.identifier))
+            load(data, token: beginLoad())
         case nil:
             return false
         }
         return true
     }
 
-    private func process(_ data: Data) {
-        state = .working
-        cutout = nil; cutoutData = nil; savedURL = nil; saveError = nil
-        let current = generation
-        job = Task { [weak self] in
-            guard let engine = self?.engine else { return }
-            let out = await engine(data)
-            guard let self, self.generation == current else { return }
-            if let out, let image = NSImage(data: out.png) {
-                self.cutoutData = out.png
-                self.cutout = image
-                self.usedHD = out.usedHD
-                self.state = .done
-                SoundEffects.play(.done)
-            } else {
-                self.state = .failed("No subject found in that image.")
-            }
+    /// Bytes that aren't an image show the error instead of reaching the engine.
+    private func run(_ data: Data?, token: Int) async {
+        guard token == generation else { return }
+        guard let data, let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetType(source) != nil else {
+            state = .failed("Couldn't read that image.")
+            return
+        }
+        let out = await engine(data)
+        guard generation == token else { return }
+        if let out, let image = NSImage(data: out.png) {
+            cutoutData = out.png
+            cutout = image
+            usedHD = out.usedHD
+            state = .done
+            SoundEffects.play(.done)
+        } else {
+            state = .failed("No subject found in that image.")
         }
     }
 
@@ -294,13 +313,15 @@ struct BackgroundRemoverView: View {
         for provider in providers {
             switch BackgroundRemoverModel.pick(provider.registeredContentTypes) {
             case .fileURL?:
+                let token = model.beginLoad()
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
                     let data = url.flatMap { $0.isFileURL ? try? Data(contentsOf: $0) : nil }
-                    Task { @MainActor in model.load(data) }
+                    Task { @MainActor in model.load(data, token: token) }
                 }
             case let type?:
+                let token = model.beginLoad()
                 _ = provider.loadDataRepresentation(for: type) { data, _ in
-                    Task { @MainActor in model.load(data) }
+                    Task { @MainActor in model.load(data, token: token) }
                 }
             case nil:
                 continue
