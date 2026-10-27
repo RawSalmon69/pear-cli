@@ -72,7 +72,7 @@ final class ScreenshotTool: Tool {
 
     private func resolveService() -> ScreenshotService {
         if let service { return service }
-        let created = ScreenshotService(messaging: messaging)
+        let created = ScreenshotService(messaging: messaging, tool: id)
         created.onMarkupRequest = { image, done in
             MarkupWindow.present(image: image, onComplete: done)
         }

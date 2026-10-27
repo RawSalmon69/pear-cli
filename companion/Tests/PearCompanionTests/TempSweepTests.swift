@@ -304,4 +304,39 @@ final class CaptureCurtainTests: XCTestCase {
         XCTAssertEqual(recorder.all, ["hide", "launch", "restore"],
                        "the preview stack has to come back after the capture")
     }
+
+    /// ⌃⇧S then ⌃⇧W mid-drag: the three screenshot modes each own a service,
+    /// so only the shared seam can refuse the second capture.
+    @MainActor
+    func testASecondCaptureWhileOneIsInFlightIsRefused() async {
+        let recorder = Recorder()
+        let center = NotificationCenter.default
+        let hide = center.addObserver(forName: .pearHideForCapture, object: nil, queue: nil) { _ in
+            recorder.add("hide")
+        }
+        defer { center.removeObserver(hide) }
+        XCTAssertTrue(ScreenCapture.gate.begin())
+        defer { ScreenCapture.gate.end() }
+
+        let wrote = await ScreenCapture.run(
+            ["-x", "/dev/null"],
+            writing: URL(fileURLWithPath: "/nonexistent/pear-capture-test.png"),
+            tool: "screenshot",
+            launch: { _ in recorder.add("launch"); return true },
+            wroteNothing: { false },
+            report: { _, _ in })
+
+        XCTAssertFalse(wrote)
+        XCTAssertEqual(recorder.all, [], "a refused capture neither launches nor hides anything")
+    }
+}
+
+final class CaptureGateTests: XCTestCase {
+    func testOneCaptureAtATime() {
+        var gate = CaptureGate()
+        XCTAssertTrue(gate.begin())
+        XCTAssertFalse(gate.begin(), "a second capture while one runs is refused")
+        gate.end()
+        XCTAssertTrue(gate.begin(), "the gate reopens once the capture ends")
+    }
 }

@@ -172,6 +172,8 @@ check: the actions show in the Shortcuts app.
   today: every capture through `ScreenCapture.run` (screencapture failed to
   start; Screen Recording denied; Esc reports nothing), `ScreenshotService.fileCapture`
   (screenshot folder failed so the store took it; nothing filed, temp copy only),
+  a card's Save (`ScreenshotService.saveToFolder`; the card shows its checkmark
+  only on success, and a source that has gone takes the `missing` path),
   `WindowsTool.apply` (no Accessibility), `AXWindowMover.commit` (no movable
   front window) and `apply` (the app refused the frame after both passes).
   Tests: `ToolStatusTests`, `WindowsSnapPermissionTests`.
@@ -696,7 +698,12 @@ does not.
   `queue: .main` the block is enqueued and can run after `screencapture` has
   already started, which is the bug. Full-screen capture additionally waits
   160 ms for the window server to actually drop the panels; the interactive modes
-  get that for free while the user is still dragging.
+  get that for free while the user is still dragging. **One capture at a time,
+  app-wide**: `ScreenCapture.gate` (`CaptureGate`, tested) silently refuses a
+  capture while another is in flight, so restore is only ever posted by the one
+  that hid; each screenshot mode, OCR and QR owns its own service, so a
+  per-service flag let ⌃⇧S then ⌃⇧W run two and the first finisher brought the
+  cards and pins back over the second.
 - **`@Observable` does not compare before notifying.** Writing the same value
   still invalidates every view that read it. Anything written per input event —
   a zoom readout, a scroll offset, a live counter — must dedupe (`guard new !=

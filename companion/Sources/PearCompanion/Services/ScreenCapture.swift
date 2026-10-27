@@ -59,6 +59,13 @@ enum ScreenCapture {
     static let launchFailedMessage = "The system screenshot tool couldn't start"
     static let deniedMessage = "Screen Recording is off, so the capture produced nothing"
 
+    /// One capture at a time, app-wide. A double-tap (or key auto-repeat) used
+    /// to launch two `screencapture -i` fighting over one crosshair; and each
+    /// screenshot mode, OCR and QR owns its own service, so ⌃⇧S then ⌃⇧W
+    /// mid-drag ran two, and the first to finish brought the cards and pins
+    /// back over the second. Internal for the refusal test.
+    @MainActor static var gate = CaptureGate()
+
     /// Internal, not private, for the ordering test: "the panel is off the screen
     /// before the capture starts" is the whole point and is easy to regress.
     static func run(_ arguments: [String], writing url: URL, tool: String,
@@ -70,22 +77,25 @@ enum ScreenCapture {
                     })
         async -> Bool {
         // Synchronous and on the main thread, so the panels are gone before
-        // `screencapture` is launched below.
-        await MainActor.run {
+        // `screencapture` is launched below. A capture already in flight
+        // refuses this one, silently, like a cancelled drag.
+        let began = await MainActor.run {
+            guard gate.begin() else { return false }
             NotificationCenter.default.post(name: .pearHideForCapture, object: nil)
+            return true
         }
+        guard began else { return false }
         if settle > .zero { try? await Task.sleep(for: settle) }
-        defer {
-            Task { @MainActor in
-                NotificationCenter.default.post(name: .pearRestoreAfterCapture, object: nil)
-            }
-        }
         let (launched, wrote) = await withCheckedContinuation {
             (continuation: CheckedContinuation<(Bool, Bool), Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 let launched = launch(arguments)
                 continuation.resume(returning: (launched, FileManager.default.fileExists(atPath: url.path)))
             }
+        }
+        await MainActor.run {
+            gate.end()
+            NotificationCenter.default.post(name: .pearRestoreAfterCapture, object: nil)
         }
         // Only a capture that wrote nothing asks about permission, so a good
         // capture reaches its preview without the extra hop. A plain Esc is not
@@ -109,4 +119,19 @@ enum ScreenCapture {
     static func deniedByPermission(wroteFile: Bool, granted: @autoclosure () -> Bool) -> Bool {
         !wroteFile && !granted()
     }
+}
+
+/// "Is a capture already running?" as a plain value, so the rule is testable
+/// without launching `screencapture`. A refused `begin` must not be paired with
+/// an `end`; `ScreenCapture.run` only ends what it began.
+struct CaptureGate {
+    private var busy = false
+
+    mutating func begin() -> Bool {
+        guard !busy else { return false }
+        busy = true
+        return true
+    }
+
+    mutating func end() { busy = false }
 }

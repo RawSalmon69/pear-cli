@@ -137,6 +137,8 @@ enum CaptureStore {
 @MainActor
 final class ScreenshotService {
     private let messaging: MessagingService
+    /// The mode's tool id; a card's Save failure is reported under it.
+    private let tool: String
     private let logger = Logger(subsystem: CoupleKey.service, category: "screenshot")
     private let preview = ScreenshotPreviewController.shared
     private lazy var ocr = OCRService()
@@ -146,21 +148,13 @@ final class ScreenshotService {
     /// its Markup button, so ScreenshotService never hard-depends on the editor.
     var onMarkupRequest: ((NSImage, @escaping (NSImage?) -> Void) -> Void)?
 
-    /// One capture at a time. Each hotkey press is its own main-actor turn, so a
-    /// double-tap (or key auto-repeat) used to launch two `screencapture -i`
-    /// processes fighting over one crosshair — and produce two cards, two
-    /// clipboard writes and two saved files from one user intent.
-    private var isCapturing = false
-
-    init(messaging: MessagingService) {
+    init(messaging: MessagingService, tool: String) {
         self.messaging = messaging
+        self.tool = tool
     }
 
     /// `tool` is the mode's tool id, which a failure is reported under.
     func capture(tool: String) async {
-        guard !isCapturing else { return }
-        isCapturing = true
-        defer { isCapturing = false }
         let tempURL = Self.captureTempURL()
         // Unmuted capture = macOS's own camera shutter (the CleanShot feel);
         // the sounds toggle mutes it.
@@ -172,9 +166,6 @@ final class ScreenshotService {
 
     /// Whole main display, no region drag — same downstream flow as `capture()`.
     func captureFullScreen(tool: String) async {
-        guard !isCapturing else { return }
-        isCapturing = true
-        defer { isCapturing = false }
         let tempURL = Self.captureTempURL()
         guard await ScreenCapture.fullScreen(to: tempURL, muted: !Prefs.soundsEnabled, tool: tool) else {
             return // failed
@@ -186,9 +177,6 @@ final class ScreenshotService {
 
     /// Click-a-window shot — same downstream flow as `capture()`.
     func captureWindow(tool: String) async {
-        guard !isCapturing else { return }
-        isCapturing = true
-        defer { isCapturing = false }
         let tempURL = Self.captureTempURL()
         guard await ScreenCapture.window(to: tempURL, muted: !Prefs.soundsEnabled, tool: tool) else {
             return // cancelled or failed
@@ -336,8 +324,17 @@ final class ScreenshotService {
                 if self?.copyToPasteboard(at: fileURL) == true { SoundEffects.play(.copy) }
             },
             onCopyText: { [weak self] in
-                guard let self, let cg = self.decode(at: fileURL) else { return }
-                self.ocr.copyText(from: cg)
+                // The card offers this before its insights scan is done, so
+                // recognise here, but off the main actor: Vision `.accurate` on
+                // a full-res shot froze the app for seconds.
+                Task { @MainActor in
+                    let text = await Task.detached(priority: .userInitiated) {
+                        CaptureImage.decode(at: fileURL).map(OCRText.recognize(in:))
+                    }.value
+                    guard let self else { return }
+                    guard let text else { return self.missing(fileURL, "not a decodable image") }
+                    self.ocr.copyText(text)
+                }
             },
             onQRTap: { [weak self] payloads in
                 self?.qr.deliver(payloads)
@@ -355,23 +352,31 @@ final class ScreenshotService {
                     }
                 }
             },
-            onSave: { [weak self] in self?.saveToFolder(from: fileURL) },
+            onSave: { [weak self] in self?.saveToFolder(from: fileURL) ?? false },
             capturedOn: screen
         )
     }
 
     /// Copies the capture into the screenshot folder on demand — the Save
     /// button's action when auto-save is off. The card keeps pointing at the
-    /// store copy, exactly as it kept pointing at the temp file before.
-    private func saveToFolder(from url: URL) {
+    /// store copy, exactly as it kept pointing at the temp file before. True
+    /// only when the copy landed, so the card's checkmark never lies.
+    private func saveToFolder(from url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            missing(url, "file gone before Save")
+            return false
+        }
         let folder = ScreenshotNaming.folder(
             defaults: .standard,
             home: FileManager.default.homeDirectoryForCurrentUser
         )
         do {
             _ = try Self.file(url, into: folder, moving: false)
+            return true
         } catch {
             logger.error("screenshot manual save failed: \(error.localizedDescription, privacy: .public)")
+            ToolRegistry.live?.reportError("Couldn't save the shot to the screenshot folder", for: tool)
+            return false
         }
     }
 
@@ -383,7 +388,13 @@ final class ScreenshotService {
         // The tapped preview card dismisses itself; on completion we show a
         // fresh preview for the edited image.
         onMarkupRequest(image) { [weak self] edited in
-            guard let self, let edited, let png = edited.pngData() else { return }
+            guard let self else { return }
+            guard let edited, let png = edited.pngData() else {
+                // Cancelled: the card closed itself on the Markup click, so
+                // bring the untouched shot back rather than lose it.
+                self.present(at: fileURL, capturedOn: nil)
+                return
+            }
             self.overwrite(png, at: fileURL)
             self.copyToPasteboard(png, fileURL: fileURL)
             // nil: not a new capture, so the card keeps the screen it was on.
@@ -434,16 +445,6 @@ final class ScreenshotService {
             missing(url, error.localizedDescription)
             return nil
         }
-    }
-
-    /// Full-resolution decode straight off the file — no intermediate `Data` +
-    /// `NSImage` copy of a multi-megapixel capture.
-    private func decode(at url: URL) -> CGImage? {
-        guard let cg = CaptureImage.decode(at: url) else {
-            missing(url, "not a decodable image")
-            return nil
-        }
-        return cg
     }
 
     /// Replaces an already-saved shot after an edit (markup, background

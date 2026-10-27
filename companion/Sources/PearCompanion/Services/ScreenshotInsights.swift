@@ -73,11 +73,18 @@ struct ScreenshotDetails: Sendable, Equatable {
         return max(x, 1)
     }
 
-    var timeLabel: String {
+    var timeLabel: String { Self.timeLabel(date: capturedAt, now: Date(), calendar: .current) }
+
+    /// "14.03.22" today; any other day adds the date the way Pear names its
+    /// files, "2026-10-22 at 14.03.22", so an old Recent never reads as now.
+    static func timeLabel(date: Date, now: Date, calendar: Calendar) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "HH.mm.ss"
-        return formatter.string(from: capturedAt)
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = calendar.isDate(date, inSameDayAs: now)
+            ? "HH.mm.ss" : "yyyy-MM-dd 'at' HH.mm.ss"
+        return formatter.string(from: date)
     }
 
     /// ImageIO's type identifier → the short label the Details row shows. Pear
@@ -92,7 +99,9 @@ struct ScreenshotDetails: Sendable, Equatable {
     }
 
     /// Header only — `CGImageSourceCopyPropertiesAtIndex` never touches the
-    /// pixels, so building this off a URL costs no decode at all.
+    /// pixels, so building this off a URL costs no decode at all. "Taken" is the
+    /// file's creation date (then its modification date); `now` only when the
+    /// file says neither.
     static func from(url: URL, now: Date = Date()) -> ScreenshotDetails {
         var width = 0
         var height = 0
@@ -113,13 +122,15 @@ struct ScreenshotDetails: Sendable, Equatable {
                 dpi = (properties[kCGImagePropertyDPIWidth] as? Double).map { Int($0.rounded()) } ?? 0
             }
         }
-        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        let values = try? url.resourceValues(
+            forKeys: [.fileSizeKey, .creationDateKey, .contentModificationDateKey])
+        let size = values?.fileSize ?? 0
         return ScreenshotDetails(
             pixelWidth: width,
             pixelHeight: height,
             byteCount: size,
             format: format,
-            capturedAt: now,
+            capturedAt: values?.creationDate ?? values?.contentModificationDate ?? now,
             path: url.path,
             colorProfile: profile,
             bitsPerComponent: depth,

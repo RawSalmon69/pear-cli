@@ -127,6 +127,28 @@ final class ScreenshotDetailsTests: XCTestCase {
         XCTAssertFalse(details.timeLabel.isEmpty)
     }
 
+    /// "Taken" is when the shot was taken, not when the window opened: a
+    /// five-day-old Recent used to read as the current time.
+    func testTimeLabelShowsTheDateUnlessToday() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let now = Date(timeIntervalSince1970: 1_770_000_000) // 2026-02-02 02:40:00 UTC
+        let label = { (date: Date) in ScreenshotDetails.timeLabel(date: date, now: now, calendar: calendar) }
+        XCTAssertEqual(label(now.addingTimeInterval(-60)), "02.39.00")
+        XCTAssertEqual(label(now.addingTimeInterval(-86_400)), "2026-02-01 at 02.40.00")
+        XCTAssertEqual(label(now.addingTimeInterval(-86_400 * 40)), "2025-12-24 at 02.40.00")
+    }
+
+    func testCapturedAtComesFromTheFileNotTheClock() throws {
+        let url = try CaptureFixture.write(try png(width: 4, height: 4))
+        defer { CaptureFixture.remove(url) }
+        let taken = Date(timeIntervalSince1970: 1_700_000_000)
+        try FileManager.default.setAttributes(
+            [.creationDate: taken, .modificationDate: taken], ofItemAtPath: url.path)
+        let details = ScreenshotDetails.from(url: url, now: Date(timeIntervalSince1970: 1_770_000_000))
+        XCTAssertEqual(details.capturedAt, taken)
+    }
+
     private func details(width: Int, height: Int, dpi: Int = 72) -> ScreenshotDetails {
         ScreenshotDetails(
             pixelWidth: width, pixelHeight: height, byteCount: 1000, format: "PNG",

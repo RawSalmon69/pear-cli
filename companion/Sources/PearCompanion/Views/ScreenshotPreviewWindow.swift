@@ -41,7 +41,7 @@ private struct DetailContext {
     let onCopy: () -> Void
     let onCopyText: (() -> Void)?
     let onQRTap: (([String]) -> Void)?
-    let onSave: () -> Void
+    let onSave: () -> Bool
     let onReveal: () -> Void
     let onMarkup: () -> Void
     let onRemoveBackground: () -> Void
@@ -122,7 +122,7 @@ final class ScreenshotPreviewController {
         onMarkup: @escaping () -> Void,
         onRemoveBackground: @escaping () -> Void = {},
         onSend: @escaping () -> Void,
-        onSave: @escaping () -> Void = {},
+        onSave: @escaping () -> Bool = { false },
         capturedOn screen: NSScreen? = nil
     ) {
         // ~2.4× the 208pt thumbnail — headroom for scaledToFill's crop without
@@ -261,7 +261,7 @@ final class ScreenshotPreviewController {
             onCopyText: context.onCopyText,
             onQRTap: context.onQRTap,
             onPin: { [weak self] in self?.pin(id: id) },
-            onSave: context.onSave,
+            onSave: { _ = context.onSave() },
             onReveal: context.onReveal,
             onMarkup: { close(); context.onMarkup() },
             onRemoveBackground: { close(); context.onRemoveBackground() },
@@ -622,7 +622,7 @@ private struct ScreenshotPreviewView: View {
     let onQRTap: (([String]) -> Void)?
     let onOpen: () -> Void
     let onPin: () -> Void
-    let onSave: () -> Void
+    let onSave: () -> Bool
     let onReveal: () -> Void
     let onMarkup: () -> Void
     let onRemoveBackground: () -> Void
@@ -693,7 +693,7 @@ private struct ScreenshotPreviewView: View {
             }
             if canSave {
                 PreviewAction(symbol: saved ? "checkmark" : "square.and.arrow.down", help: "Save") {
-                    onSave(); withAnimation { saved = true }
+                    if onSave() { withAnimation { saved = true } }
                 }
             }
             PreviewAction(symbol: "folder", help: "Reveal", action: onReveal)

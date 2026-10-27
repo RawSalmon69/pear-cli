@@ -50,17 +50,17 @@ final class OCRService {
         guard await ScreenCapture.region(to: tempURL, tool: "ocr") else { return }
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
-        guard let image = NSImage(contentsOf: tempURL),
-              let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            return
-        }
-        copyText(from: cgImage)
+        // Off the main actor: `.accurate` recognition takes seconds on a big
+        // region and froze the whole app meanwhile.
+        guard let text = await Task.detached(priority: .userInitiated, operation: {
+            CaptureImage.decode(at: tempURL).map(OCRText.recognize(in:))
+        }).value else { return }
+        copyText(text)
     }
 
-    /// Recognize → clipboard → sound → notification. Public so the screenshot
-    /// preview's "Copy text" action can reuse the whole flow on an existing image.
-    func copyText(from cgImage: CGImage) {
-        let text = OCRText.recognize(in: cgImage)
+    /// Clipboard → sound → notification for already-recognised text. Shared
+    /// with the screenshot preview's "Copy text" action.
+    func copyText(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             notify(title: "No text found", body: "Pear couldn't read any text there.")
