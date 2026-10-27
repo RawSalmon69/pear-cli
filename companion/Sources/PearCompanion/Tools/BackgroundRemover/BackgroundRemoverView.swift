@@ -128,6 +128,8 @@ final class BackgroundRemoverModel {
     }
 
     func reset() {
+        job?.cancel()
+        generation += 1 // a cutout still in flight must not land after this
         state = .empty; cutout = nil; cutoutData = nil; savedURL = nil; saveError = nil
     }
 }

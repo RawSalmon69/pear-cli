@@ -86,12 +86,13 @@ enum BackgroundRemovalService {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
         let dpi = props.filter { $0.key == kCGImagePropertyDPIWidth || $0.key == kCGImagePropertyDPIHeight }
+        let side = max(props[kCGImagePropertyPixelWidth] as? Int ?? 0,
+                       props[kCGImagePropertyPixelHeight] as? Int ?? 0)
         let image: CGImage?
-        if (props[kCGImagePropertyOrientation] as? Int ?? 1) == 1 {
+        // No size in the header means no full-size thumbnail: decode as stored.
+        if (props[kCGImagePropertyOrientation] as? Int ?? 1) == 1 || side == 0 {
             image = CGImageSourceCreateImageAtIndex(source, 0, nil)
         } else {
-            let side = max(props[kCGImagePropertyPixelWidth] as? Int ?? 0,
-                           props[kCGImagePropertyPixelHeight] as? Int ?? 0)
             let options: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,

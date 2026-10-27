@@ -174,6 +174,9 @@ final class HDBackgroundModelManager {
 
     private let logger = Logger(subsystem: CoupleKey.service, category: "bgremove-hd")
     private var downloadTask: Task<Void, Never>?
+    /// Bumped per download, so a late progress tick from a removed one never
+    /// lands in the next download's bar.
+    private var downloadGeneration = 0
 
     // GitHub release host. The .mlpackage is split into flat assets (release
     // assets can't have slashes); each maps to a path we rebuild on disk.
@@ -303,6 +306,8 @@ final class HDBackgroundModelManager {
     func download() {
         guard downloadTask == nil else { return }
         state = .downloading(0)
+        downloadGeneration += 1
+        let generation = downloadGeneration
         let dir = modelDir
         downloadTask = Task { [weak self] in
             do {
@@ -312,7 +317,9 @@ final class HDBackgroundModelManager {
                 // Then the ~204MB weights with real progress driving the bar.
                 try await Self.fetchWithProgress(Self.files.last!, into: dir) { fraction in
                     Task { @MainActor in
-                        if let self, case .downloading = self.state { self.state = .downloading(fraction) }
+                        guard let self, self.downloadGeneration == generation,
+                              case .downloading = self.state else { return }
+                        self.state = .downloading(fraction)
                     }
                 }
             } catch {

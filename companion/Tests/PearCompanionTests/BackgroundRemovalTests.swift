@@ -271,6 +271,27 @@ final class BackgroundRemoverModelTests: XCTestCase {
         }
     }
 
+    /// New Image while a cutout is still running: its late result is dropped.
+    func testResetDropsACutoutStillInFlight() async throws {
+        try await quietly {
+            var held: CheckedContinuation<Void, Never>?
+            let model = BackgroundRemoverModel { data in
+                await withCheckedContinuation { held = $0 }
+                return .init(png: data, usedHD: false)
+            }
+            model.load(try imageFile("a.png", gray: 0.3))
+            let job = model.job
+            while held == nil { await Task.yield() }
+
+            model.reset()
+            held?.resume()
+            await job?.value
+
+            XCTAssertEqual(model.state, .empty)
+            XCTAssertNil(model.cutoutData)
+        }
+    }
+
     /// Save reports a failed write instead of offering Reveal for a file that
     /// was never written.
     func testSaveOnlyCountsAWriteThatHappened() async throws {
