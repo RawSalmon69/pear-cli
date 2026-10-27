@@ -267,9 +267,11 @@ final class ScreenshotService {
         sweepStoreIfDue()
     }
 
-    /// When the store was last swept. First read at the first capture, which
-    /// comes after the launch sweep, so that sweep counts.
-    private static var lastStoreSweep = Date()
+    /// When this process last swept the store. Starts in the distant past, so
+    /// the first capture of a run sweeps too: a static initialises at first
+    /// use, so `Date()` here would start the clock at the first capture, not at
+    /// launch. A second sweep soon after launch is cheap and off-main.
+    private static var lastStoreSweep = Date.distantPast
 
     /// The launch sweep alone let the store grow for as long as the app stayed
     /// up. Riding on a capture costs nothing while idle, and only captures add

@@ -234,6 +234,8 @@ final class CaptureStoreTests: XCTestCase {
         XCTAssertFalse(CaptureStore.sweepDue(last: last, now: last))
         XCTAssertFalse(CaptureStore.sweepDue(last: last, now: last + CaptureStore.sweepInterval - 1))
         XCTAssertTrue(CaptureStore.sweepDue(last: last, now: last + CaptureStore.sweepInterval))
+        // The first capture of a run (`lastStoreSweep` starts here) sweeps.
+        XCTAssertTrue(CaptureStore.sweepDue(last: .distantPast, now: last))
         // A clock set backwards must not stall sweeping for the gap.
         XCTAssertTrue(CaptureStore.sweepDue(last: last, now: last - CaptureStore.sweepInterval))
     }

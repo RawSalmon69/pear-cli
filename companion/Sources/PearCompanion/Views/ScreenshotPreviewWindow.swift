@@ -79,6 +79,8 @@ private final class PreviewEntry {
     /// suppression and one emission per physical gesture. A bare running total
     /// fired repeatedly through a single fling and never reset on a mouse wheel.
     var swipe = SwipeAccumulator()
+    /// Pointer over the card, which holds its auto-dismiss.
+    var hovering = false
 
     init(id: UUID, panel: NSPanel, url: URL, detailContext: DetailContext) {
         self.id = id
@@ -620,11 +622,13 @@ final class ScreenshotPreviewController {
 
     private func voiceOverChanged() {
         observeVoiceOver()
-        for entry in entries { scheduleAutoDismiss(entry) }
+        // A hovered card stays held: `hoverChange` re-arms it on exit.
+        for entry in entries where !entry.hovering { scheduleAutoDismiss(entry) }
     }
 
     private func hoverChange(id: UUID, hovering: Bool) {
         guard let entry = entries.first(where: { $0.id == id }) else { return }
+        entry.hovering = hovering
         if hovering {
             entry.timer?.invalidate()
             entry.timer = nil

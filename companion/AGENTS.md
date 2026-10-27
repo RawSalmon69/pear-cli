@@ -586,8 +586,8 @@ state until it next asks; `currentValue()` is then already off.
 - **Captures are files, not bytes.** A capture is filed the moment it is taken:
   into the user's screenshot folder when auto-save is on, otherwise into
   `~/Library/Application Support/PearCompanion/Captures` (`CaptureStore`,
-  7-day retention swept at launch, and again by the first capture once a day
-  of uptime has passed, keeping the files behind live cards and the Recent
+  7-day retention swept at launch, and again by a run's first capture and then
+  a capture at most once a day, keeping the files behind live cards and the Recent
   strip — `CaptureStore.sweepDue`). `ScreenshotService.deliver`, the one point
   every capture mode passes through, records the filed URL in
   `Prefs.recentCaptures` (plain paths, newest first, deduped, last 10) for the

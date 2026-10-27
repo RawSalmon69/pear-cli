@@ -107,6 +107,20 @@ final class ScanQueueTests: XCTestCase {
         XCTAssertEqual(started, [0, 1, 2, 3])
     }
 
+    /// A card evicted in the same turn it was shown is cancelled before its
+    /// `scan()` call; that call must not start a scan nothing will cancel.
+    func testScanAfterCancelDoesNothing() throws {
+        let png = try XCTUnwrap(QRCode.generate(from: "https://example.com")?.pngData())
+        let url = try CaptureFixture.write(png)
+        defer { CaptureFixture.remove(url) }
+        let insights = ScreenshotInsights(url: url)
+
+        insights.cancel()
+        insights.scan()
+
+        XCTAssertFalse(insights.isScanning)
+    }
+
     func testACancelledWaitingScanNeverStarts() {
         let queue = ScanQueue(limit: 1)
         var started: [Int] = []

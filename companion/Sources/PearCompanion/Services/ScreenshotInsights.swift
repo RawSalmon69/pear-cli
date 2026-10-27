@@ -314,8 +314,10 @@ final class ScreenshotInsights {
     }
 
     /// Called when the card goes: a waiting scan never starts, and a running
-    /// one stops at the next pass (Vision's pass in flight still finishes).
+    /// one stops at the next pass (Vision's pass in flight still finishes). A
+    /// later `scan()` is a no-op, so a card evicted before it scans never does.
     func cancel() {
+        didStartScan = true
         ScanQueue.shared.cancel(id: scanID)
         scanTask?.cancel()
     }
