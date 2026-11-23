@@ -324,6 +324,7 @@ final class ScreenshotInsights {
 
     private func run() {
         let url = self.url
+        let languages = OCRText.userLanguages()
         scanTask = Task { @MainActor in
             defer { ScanQueue.shared.finish() }
             let work = Task.detached(priority: .utility) { () -> ScreenshotScanResult? in
@@ -337,7 +338,7 @@ final class ScreenshotInsights {
                     return ScreenshotScanResult(text: "", payloads: [], colors: [])
                 }
                 guard !Task.isCancelled else { return nil }
-                let text = OCRText.recognize(in: cg)
+                let text = OCRText.recognize(in: cg, languages: languages)
                 guard !Task.isCancelled else { return nil }
                 return ScreenshotScanResult(
                     text: text,
