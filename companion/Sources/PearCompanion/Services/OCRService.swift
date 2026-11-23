@@ -1,5 +1,4 @@
 import AppKit
-import Carbon
 import UserNotifications
 import Vision
 import os
@@ -8,71 +7,32 @@ import os
 /// off-main callers (the screenshot insights scan) share one Vision path with
 /// the ⌃⇧T hotkey instead of keeping a second copy.
 enum OCRText {
-    /// Auto-detect first (don't assume English: a shot of a non-English UI
-    /// should still come back with its text). Auto-detect misreads small Thai
-    /// as Latin garbage (confidence 0.5) or nothing, so such a read is retried
-    /// with the user's `languages` and the more confident read wins. Mixed
-    /// Thai/English reads 0.67–0.83 either way, so it gets no wasted second
-    /// pass. Not list-only: Vision honors just a list's first script and turns
-    /// Japanese into Latin garbage under ["th-TH", "en-US"] (all measured).
-    static func recognize(in cgImage: CGImage, languages: [String]? = nil) -> String {
-        let auto = run(cgImage) { $0.automaticallyDetectsLanguage = true }
-        guard let languages, auto.confidence <= 0.5 else { return auto.text }
-        let listed = run(cgImage) { $0.recognitionLanguages = languages }
-        return listed.confidence > auto.confidence ? listed.text : auto.text
-    }
+    /// Stage timings only, never the text (it can be a password or a 2FA code).
+    /// Read on a slow Mac with:
+    /// /usr/bin/log show --last 10m --predicate 'subsystem == "com.rawsalmon69.pear.companion" AND category == "ocr"'
+    static let log = Logger(subsystem: CoupleKey.service, category: "ocr")
 
-    /// Text plus mean confidence; nothing read is confidence 0.
-    private static func run(_ cgImage: CGImage, configure: (VNRecognizeTextRequest) -> Void)
-        -> (text: String, confidence: Float) {
+    static func recognize(in cgImage: CGImage) -> String {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
-        configure(request)
+        // Don't assume English: a shot of a non-English UI should still come
+        // back with its text rather than nothing.
+        request.automaticallyDetectsLanguage = true
         // Observations are returned in Vision's own reading order and every one
         // of them is kept — the detail view scrolls rather than truncating.
+        let started = ContinuousClock.now
+        defer { log.notice("read pass: \(started.duration(to: .now), privacy: .public), \(cgImage.width)x\(cgImage.height)") }
 
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
             try handler.perform([request])
         } catch {
-            return ("", 0)
+            return ""
         }
-        let candidates = (request.results ?? []).compactMap { $0.topCandidates(1).first }
-        guard !candidates.isEmpty else { return ("", 0) }
-        return (candidates.map(\.string).joined(separator: "\n"),
-                candidates.map(\.confidence).reduce(0, +) / Float(candidates.count))
-    }
-
-    /// The user's first non-English language Vision can read, plus English, from
-    /// System Settings languages then enabled keyboards (a Thai user on an
-    /// English UI usually only has the Thai keyboard). Main actor: Text Input
-    /// Sources traps off the main thread.
-    @MainActor static func userLanguages() -> [String]? {
-        let filter = [kTISPropertyInputSourceCategory as String: kTISCategoryKeyboardInputSource as String,
-                      kTISPropertyInputSourceIsEnabled as String: true] as CFDictionary
-        let sources = TISCreateInputSourceList(filter, false)?.takeRetainedValue() as? [TISInputSource] ?? []
-        // First language only: a US keyboard lists every language it can type.
-        let keyboards = sources.compactMap { source -> String? in
-            guard let raw = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages) else { return nil }
-            return (Unmanaged<CFArray>.fromOpaque(raw).takeUnretainedValue() as? [String])?.first
-        }
-        let supported = (try? VNRecognizeTextRequest().supportedRecognitionLanguages()) ?? []
-        return languages(preferring: Locale.preferredLanguages + keyboards, supported: supported)
-    }
-
-    /// Pure half of `userLanguages`: exact match first ("zh-Hant-TW" → zh-Hant),
-    /// then by language ("th" → th-TH). Nil when the user is English-only.
-    static func languages(preferring user: [String], supported: [String]) -> [String]? {
-        for code in user {
-            let language = String(code.prefix { $0 != "-" && $0 != "_" })
-            guard language != "en",
-                  let match = supported.first(where: { code.hasPrefix($0) })
-                    ?? supported.first(where: { $0.hasPrefix(language + "-") })
-            else { continue }
-            return [match, "en-US"]
-        }
-        return nil
+        return (request.results ?? [])
+            .compactMap { $0.topCandidates(1).first?.string }
+            .joined(separator: "\n")
     }
 
     /// Straight from encoded bytes — the form the preview stack holds. Sendable
@@ -96,15 +56,20 @@ final class OCRService {
             .appendingPathComponent("pear-ocr-\(UUID().uuidString).png")
         guard await ScreenCapture.region(to: tempURL, tool: "ocr") else { return }
         defer { try? FileManager.default.removeItem(at: tempURL) }
+        let captured = ContinuousClock.now
+        // A slow screencapture exit after the drag shows up as a gap here.
+        if let written = (try? FileManager.default.attributesOfItem(atPath: tempURL.path))?[.creationDate] as? Date {
+            OCRText.log.notice("capture exited \(Date().timeIntervalSince(written), format: .fixed(precision: 2), privacy: .public)s after writing the file")
+        }
         // Seconds on a slower Mac with nothing on screen read as "it didn't work".
         CopyToast.show(message: "Reading text…")
-        let languages = OCRText.userLanguages()
 
         // Off the main actor: `.accurate` recognition takes seconds on a big
         // region and froze the whole app meanwhile.
         guard let text = await Task.detached(priority: .userInitiated, operation: {
-            CaptureImage.decode(at: tempURL).map { OCRText.recognize(in: $0, languages: languages) }
+            CaptureImage.decode(at: tempURL).map(OCRText.recognize(in:))
         }).value else { return }
+        OCRText.log.notice("read done \(captured.duration(to: .now), privacy: .public) after capture, \(text.count) characters")
         copyText(text)
     }
 

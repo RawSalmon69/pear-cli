@@ -256,12 +256,11 @@ final class ScreenshotDetailsTests: XCTestCase {
 /// Vision's default `recognitionLanguages` is `["en_US"]`, which returns
 /// *nothing at all* for Thai, Japanese, Korean, or Chinese — measured on
 /// macOS 26, Vision revision 3. `OCRText` therefore sets
-/// `automaticallyDetectsLanguage`, and this pins it. Auto-detect alone misreads
-/// small Thai UI text (13pt "โอเคค่ะ" → "TaLARiE" at 0.5 confidence, or
-/// nothing), so a less-than-sure read is retried with the user's language; a
-/// list-only read is NOT used — it turns Japanese into Latin garbage (measured).
+/// `automaticallyDetectsLanguage`, and this pins it: delete that line and these
+/// fail. A narrow explicit language list is deliberately NOT used — it drops
+/// scripts outside the list (also measured).
 final class OCRLanguageTests: XCTestCase {
-    private func render(_ text: String, size fontSize: CGFloat = 64) throws -> CGImage {
+    private func render(_ text: String) throws -> CGImage {
         let size = NSSize(width: 900, height: 200)
         let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
         let context = try XCTUnwrap(CGContext(
@@ -272,7 +271,7 @@ final class OCRLanguageTests: XCTestCase {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
         NSAttributedString(string: text, attributes: [
-            .font: NSFont.systemFont(ofSize: fontSize),
+            .font: NSFont.systemFont(ofSize: 64),
             .foregroundColor: NSColor.black,
         ]).draw(at: NSPoint(x: 20, y: 60))
         NSGraphicsContext.restoreGraphicsState()
@@ -306,30 +305,6 @@ final class OCRLanguageTests: XCTestCase {
         let text = OCRText.recognize(in: try render("Hello สวัสดี"))
         XCTAssertTrue(text.contains("Hello"), "lost the English half: \(text.debugDescription)")
         XCTAssertTrue(text.contains("สวัสดี"), "lost the Thai half: \(text.debugDescription)")
-    }
-
-    /// The owner-reported "sometimes nothing comes" on a Thai Mac: UI-sized
-    /// Thai that auto-detect turns into Latin garbage.
-    func testSmallThaiReadsWithTheUsersLanguage() throws {
-        try skipUnlessSupported("th-TH")
-        let text = OCRText.recognize(in: try render("โอเคค่ะ", size: 13), languages: ["th-TH", "en-US"])
-        XCTAssertEqual(text, "โอเคค่ะ")
-    }
-
-    /// A script outside the user's list still comes back via auto-detect, not
-    /// as the Latin garbage a ["th-TH", "en-US"] read gives.
-    func testOtherScriptFallsBackToAutoDetect() throws {
-        try skipUnlessSupported("ja-JP")
-        let text = OCRText.recognize(in: try render("こんにちは"), languages: ["th-TH", "en-US"])
-        XCTAssertTrue(text.contains("こんにちは"), "got \(text.debugDescription)")
-    }
-
-    func testLanguageListPicksFirstNonEnglishSupportedLanguage() {
-        let supported = ["en-US", "zh-Hans", "zh-Hant", "ja-JP", "th-TH"]
-        XCTAssertEqual(OCRText.languages(preferring: ["en-TH", "th"], supported: supported), ["th-TH", "en-US"])
-        XCTAssertEqual(OCRText.languages(preferring: ["zh-Hant-TW"], supported: supported), ["zh-Hant", "en-US"])
-        XCTAssertEqual(OCRText.languages(preferring: ["en", "xx", "ja-JP"], supported: supported), ["ja-JP", "en-US"])
-        XCTAssertNil(OCRText.languages(preferring: ["en-US", "en-GB"], supported: supported))
     }
 }
 
