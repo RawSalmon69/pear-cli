@@ -337,7 +337,7 @@ final class ScreenshotInsights {
                     return ScreenshotScanResult(text: "", payloads: [], colors: [])
                 }
                 guard !Task.isCancelled else { return nil }
-                let text = OCRText.recognize(in: cg)
+                let text = await OCRText.read(in: cg)
                 guard !Task.isCancelled else { return nil }
                 return ScreenshotScanResult(
                     text: text,

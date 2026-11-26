@@ -1,6 +1,7 @@
 import XCTest
 import AppKit
 import Vision
+import VisionKit
 @testable import PearCompanion
 
 /// Window-sizing clamp for the screenshot detail view.
@@ -305,6 +306,43 @@ final class OCRLanguageTests: XCTestCase {
         let text = OCRText.recognize(in: try render("Hello สวัสดี"))
         XCTAssertTrue(text.contains("Hello"), "lost the English half: \(text.debugDescription)")
         XCTAssertTrue(text.contains("สวัสดี"), "lost the Thai half: \(text.debugDescription)")
+    }
+}
+
+/// macOS 27 on a MacBook Neo: Vision's first read took 20+ s, later ones came
+/// back empty in milliseconds. `read(in:)` must answer from Live Text then.
+final class OCRFallbackTests: XCTestCase {
+    private func image(_ text: String) throws -> CGImage {
+        let rep = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 600, pixelsHigh: 120, bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSColor.white.setFill()
+        NSRect(x: 0, y: 0, width: 600, height: 120).fill()
+        NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 40)])
+            .draw(at: NSPoint(x: 20, y: 35))
+        NSGraphicsContext.restoreGraphicsState()
+        return try XCTUnwrap(rep.cgImage)
+    }
+
+    func testEmptyVisionReadFallsBackToLiveText() async throws {
+        try XCTSkipUnless(ImageAnalyzer.isSupported, "Live Text unavailable on this host")
+        let text = await OCRText.read(in: try image("Hello world"), vision: { _ in "" })
+        XCTAssertTrue(text.contains("Hello"), "got \(text.debugDescription)")
+    }
+
+    func testStuckVisionReadFallsBackToLiveText() async throws {
+        try XCTSkipUnless(ImageAnalyzer.isSupported, "Live Text unavailable on this host")
+        let text = await OCRText.read(in: try image("Hello world"), visionLimit: 0.2,
+                                      vision: { _ in Thread.sleep(forTimeInterval: 2); return "late" })
+        XCTAssertTrue(text.contains("Hello"), "got \(text.debugDescription)")
+    }
+
+    func testHealthyVisionReadIsUsedAsIs() async throws {
+        let text = await OCRText.read(in: try image("Hello world"), vision: { _ in "from vision" })
+        XCTAssertEqual(text, "from vision")
     }
 }
 
